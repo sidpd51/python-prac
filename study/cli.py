@@ -1,18 +1,12 @@
-"""`study` - your revision + progress command center.
+"""`study` - your revision + progress helper.
 
-study today                 daily plan: due revisions, weakest topics, what to solve next
-study report [MODULE]       strengths / weaknesses (whole track, or per topic in a module)
-study baseline [MODULE]     quick self-rating pass over covered topics (do this first!)
-study quiz [opts]           active-recall interview questions, graded by you
-study test [MODULE]         run exercise tests (results recorded automatically)
-study exercises [MODULE]    list exercises with their status
-study rate TOPIC GRADE      log a self-rating (0-5) after revising a topic
-study mistake TEXT -t TOPIC log a bug/misconception (schedules the topic for review)
-study topics [MODULE]       list topic ids
-study start|finish MODULE   mark a module as learning / covered
-study scaffold MODULE       create exercise/solution/question files for a new module
-study verify [MODULE]       run tests against reference solutions (content check)
-study stubs [MODULE]        (author) create missing exercise stubs from solutions/
+Everyday commands:
+  study              what to do now (first run: a short welcome)
+  study today        today's plan
+  study quiz         practise interview questions
+  study test         run your exercises
+  study report       what you're strong and weak at
+  study notes        open the notes in your browser
 """
 
 from __future__ import annotations
@@ -526,6 +520,47 @@ def cmd_site(args: argparse.Namespace) -> None:
     console.print(f"Built {SITE_DIR.relative_to(ROOT)}/  → open [cyan]{SITE_DIR / 'index.html'}[/cyan] in a browser")
 
 
+def cmd_notes(args: argparse.Namespace) -> None:
+    import webbrowser
+
+    from .site import SITE_DIR
+
+    index = SITE_DIR / "index.html"
+    try:
+        from .site import build_site
+
+        build_site()
+    except ModuleNotFoundError:
+        if not index.exists():
+            console.print("[red]Notes site missing.[/red] Run `uv sync` once, then `study notes` again.")
+            sys.exit(1)
+    console.print(f"Opening [cyan]{index}[/cyan]")
+    if not webbrowser.open(index.as_uri()):
+        console.print("Couldn't open a browser automatically. Open that file by double-clicking it.")
+
+
+def cmd_welcome(args: argparse.Namespace) -> None:
+    from .paths import PROGRESS_FILE
+
+    if PROGRESS_FILE.exists():
+        args.n = 6
+        cmd_today(args)
+        return
+    console.print(Panel(
+        "[bold]Welcome![/bold] This tool tracks what you're good at and what to revise.\n\n"
+        "1. Rate yourself on topics you've studied (about 10 minutes, no right answers).\n"
+        "2. Run [cyan]study[/cyan] each day. It tells you what to do.\n"
+        "3. Run [cyan]study notes[/cyan] any time to read the guide in your browser.",
+        title="First time here",
+    ))
+    if Prompt.ask("Rate your topics now?", choices=["y", "n"], default="y") == "y":
+        args.module, args.redo = None, False
+        cmd_baseline(args)
+        console.print("\nNow try [cyan]study report[/cyan] to see where you stand, then [cyan]study[/cyan] tomorrow.")
+    else:
+        console.print("No problem. Run [cyan]study baseline[/cyan] whenever you're ready.")
+
+
 def cmd_scaffold(args: argparse.Namespace) -> None:
     from .scaffold import scaffold
 
@@ -539,7 +574,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="study", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd", metavar="command")
+    ap.set_defaults(func=cmd_welcome)
 
     p = sub.add_parser("today", help="daily plan")
     p.add_argument("-n", type=int, default=6, help="max reviews to show")
@@ -567,7 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--random", action="store_true")
     p.set_defaults(func=cmd_quiz)
 
-    p = sub.add_parser("rate", help="self-rate a topic 0-5")
+    p = sub.add_parser("rate", help=argparse.SUPPRESS)
     p.add_argument("topic")
     p.add_argument("grade", type=int, choices=range(6))
     p.add_argument("--note")
@@ -582,44 +618,49 @@ def build_parser() -> argparse.ArgumentParser:
         ("test", cmd_test, "run your exercises"),
         ("verify", cmd_verify, "run tests against reference solutions"),
     ):
-        p = sub.add_parser(name, help=hlp)
+        p = sub.add_parser(name, help=hlp if name == "test" else argparse.SUPPRESS)
         p.add_argument("target", nargs="?", help="module (e.g. generators), 'capstone', or a path")
         p.add_argument("pytest_args", nargs=argparse.REMAINDER)
         p.set_defaults(func=func)
 
-    p = sub.add_parser("exercises", help="list exercises and status")
+    p = sub.add_parser("exercises", help=argparse.SUPPRESS)
     p.add_argument("module", nargs="?")
     p.set_defaults(func=cmd_exercises)
 
-    p = sub.add_parser("topics", help="list topic ids")
+    p = sub.add_parser("topics", help=argparse.SUPPRESS)
     p.add_argument("module", nargs="?")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=cmd_topics)
 
-    p = sub.add_parser("start", help="mark module as learning")
+    p = sub.add_parser("start", help=argparse.SUPPRESS)
     p.add_argument("module")
     p.set_defaults(func=lambda a: cmd_set_status(a, "learning"))
-    p = sub.add_parser("finish", help="mark module as covered")
+    p = sub.add_parser("finish", help=argparse.SUPPRESS)
     p.add_argument("module")
     p.set_defaults(func=lambda a: cmd_set_status(a, "covered"))
 
-    p = sub.add_parser("scaffold", help="create files for a new module")
+    p = sub.add_parser("scaffold", help=argparse.SUPPRESS)
     p.add_argument("module")
     p.set_defaults(func=cmd_scaffold)
 
-    p = sub.add_parser("site", help="build the offline HTML notes site in docs/site/")
+    p = sub.add_parser("notes", help="open the notes in your browser")
+    p.set_defaults(func=cmd_notes)
+
+    p = sub.add_parser("site", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_site)
 
-    p = sub.add_parser("check", help="(author) validate exercises & question banks")
+    p = sub.add_parser("check", help=argparse.SUPPRESS)
     p.add_argument("module", nargs="?")
     p.set_defaults(func=cmd_check)
 
-    p = sub.add_parser("stubs", help="(author) generate exercise stubs from solutions; never overwrites")
+    p = sub.add_parser("stubs", help=argparse.SUPPRESS)
     p.add_argument("module", nargs="?")
     p.add_argument(
         "--force", action="store_true", help="overwrite existing exercise files (destroys your work!)"
     )
     p.set_defaults(func=cmd_stubs)
+    # hide advanced/author commands from --help (they still work)
+    sub._choices_actions = [a for a in sub._choices_actions if a.help is not argparse.SUPPRESS]
     return ap
 
 

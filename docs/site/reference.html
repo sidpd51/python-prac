@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference - AI Eng Prep Notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
+  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="reference.html" aria-current="page">Reference</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+</header>
+<p class="src">docs/REFERENCE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#read-these-notes-in-a-browser-interactive">Read these notes in a browser (interactive)</a></li><li><a href="#setup-once-on-each-machine">Setup (once, on each machine)</a></li><li><a href="#the-daily-loop-60-120-min">The daily loop (60-120 min)</a></li><li><a href="#commands">Commands</a></li><li><a href="#working-on-the-docmind-capstone">Working on the DocMind capstone</a></li><li><a href="#adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</a></li><li><a href="#layout">Layout</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#what-3-4-years-of-experience-actually-means-in-interviews">What &quot;3-4 years of experience&quot; actually means in interviews</a></li></ol></nav><article class="prose"><h1 id="reference-how-everything-works">Reference: how everything works</h1>
+<p>The short version is in the README. This page has the details: every command, how mastery is scored,
+how to add new topics, and the folder layout. You can ignore it until you need it.</p>
+<p>In this page, <code>study X</code> means <code>./study.sh X</code> (or plain <code>study X</code> if you activated the venv with <code>source .venv/bin/activate</code>).</p>
+<p>A personal system for going from "I've covered the syllabus" to "I can do this in an interview
+for a 3-4 YOE AI-engineer role". It has four parts:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Where</th>
+<th>What it gives you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Curriculum</strong></td>
+<td><code>curriculum/*.toml</code></td>
+<td>Every topic of every track (Python → DSA → ML/DL → NLP → LLMs → RAG → Agents → Prod → Interviews) with a stable id like <code>py.generators.send</code></td>
+</tr>
+<tr>
+<td><strong>Exercises</strong></td>
+<td><code>exercises/&lt;track&gt;/&lt;NN_module&gt;/</code></td>
+<td>Stubs you implement + pytest tests. <strong>Running the tests updates your progress automatically.</strong> Reference solutions are in <code>solutions/</code> (don't peek too early)</td>
+</tr>
+<tr>
+<td><strong>Question bank</strong></td>
+<td><code>questions/&lt;track&gt;/*.toml</code></td>
+<td>Interview questions (concept / predict-the-output / debug / design / compare) at 3 levels, drilled with spaced repetition</td>
+</tr>
+<tr>
+<td><strong>Capstone</strong></td>
+<td><code>capstone/</code></td>
+<td><strong>DocMind</strong>, one project that grows phase by phase into a production RAG + agents platform. See <code>capstone/ROADMAP.md</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Everything feeds one tracker (<code>progress/progress.json</code>), which computes <strong>mastery per topic</strong>
+from your self-ratings, quiz grades, logged mistakes and test results, and schedules
+reviews with spaced repetition (SM-2). So you always know <strong>what's weak</strong> and <strong>what to revise today</strong>.</p>
+<hr />
+
+<div class="widget" data-widget="system-map">
+  <h3 class="w-title">How the pieces fit</h3>
+  <p class="w-sub">Click a box to see what it holds and the command that touches it.</p>
+  <div class="svgwrap">
+  <svg viewBox="0 0 900 275" role="img" aria-label="System map: curriculum feeds exercises, questions and the capstone; all of them write evidence to the progress file, which powers today and report">
+    <defs><marker id="sm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrowhead"/></marker></defs>
+    <g class="edges">
+      <path d="M170 60 C 230 60 230 40 290 40" marker-end="url(#sm-arrow)"/>
+      <path d="M170 60 L290 130" marker-end="url(#sm-arrow)"/>
+      <path d="M170 60 C 230 60 230 220 290 220" marker-end="url(#sm-arrow)"/>
+      <path d="M470 40 C 540 40 540 130 600 130" marker-end="url(#sm-arrow)"/>
+      <path d="M470 130 L600 130" marker-end="url(#sm-arrow)"/>
+      <path d="M470 220 C 540 220 540 130 600 130" marker-end="url(#sm-arrow)"/>
+      <path d="M750 130 L 750 190" marker-end="url(#sm-arrow)"/>
+      <path d="M750 130 L 750 70" marker-end="url(#sm-arrow)"/>
+    </g>
+    <g class="node" tabindex="0" role="button" data-title="Curriculum" data-body="Every topic of every track as a stable id such as py.generators.send. Tracks are TOML files, so a new area is just a new file." data-cmd="study topics generators">
+      <rect x="20" y="30" width="150" height="60" rx="10"/><text x="95" y="56">Curriculum</text><text x="95" y="74" class="sub">564 topic ids</text></g>
+    <g class="node" tabindex="0" role="button" data-title="Exercises" data-body="Stubs you implement plus pytest tests tagged with topic ids. Each test run records pass, fail or TODO per topic." data-cmd="study test generators">
+      <rect x="290" y="10" width="180" height="60" rx="10"/><text x="380" y="36">Exercises</text><text x="380" y="54" class="sub">tests update mastery</text></g>
+    <g class="node" tabindex="0" role="button" data-title="Question bank" data-body="Interview questions at three levels (concept, predict, debug, design, compare). You answer, reveal the key points, then grade yourself 0-5." data-cmd="study quiz --due">
+      <rect x="290" y="100" width="180" height="60" rx="10"/><text x="380" y="126">Question bank</text><text x="380" y="144" class="sub">graded by you</text></g>
+    <g class="node" tabindex="0" role="button" data-title="DocMind capstone" data-body="One project that grows from ingestion to agents to production. Its tests are tagged with topics too, so building it proves mastery." data-cmd="study test capstone">
+      <rect x="290" y="190" width="180" height="60" rx="10"/><text x="380" y="216">DocMind capstone</text><text x="380" y="234" class="sub">7 milestones in phase 0</text></g>
+    <g class="node hot" tabindex="0" role="button" data-title="progress.json" data-body="One readable file with every review, test result and logged mistake. Spaced repetition and mastery are always recomputed from it, so they cannot drift." data-cmd="cat progress/progress.json">
+      <rect x="600" y="100" width="300" height="60" rx="10"/><text x="750" y="126">progress/progress.json</text><text x="750" y="144" class="sub">mastery + schedule, derived</text></g>
+    <g class="node" tabindex="0" role="button" data-title="study report" data-body="Strengths and weaknesses per module or per topic. A topic with no evidence counts as unproven, not strong." data-cmd="study report async">
+      <rect x="600" y="190" width="145" height="60" rx="10"/><text x="672" y="216">report</text><text x="672" y="234" class="sub">weak spots</text></g>
+    <g class="node" tabindex="0" role="button" data-title="study today" data-body="Your plan: reviews that are due, the weakest topics with an exercise to solve, and the next capstone milestone." data-cmd="study today">
+      <rect x="600" y="10" width="145" height="60" rx="10"/><text x="672" y="36">today</text><text x="672" y="54" class="sub">daily plan</text></g>
+  </svg></div>
+  <div class="panel" data-panel aria-live="polite"><strong>Pick a box.</strong> <span>Everything feeds one progress file, so you always know what to revise.</span></div>
+</div>
+
+<h2 id="read-these-notes-in-a-browser-interactive">Read these notes in a browser (interactive)</h2>
+<p>Run <strong><code>./study.sh notes</code></strong>, or open <strong><code>docs/site/index.html</code></strong> in any browser: double-click it, or run
+<code>xdg-open docs/site/index.html</code> (Linux), <code>open docs/site/index.html</code> (macOS), <code>explorer.exe docs\site\index.html</code> (Windows/WSL).
+It works offline, on any machine that has this repo, with no server and no install.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What's interactive</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Start here</strong></td>
+<td>clickable system map, 90-minute day, spaced-repetition + mastery explorer, searchable command list</td>
+</tr>
+<tr>
+<td><strong>Content guide</strong></td>
+<td>module workflow diagram, one real exercise as spec / solution / stub / test, "spot the bad test" quiz</td>
+</tr>
+<tr>
+<td><strong>Capstone roadmap</strong></td>
+<td>clickable DocMind architecture, chunker playground, milestone tracker (ticks are saved in that browser only)</td>
+</tr>
+<tr>
+<td><strong>Visual explainers</strong></td>
+<td>lazy-pipeline stepper, async timeline, retry-backoff visualiser, predict-the-output deck from the question banks</td>
+</tr>
+<tr>
+<td><strong>Decision log</strong></td>
+<td>a form that writes the markdown entry for you</td>
+</tr>
+</tbody>
+</table></div>
+<p>The pages are generated from the markdown files (<code>README.md</code>, <code>docs/CONTENT_GUIDE.md</code>,
+<code>capstone/ROADMAP.md</code>, <code>journal/decisions.md</code>) and your question banks. <strong>After editing any of them, run
+<code>study site</code></strong> to refresh the HTML. Widgets live in <code>study/site_assets/widgets/</code>, styles and behaviour in
+<code>study/site_assets/style.css</code> and <code>site.js</code>; they are plain HTML/CSS/JS with no dependencies.</p>
+<hr />
+<h2 id="setup-once-on-each-machine">Setup (once, on each machine)</h2>
+<p>You need Python 3.12+ and <a href="https://docs.astral.sh/uv/">uv</a> (<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>).</p>
+<div class="hl"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>&lt;your<span class="w"> </span>repo<span class="w"> </span>url&gt;<span class="w"> </span>~/python-pract<span class="w">   </span><span class="c1"># or copy the folder</span>
+<span class="nb">cd</span><span class="w"> </span>~/python-pract
+uv<span class="w"> </span>sync<span class="w"> </span>--all-packages<span class="w">              </span><span class="c1"># creates .venv with everything</span>
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">           </span><span class="c1"># now `study`, `pytest`, `docmind` are on PATH</span>
+study<span class="w"> </span><span class="nb">test</span><span class="w">                          </span><span class="c1"># registers all exercises (they show as TODO)</span>
+study<span class="w"> </span>baseline<span class="w">                      </span><span class="c1"># 10 min: honestly rate every topic 0-5</span>
+study<span class="w"> </span>report<span class="w">                        </span><span class="c1"># your first strengths/weaknesses map</span>
+</code></pre></div>
+
+<p>(Without activating, prefix commands with <code>uv run</code>, e.g. <code>uv run study today</code>.)</p>
+<p>Your progress lives in <code>progress/progress.json</code> and <code>journal/</code>. Commit them, or copy them to the
+other machine, to carry your history with you. Reading the HTML notes needs none of this setup.</p>
+<h2 id="the-daily-loop-60-120-min">The daily loop (60-120 min)</h2>
+<div class="hl"><pre><span></span><code>study<span class="w"> </span>today
+</code></pre></div>
+
+<p>prints your plan, in this order:</p>
+<ol>
+<li><strong>Review (15-20 min)</strong>: <code>study quiz --due</code>. Answer <strong>out loud</strong> or type it, as if an
+   interviewer were in front of you. Then compare with the key points and grade yourself 0-5
+   honestly. Low grades bring the topic back tomorrow; high grades push it further out.</li>
+<li><strong>Deliberate practice (40-60 min)</strong>: solve 1-2 exercises in your weakest topics.
+   Read the docstring spec, write the code, then <code>study test &lt;module&gt;</code>.
+   - Stuck for 15 min → read the Hints section. Stuck for 30 → read the solution, close it, and
+     <strong>re-implement it from memory tomorrow</strong>.</li>
+<li><strong>Build (30-60 min)</strong>: the next capstone milestone (<code>study test capstone</code>).</li>
+<li><strong>Close the loop (5 min)</strong>: anything you got wrong becomes one sentence:
+   <code>study mistake "asyncio.gather cancels nothing on error unless..." -t gather_exceptions</code>
+   It goes to <code>journal/mistakes.md</code>, which you re-read before every interview.</li>
+</ol>
+<h3 id="weekly">Weekly</h3>
+<ul>
+<li><strong>Sunday review</strong>: <code>study report</code>, then re-do 2 exercises you solved ≥ 7 days ago <strong>from scratch</strong>
+  (delete your file: <code>git stash</code> it or copy it aside), then <code>study quiz --random -n 15 -l 3</code>.</li>
+<li><strong>Mock interview</strong> (1×/week, 45 min): pick 3 L3 questions + 1 design question, set a timer,
+  answer aloud while recording yourself. Then listen back: is it structured? Are there trade-offs?
+  Concrete numbers?</li>
+<li><strong>DSA</strong>: 3-5 LeetCode problems/week by pattern (track: <code>study start dsa.arrays_hashing</code>).</li>
+</ul>
+
+<div class="widget" data-widget="srs">
+  <h3 class="w-title">Spaced repetition and mastery, hands on</h3>
+  <p class="w-sub">Review a topic on the day it falls due and grade yourself. Watch how the next review moves.</p>
+  <div class="grades" role="group" aria-label="Add a review with grade">
+    <button type="button" data-g="0">0 blank</button><button type="button" data-g="1">1 wrong</button><button type="button" data-g="2">2 partial</button>
+    <button type="button" data-g="3">3 effortful</button><button type="button" data-g="4">4 solid</button><button type="button" data-g="5">5 teach it</button>
+    <button type="button" class="ghost" data-reset>Reset</button>
+  </div>
+  <div class="tablewrap"><table class="srs-table"><thead><tr><th>#</th><th>Day</th><th>Grade</th><th>Next review in</th><th>Ease</th></tr></thead><tbody></tbody></table></div>
+  <div class="srs-line" aria-hidden="true"></div>
+  <h4 class="w-h4">Mastery calculator</h4>
+  <div class="sliders">
+    <label>Recent self / quiz grade <output data-o="avg">3.5</output><input type="range" min="0" max="5" step="0.5" value="3.5" data-in="avg"></label>
+    <label>Exercise tests passed <output data-o="pass">6</output><input type="range" min="0" max="12" value="6" data-in="pass"></label>
+    <label>Exercise tests failed <output data-o="fail">2</output><input type="range" min="0" max="12" value="2" data-in="fail"></label>
+    <label>Days overdue <output data-o="over">0</output><input type="range" min="0" max="30" value="0" data-in="over"></label>
+  </div>
+  <div class="meter"><div class="meter-fill" data-meter></div><span class="meter-num" data-mnum></span></div>
+  <p class="w-note" data-mnote></p>
+</div>
+
+<h2 id="commands">Commands</h2>
+<div class="widget" data-widget="commands">
+  <h3 class="w-title">Find a command</h3>
+  <input type="search" class="search" placeholder="Type a word: quiz, weak, test, new module…" aria-label="Filter commands">
+  <div class="cmdgrid"></div>
+</div>
+
+
+<div class="hl"><pre><span></span><code>study today                       daily plan
+study report [MODULE]             module table, or a per-topic view (e.g. `study report async`)
+study baseline [MODULE] [--redo]  quick self-rating pass
+study quiz [-m MODULE] [-t TOPIC] [-l 1|2|3] [-k predict|debug|design|concept|compare]
+           [-n N] [--weak] [--due] [--random]
+study test [MODULE|capstone|PATH] run tests → progress recorded
+study exercises [MODULE]          exercise list with ✅ ❌ 🟡 ⬜ status
+study rate TOPIC 0-5 [--note ..]  log a self-rating after revising something
+study mistake "TEXT" -t TOPIC     log a misconception (review tomorrow)
+study topics [MODULE] [-v]        topic ids
+study start|finish MODULE         move a module to learning / covered (new tracks!)
+study scaffold MODULE             create exercise + question templates for a module
+study verify [MODULE|capstone]    run tests against reference solutions
+study check [MODULE]              validate content, show topics with no practice
+study site                        build offline HTML notes -&gt; open docs/site/index.html
+study stubs [MODULE|capstone]     regenerate missing stubs from solutions (never overwrites)
+</code></pre></div>
+
+<p>Topic/module refs can be short: <code>generators.send</code>, <code>send</code> (if unique), <code>async</code>, <code>08_generators</code>.</p>
+<p><strong>Grading scale:</strong> 0 blank · 1 wrong · 2 partial with big gaps · 3 correct with effort ·
+4 correct, could explain it to an interviewer · 5 instant, could teach it with edge cases.</p>
+<p><strong>Mastery</strong> (0-100) = average of (recent self/quiz grades) and (exercise pass rate), decayed
+when a review is overdue. <strong>≥80 strong · 60-79 ok · &lt;60 weak · ? = no evidence</strong> (no evidence
+also counts as a weakness: you haven't proven it yet).</p>
+<h2 id="working-on-the-docmind-capstone">Working on the DocMind capstone</h2>
+<p>DocMind is the project you build alongside the exercises. Milestone specs are the docstrings at the
+top of each stub file in <code>capstone/src/docmind/</code>; the order and later phases are in <code>capstone/ROADMAP.md</code>.</p>
+<div class="hl"><pre><span></span><code>study<span class="w"> </span><span class="nb">test</span><span class="w"> </span>capstone<span class="w">                 </span><span class="c1"># all milestone tests (unfinished ones show as TODO)</span>
+pytest<span class="w"> </span>capstone/tests/test_m02_loaders.py<span class="w">   </span><span class="c1"># one milestone</span>
+docmind<span class="w"> </span>ingest<span class="w"> </span>./some_docs<span class="w">          </span><span class="c1"># after M0.7: the real CLI (also `python -m docmind.cli`)</span>
+docmind<span class="w"> </span>search<span class="w"> </span><span class="s2">"your question"</span><span class="w"> </span>-k<span class="w"> </span><span class="m">5</span>
+</code></pre></div>
+
+<ol>
+<li>Pick the next unchecked milestone (tick it on the roadmap page when done).</li>
+<li>Implement it; <code>models.py</code> and <code>interfaces.py</code> are given, so read <code>interfaces.py</code> first.</li>
+<li>Stuck 30+ minutes? Compare with <code>solutions/capstone/src/docmind/...</code>, close it, redo it tomorrow.</li>
+<li>Log what you chose and rejected in <code>journal/decisions.md</code> (the Decision log page has a form).</li>
+</ol>
+<p>Don't run <code>study stubs capstone --force</code>: it overwrites your capstone code. Plain <code>study stubs</code> is always safe.</p>
+<h2 id="adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</h2>
+<p>All future tracks are already in <code>curriculum/</code> as <code>planned</code>, so they don't pollute your stats.
+When you start one:</p>
+<div class="hl"><pre><span></span><code>study<span class="w"> </span>start<span class="w"> </span>llm.apis<span class="w">               </span><span class="c1"># module now counts in today/report</span>
+study<span class="w"> </span>scaffold<span class="w"> </span>llm.apis<span class="w">            </span><span class="c1"># creates exercises/llm/04_apis/, solutions/..., questions/llm/04_apis.toml</span>
+<span class="c1"># write exercises/questions following docs/CONTENT_GUIDE.md (or ask Claude to generate them)</span>
+study<span class="w"> </span>finish<span class="w"> </span>llm.apis<span class="w">              </span><span class="c1"># when done learning; it stays in spaced repetition forever</span>
+</code></pre></div>
+
+<p>Need a topic that isn't listed? Add a line to the module's <code>topics = [...]</code> in the TOML.
+Need a whole new area (e.g. computer vision)? Add <code>curriculum/10_cv.toml</code>. Nothing else changes.</p>
+<p>Capstone tests can (and should) be tagged with new-track topics too, e.g.
+<code>@pytest.mark.topic("rag.evaluation.retrieval_metrics")</code>, so building DocMind proves mastery.</p>
+<h2 id="layout">Layout</h2>
+<div class="hl"><pre><span></span><code>curriculum/        tracks → modules → topics (TOML)
+exercises/         your work: stubs + tests            ← you edit stubs here
+solutions/         reference solutions (+ capstone reference)
+questions/         interview question banks
+capstone/          DocMind: src/docmind (yours), tests/, ROADMAP.md
+journal/           mistakes.md, decisions.md, quiz_log.jsonl (your typed answers)
+progress/          progress.json: commit it and watch yourself improve
+study/             the tracker itself (CLI, pytest plugin, SM-2, mastery)
+docs/              CONTENT_GUIDE.md (how to write exercises/questions)
+                   site/ = these notes as interactive offline HTML (open index.html; rebuild with `study site`)
+</code></pre></div>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li><strong><code>study: command not found</code></strong>: activate the venv (<code>source .venv/bin/activate</code>) or use <code>uv run study ...</code>.</li>
+<li><strong>A test shows as skipped / TODO</strong>: expected for unsolved stubs. It turns into pass or fail once you replace the <code>raise NotImplementedError</code>.</li>
+<li><strong><code>study site</code> says a module is missing</strong>: run <code>uv sync --all-packages</code> (installs <code>markdown</code> and <code>pygments</code>).</li>
+<li><strong>HTML pages look stale</strong>: you edited a markdown file or question bank; run <code>study site</code>.</li>
+<li><strong>Python version</strong>: the venv uses CPython 3.13 here; a few questions note 3.14 differences.</li>
+<li><strong>Reset your progress</strong>: delete <code>progress/progress.json</code> and <code>journal/quiz_log.jsonl</code>.</li>
+</ul>
+<h2 id="what-3-4-years-of-experience-actually-means-in-interviews">What "3-4 years of experience" actually means in interviews</h2>
+<p>Syllabus coverage gets you through L1 questions. What separates you at L3 is:</p>
+<ol>
+<li><strong>Failure-mode thinking.</strong> Not "I call the API" but "timeouts, retries with jitter,
+   idempotency, partial failures, rate limits, what happens on cancellation". Every async/http
+   exercise here tests those paths.</li>
+<li><strong>Trade-offs with numbers.</strong> "Generators: O(1) memory but single-pass and errors surface late."
+   "Chunk size 512 vs 1024: here is the recall@5 I measured."</li>
+<li><strong>Production hygiene.</strong> Tests, typing, logging, config, secrets, packaging, CI. Interviewers
+   infer experience from how you structure code, not from what you know.</li>
+<li><strong>Evaluation.</strong> "How do you know your RAG system got better?" is <em>the</em> senior GenAI question.
+   Phase 3 of the capstone makes this concrete.</li>
+<li><strong>Stories.</strong> Bugs you debugged, decisions you made and why. <code>journal/decisions.md</code> +
+   <code>journal/mistakes.md</code> + the capstone give you these. Write them down as you go, because you will
+   not remember them later.</li>
+</ol></article></div>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

@@ -22,6 +22,7 @@ ASSETS = Path(__file__).parent / "site_assets"
 # (page file, tab label, markdown source, one-line description)
 PAGES = [
     ("readme.html", "Start here", "README.md", "How the system works, the daily loop and every command."),
+    ("reference.html", "Reference", "docs/REFERENCE.md", "Every command, how scoring works, adding topics, folder layout."),
     ("content-guide.html", "Content guide", "docs/CONTENT_GUIDE.md", "How exercises and question banks are written for any module."),
     ("roadmap.html", "Capstone roadmap", "capstone/ROADMAP.md", "DocMind, the project that grows with every track."),
     ("explainers.html", "Visual explainers", None, "Step-through demos of lazy pipelines, async, retries, plus a predict-the-output deck."),
@@ -33,8 +34,10 @@ WIDGETS = ASSETS / "widgets"
 # page file -> list of (where, heading id, widget name); widgets with a leading "!" are built in code
 INSERTS: dict[str, list[tuple[str, str, str]]] = {
     "readme.html": [
+        ("after", "every-day", "daily-loop"),
+    ],
+    "reference.html": [
         ("before", "read-these-notes-in-a-browser-interactive", "system-map"),
-        ("after", "the-daily-loop-60-120-min", "daily-loop"),
         ("before", "commands", "srs"),
         ("after", "commands", "commands"),
     ],
