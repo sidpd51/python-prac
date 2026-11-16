@@ -26,6 +26,7 @@ Grade yourself honestly (0 to 5). Topics you do badly on come back sooner.
 ## Read the notes in your browser
 
 `./study.sh notes` opens an interactive guide with diagrams and small demos. It works offline.
+On Windows (WSL) it also copies the notes to `Documents\AI-Prep-Notes`, so you can double-click `index.html` there any time.
 
 ## Want more?
 

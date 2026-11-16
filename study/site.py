@@ -271,3 +271,35 @@ def build_site() -> list[Path]:
     idx.write_text(_shell("AI Eng Prep Notes", "index.html", index), encoding="utf-8")
     written.append(idx)
     return written
+
+
+def is_wsl() -> bool:
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
+
+
+def export_to_windows(folder_name: str = "AI-Prep-Notes") -> tuple[Path, str] | None:
+    """Copy docs/site into the Windows Documents folder (WSL only).
+
+    Returns (linux path, windows path) of the copy, or None when not on WSL / not possible.
+    The copy is self-contained, so it opens by double-click even when WSL is not running.
+    """
+    import subprocess
+
+    if not is_wsl():
+        return None
+    try:
+        docs_win = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", "[Environment]::GetFolderPath('MyDocuments')"],
+            capture_output=True, text=True, timeout=30, cwd="/mnt/c",
+        ).stdout.strip()
+        docs = Path(subprocess.run(["wslpath", "-u", docs_win], capture_output=True, text=True, timeout=10).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not docs_win or not docs.is_dir():
+        return None
+    target = docs / folder_name
+    shutil.copytree(SITE_DIR, target, dirs_exist_ok=True)
+    return target, f"{docs_win}\\{folder_name}"

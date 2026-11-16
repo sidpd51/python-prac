@@ -521,19 +521,30 @@ def cmd_site(args: argparse.Namespace) -> None:
 
 
 def cmd_notes(args: argparse.Namespace) -> None:
+    import subprocess
     import webbrowser
 
-    from .site import SITE_DIR
+    from .site import SITE_DIR, build_site, export_to_windows
 
     index = SITE_DIR / "index.html"
     try:
-        from .site import build_site
-
         build_site()
     except ModuleNotFoundError:
         if not index.exists():
-            console.print("[red]Notes site missing.[/red] Run `uv sync` once, then `study notes` again.")
+            console.print("[red]Notes site missing.[/red] Run `./study.sh` once (it installs what's needed), then try again.")
             sys.exit(1)
+
+    exported = export_to_windows()
+    if exported:  # WSL: put a copy in Windows Documents and open it in the Windows browser
+        linux_path, win_path = exported
+        console.print(f"Notes copied to Windows: [cyan]{win_path}[/cyan]")
+        console.print("(Double-click [bold]index.html[/bold] there any time, even without WSL running.)")
+        try:
+            subprocess.run(["cmd.exe", "/c", "start", "", f"{win_path}\\index.html"], cwd="/mnt/c", check=False,
+                           capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            console.print("Couldn't open the browser automatically; open that file yourself.")
+        return
     console.print(f"Opening [cyan]{index}[/cyan]")
     if not webbrowser.open(index.as_uri()):
         console.print("Couldn't open a browser automatically. Open that file by double-clicking it.")
