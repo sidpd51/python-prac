@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Object-Oriented Programming notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.oop">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Object-Oriented Programming</p><div class="note-head"><div id="note-progress" data-module="py.oop"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#classes-objects-and-init" data-target="classes-objects-and-init">Classes, objects and __init__</a></li><li><a href="#class-variables-and-the-lookup-rule" data-target="class-variables-and-the-lookup-rule">Class variables and the lookup rule</a></li><li><a href="#instance-class-and-static-methods" data-target="instance-class-and-static-methods">Instance, class and static methods</a></li><li><a href="#encapsulation-and-properties" data-target="encapsulation-and-properties">Encapsulation and properties</a></li><li><a href="#inheritance-overriding-and-super" data-target="inheritance-overriding-and-super">Inheritance, overriding and super()</a></li><li><a href="#mro-and-multiple-inheritance" data-target="mro-and-multiple-inheritance">MRO and multiple inheritance</a></li><li><a href="#polymorphism-abstraction-and-abcs" data-target="polymorphism-abstraction-and-abcs">Polymorphism, abstraction and ABCs</a></li><li><a href="#composition-versus-inheritance" data-target="composition-versus-inheritance">Composition versus inheritance</a></li><li><a href="#dunder-methods" data-target="dunder-methods">Dunder methods</a></li><li><a href="#dataclasses" data-target="dataclasses">Dataclasses</a></li><li><a href="#slots" data-target="slots">__slots__</a></li><li><a href="#shallow-copy-versus-deep-copy" data-target="shallow-copy-versus-deep-copy">Shallow copy versus deep copy</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="object-oriented-programming">Object-Oriented Programming</h1>
+<p>Classes bundle data with the behaviour that works on it. In Python they are also ordinary runtime objects,
+and a handful of mechanisms (attribute lookup, descriptors, the MRO, dunder methods) explain nearly every
+"why does this print that?" question. In AI engineering you use OOP to put several LLM providers behind
+one interface, to model messages and configs (dataclasses or pydantic), and to build clients that hold
+state such as retry settings, a session or a token budget. Interviewers rarely ask for syntax; they ask for
+the <em>traps</em>: mutable class variables, <code>super()</code> and the MRO, <code>__eq__</code> without <code>__hash__</code>, shallow copies, and
+inheritance versus composition.</p>
+<h2 id="classes-objects-and-init" data-topics="py.oop.classes_objects,py.oop.init,py.oop.instance_vars">Classes, objects and <strong>init</strong></h2>
+<!-- topics: classes_objects, init, instance_vars -->
+
+<p>A <strong>class</strong> is a blueprint and itself an object (an instance of <code>type</code>). Calling it creates an <strong>instance</strong>:
+<code>__new__</code> allocates the object, then <code>__init__</code> initialises it. <code>__init__</code> is <em>not</em> the constructor in the
+strict sense (it returns <code>None</code> and receives an already created object); <code>__new__</code> is rarely overridden (only for
+immutable types or singletons).</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">role</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">role</span> <span class="o">=</span> <span class="n">role</span>              <span class="c1"># instance variables live in the instance's __dict__</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">content</span> <span class="o">=</span> <span class="n">content</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="s2">"user"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">)</span>                     <span class="c1"># prints: {'role': 'user', 'content': 'hi'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">Message</span><span class="p">),</span> <span class="nb">type</span><span class="p">(</span><span class="n">Message</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: True type</span>
+</code></pre></div>
+
+<p><strong>Instance variables</strong> are created by assigning on <code>self</code> (usually in <code>__init__</code>) and belong to one
+object. Two instances never share them. Python lets you add attributes later (<code>m.extra = 1</code>), which is
+flexible but typo-prone; <code>__slots__</code> or dataclasses tighten this up.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>self</code> is not a keyword; it is the first parameter, filled in automatically when you call a
+method on an instance. <code>m.f(x)</code> is <code>Message.f(m, x)</code>.</p>
+<p><strong>Gotcha</strong> A mutable default argument is shared by every call, including constructor calls.
+<code>def __init__(self, tags=[])</code> makes every object share one list. Use <code>tags=None</code> and copy (<code>self.tags = list(tags or [])</code>).</p>
+</blockquote>
+<h2 id="class-variables-and-the-lookup-rule" data-topics="py.oop.class_vars">Class variables and the lookup rule</h2>
+<!-- topics: class_vars -->
+
+<p>A <strong>class variable</strong> is assigned in the class body and shared by all instances. Reading <code>obj.x</code> looks in the
+instance's <code>__dict__</code> first, then the class, then base classes. <em>Writing</em> <code>obj.x = ...</code> always creates or updates an
+<strong>instance</strong> attribute and never touches the class.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Counter</span><span class="p">:</span>
+    <span class="n">created</span> <span class="o">=</span> <span class="mi">0</span>                      <span class="c1"># class variable: shared</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">Counter</span><span class="o">.</span><span class="n">created</span> <span class="o">+=</span> <span class="mi">1</span>         <span class="c1"># update via the class name</span>
+
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(),</span> <span class="n">Counter</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Counter</span><span class="o">.</span><span class="n">created</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">created</span><span class="p">)</span>    <span class="c1"># prints: 2 2</span>
+
+<span class="n">a</span><span class="o">.</span><span class="n">created</span> <span class="o">=</span> <span class="mi">99</span>                       <span class="c1"># creates an INSTANCE attribute shadowing the class one</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">created</span><span class="p">,</span> <span class="n">b</span><span class="o">.</span><span class="n">created</span><span class="p">,</span> <span class="n">Counter</span><span class="o">.</span><span class="n">created</span><span class="p">)</span>   <span class="c1"># prints: 99 2 2</span>
+</code></pre></div>
+
+<p>The big trap is a <strong>mutable class variable</strong>, which every instance mutates in common:</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Agent</span><span class="p">:</span>
+    <span class="n">history</span> <span class="o">=</span> <span class="p">[]</span>                     <span class="c1"># shared by ALL agents</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">say</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>    <span class="c1"># mutates the shared list, no new attribute created</span>
+
+<span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(),</span> <span class="n">Agent</span><span class="p">()</span>
+<span class="n">x</span><span class="o">.</span><span class="n">say</span><span class="p">(</span><span class="s2">"hello"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">history</span><span class="p">)</span>                     <span class="c1"># prints: ['hello']</span>
+</code></pre></div>
+
+<p>Fix: create the list in <code>__init__</code> (<code>self.history = []</code>). Class variables are for constants, defaults of
+immutable values and counters. Note <code>self.count += 1</code> on an <code>int</code> class variable <em>rebinds</em> an instance
+attribute (reads the class value, writes to the instance), so use <code>ClassName.count += 1</code> for a shared counter;
+inside a subclass, <code>type(self).count += 1</code> would create a separate counter on the subclass.</p>
+<h2 id="instance-class-and-static-methods" data-topics="py.oop.instance_methods,py.oop.class_methods,py.oop.static_methods">Instance, class and static methods</h2>
+<!-- topics: instance_methods, class_methods, static_methods -->
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>First argument</th>
+<th>Typical use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>instance method</td>
+<td><code>self</code> (the instance)</td>
+<td>behaviour that uses/changes instance state</td>
+</tr>
+<tr>
+<td><code>@classmethod</code></td>
+<td><code>cls</code> (the class, possibly a subclass)</td>
+<td>alternative constructors, class-level state</td>
+</tr>
+<tr>
+<td><code>@staticmethod</code></td>
+<td>nothing</td>
+<td>a related utility function that needs neither</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">PromptTemplate</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">template</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">template</span> <span class="o">=</span> <span class="n">name</span><span class="p">,</span> <span class="n">template</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">render</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">values</span><span class="p">):</span>                  <span class="c1"># instance method</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">template</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="o">**</span><span class="n">values</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_dict</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>                    <span class="c1"># alternative constructor</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">data</span><span class="p">[</span><span class="s2">"template"</span><span class="p">])</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">variables</span><span class="p">(</span><span class="n">template</span><span class="p">):</span>                     <span class="c1"># no self, no cls</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">string</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">f</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">string</span><span class="o">.</span><span class="n">Formatter</span><span class="p">()</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">template</span><span class="p">)</span> <span class="k">if</span> <span class="n">f</span><span class="p">}</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">PromptTemplate</span><span class="o">.</span><span class="n">from_dict</span><span class="p">({</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"qa"</span><span class="p">,</span> <span class="s2">"template"</span><span class="p">:</span> <span class="s2">"Q: </span><span class="si">{question}</span><span class="s2">"</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">question</span><span class="o">=</span><span class="s2">"why?"</span><span class="p">))</span>                 <span class="c1"># prints: Q: why?</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">PromptTemplate</span><span class="o">.</span><span class="n">variables</span><span class="p">(</span><span class="s2">"</span><span class="si">{a}</span><span class="s2"> and </span><span class="si">{b}</span><span class="s2">"</span><span class="p">)</span> <span class="o">==</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">})</span>   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Why <code>cls</code> and not the hard-coded class name? A subclass inherits the classmethod and it builds <strong>the subclass</strong>
+(<code>ChatTemplate.from_dict(...)</code> returns a <code>ChatTemplate</code>).</p>
+<p>Under the hood, functions are <strong>descriptors</strong>: <code>obj.method</code> triggers <code>function.__get__</code>, which returns a
+<em>bound method</em> with <code>self</code> pre-filled. <code>classmethod</code> and <code>staticmethod</code> are descriptor wrappers that bind the
+class or nothing.</p>
+<h2 id="encapsulation-and-properties" data-topics="py.oop.encapsulation,py.oop.property">Encapsulation and properties</h2>
+<!-- topics: encapsulation, property -->
+
+<p>Python has no <code>private</code>; it relies on convention and a little name mangling.</p>
+<ul>
+<li><code>_x</code>: "internal, do not touch" (convention only; also skipped by <code>from m import *</code>).</li>
+<li><code>__x</code>: <strong>name mangled</strong> to <code>_ClassName__x</code> inside the class, to avoid accidental clashes in subclasses.
+  It is a collision guard, not security.</li>
+<li>No prefix: public API.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Account</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_balance</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__secret</span> <span class="o">=</span> <span class="s2">"s"</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">Account</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">_balance</span><span class="p">)</span>                        <span class="c1"># prints: 0   (allowed, but you were warned)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">_Account__secret</span><span class="p">)</span>                <span class="c1"># prints: s   (mangled name still reachable)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="s2">"__secret"</span><span class="p">))</span>            <span class="c1"># prints: False</span>
+</code></pre></div>
+
+<p>Do not write Java-style <code>get_x()</code>/<code>set_x()</code>. Start with a plain public attribute; if you later need
+validation or computation, turn it into a <strong>property</strong> without changing callers' code
+(<code>obj.x</code> stays <code>obj.x</code>).</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LLM</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span> <span class="o">=</span> <span class="n">temperature</span>            <span class="c1"># goes through the setter, so it is validated</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">temperature</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_temperature</span>
+
+    <span class="nd">@temperature</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">temperature</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"temperature must be a number"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mf">0.0</span> <span class="o">&lt;=</span> <span class="n">value</span> <span class="o">&lt;=</span> <span class="mf">2.0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"temperature must be in [0, 2]"</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_temperature</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">LLM</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">temperature</span><span class="p">)</span>                              <span class="c1"># prints: 1.0</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">m</span><span class="o">.</span><span class="n">temperature</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                                      <span class="c1"># prints: temperature must be in [0, 2]</span>
+</code></pre></div>
+
+<p>How does it work? <code>property</code> is a <strong>data descriptor</strong>: an object stored on the <em>class</em> with <code>__get__</code> and
+<code>__set__</code>. When you access <code>m.temperature</code>, Python finds the descriptor on the type and calls its <code>__get__</code>
+before consulting the instance <code>__dict__</code>; assignment calls <code>__set__</code>. A property with no setter therefore raises <code>AttributeError</code> on assignment
+(read-only), and it must be defined on the class, not on <code>self</code>. Computed read-only values (<code>area</code>, <code>full_name</code>)
+are the other common use.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> In <code>__init__</code>, assign to <code>self.temperature</code> (the property), not <code>self._temperature</code>, or validation is
+skipped on construction. <code>functools.cached_property</code> computes once and stores the result in the instance dict
+(a non-data descriptor, so the instance value wins afterwards).</p>
+</blockquote>
+<h2 id="inheritance-overriding-and-super" data-topics="py.oop.inheritance,py.oop.overriding,py.oop.super">Inheritance, overriding and super()</h2>
+<!-- topics: inheritance, overriding, super -->
+
+<p>A subclass reuses and specialises a base class. It <strong>overrides</strong> a method by defining one with the same name;
+lookup finds the subclass version first. <code>super()</code> calls the <em>next</em> implementation in the MRO (next section), so
+the subclass can extend instead of replacing.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BaseLLM</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"model=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">OpenAILLM</span><span class="p">(</span><span class="n">BaseLLM</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">api_key</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>               <span class="c1"># initialise the base part</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">api_key</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>                       <span class="c1"># override and extend</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span> <span class="o">+</span> <span class="s2">" provider=openai"</span>
+
+<span class="n">o</span> <span class="o">=</span> <span class="n">OpenAILLM</span><span class="p">(</span><span class="s2">"gpt-x"</span><span class="p">,</span> <span class="s2">"k"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">o</span><span class="o">.</span><span class="n">describe</span><span class="p">())</span>                           <span class="c1"># prints: model=gpt-x provider=openai</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">o</span><span class="p">,</span> <span class="n">BaseLLM</span><span class="p">),</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">OpenAILLM</span><span class="p">,</span> <span class="n">BaseLLM</span><span class="p">))</span>   <span class="c1"># prints: True True</span>
+</code></pre></div>
+
+<p>If a subclass defines <code>__init__</code> and forgets <code>super().__init__()</code>, the base's attributes are never set, giving
+<code>AttributeError</code> later. <code>super()</code> takes no arguments inside a method: the compiler supplies the class and
+instance (through a hidden <code>__class__</code> cell, as in the closures note).</p>
+<p><strong>Liskov substitution</strong>: a subclass instance must be usable wherever the base is expected; if overrides must
+narrow inputs or change meaning, inheritance is the wrong tool.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "What does <code>super()</code> do?" It does <em>not</em> mean "the parent class". It returns a proxy that continues
+the method search at the <strong>next class after the current one in the MRO of <code>type(self)</code></strong>, which is what makes
+cooperative multiple inheritance work.</p>
+</blockquote>
+<h2 id="mro-and-multiple-inheritance" data-topics="py.oop.mro">MRO and multiple inheritance</h2>
+<!-- topics: mro -->
+
+<p>With multiple bases, which method wins? Python linearises the class hierarchy with <strong>C3 linearisation</strong>: a
+deterministic order, visible as <code>Class.__mro__</code>. Rules: a class comes before its bases, and the left-to-right order
+of the bases listed is preserved.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">A</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">who</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="s2">"A"</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">B</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">who</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="s2">"B&gt;"</span> <span class="o">+</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">who</span><span class="p">()</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">C</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">who</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="s2">"C&gt;"</span> <span class="o">+</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">who</span><span class="p">()</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">D</span><span class="p">(</span><span class="n">B</span><span class="p">,</span> <span class="n">C</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">who</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="s2">"D&gt;"</span> <span class="o">+</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">who</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">([</span><span class="n">k</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">D</span><span class="o">.</span><span class="vm">__mro__</span><span class="p">])</span>   <span class="c1"># prints: ['D', 'B', 'C', 'A', 'object']</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">D</span><span class="p">()</span><span class="o">.</span><span class="n">who</span><span class="p">())</span>                         <span class="c1"># prints: D&gt;B&gt;C&gt;A</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>      A          D's MRO: D, B, C, A, object
+     / \         (A comes AFTER both B and C, the "diamond" is resolved once)
+    B   C
+     \ /
+      D
+</code></pre></div>
+
+<p>Notice <code>B.who</code> calls <code>super().who()</code> and gets <strong>C</strong>, a class B knows nothing about. <code>super()</code> follows the MRO of
+the <em>instance's</em> class, not B's own parents. That is why all classes in a cooperative hierarchy must call
+<code>super()</code> and why <code>A</code> is run exactly once.</p>
+<p>The standard use is <strong>mixins</strong>: small classes adding one capability, put <em>before</em> the main base.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LoggingMixin</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"calling with"</span><span class="p">,</span> <span class="n">prompt</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Client</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"answer to </span><span class="si">{</span><span class="n">prompt</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">LoggedClient</span><span class="p">(</span><span class="n">LoggingMixin</span><span class="p">,</span> <span class="n">Client</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">LoggedClient</span><span class="p">()</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="s2">"hi"</span><span class="p">))</span>
+<span class="c1"># prints: calling with hi</span>
+<span class="c1"># prints: answer to hi</span>
+</code></pre></div>
+
+<p>For <code>__init__</code> in mixin hierarchies, accept <code>**kwargs</code> and pass them on with <code>super().__init__(**kwargs)</code>.
+An inconsistent base order raises <code>TypeError: Cannot create a consistent method resolution order</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>Base.method(self)</code> (calling the parent by name) hard-codes one class and skips the others in a
+diamond, running a shared base twice or not at all. Use <code>super()</code> everywhere in a cooperative hierarchy.</p>
+</blockquote>
+<h2 id="polymorphism-abstraction-and-abcs" data-topics="py.oop.polymorphism,py.oop.abstraction,py.oop.abc">Polymorphism, abstraction and ABCs</h2>
+<!-- topics: polymorphism, abstraction, abc -->
+
+<p><strong>Polymorphism</strong> = one call, different behaviour depending on the object. In Python this is mostly <strong>duck typing</strong>:
+"if it has the method, it works", with no shared base class required.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Echo</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span> <span class="k">return</span> <span class="n">prompt</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Shout</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span> <span class="k">return</span> <span class="n">prompt</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+<span class="k">for</span> <span class="n">llm</span> <span class="ow">in</span> <span class="p">(</span><span class="n">Echo</span><span class="p">(),</span> <span class="n">Shout</span><span class="p">()):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">llm</span><span class="o">.</span><span class="n">complete</span><span class="p">(</span><span class="s2">"hi"</span><span class="p">))</span>
+<span class="c1"># prints: hi</span>
+<span class="c1"># prints: HI</span>
+</code></pre></div>
+
+<p><strong>Abstraction</strong> hides how and exposes what. Application code depends on <code>complete(prompt)</code>, not on a vendor SDK.
+To <em>enforce</em> the contract, use an <strong>abstract base class</strong>: <code>abc.ABC</code> with <code>@abstractmethod</code>. A class with unimplemented
+abstract methods cannot be instantiated, and the error appears at <strong>instantiation time</strong>, not at class definition or
+call time.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseLLM</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>                  <span class="c1"># concrete "template method"</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="n">prompt</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">prompt</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"empty prompt"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">complete</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Echo</span><span class="p">(</span><span class="n">BaseLLM</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"echo: </span><span class="si">{</span><span class="n">prompt</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">BaseLLM</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>    <span class="c1"># prints: Can't instantiate abstract class BaseLLM without an implementation for abstract method 'complete'</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Echo</span><span class="p">()</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="s2">"  hi "</span><span class="p">))</span>   <span class="c1"># prints: echo: hi</span>
+</code></pre></div>
+
+<p>The <strong>template method</strong> pattern (fixed public <code>generate</code>, subclasses fill abstract steps) keeps validation and
+logging in one place.</p>
+<p><code>abc.ABC</code> versus <code>typing.Protocol</code>:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>ABC</code></th>
+<th><code>Protocol</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Typing style</td>
+<td>nominal: you must inherit</td>
+<td>structural: matching methods is enough</td>
+</tr>
+<tr>
+<td>Shared code</td>
+<td>can provide concrete methods and <code>__init__</code></td>
+<td>interface only</td>
+</tr>
+<tr>
+<td>Runtime enforcement</td>
+<td>error on instantiation</td>
+<td>none (unless <code>@runtime_checkable</code>, which checks names only)</td>
+</tr>
+<tr>
+<td>Choose when</td>
+<td>you own the hierarchy and want shared behaviour</td>
+<td>you accept third-party or duck-typed objects, easy test fakes</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Design the classes for several LLM providers." An ABC (or Protocol) with <code>complete</code> and
+<code>count_tokens</code>; one thin adapter per vendor translating to its SDK; the shared concerns (validation, retries,
+usage accounting) in the base as concrete template methods or injected collaborators; a factory
+<code>from_config</code> classmethod picking the adapter; application code typed against the abstraction. Fakes for tests
+fall out for free.</p>
+</blockquote>
+<h2 id="composition-versus-inheritance" data-topics="py.oop.composition">Composition versus inheritance</h2>
+<!-- topics: composition -->
+
+<p>Inheritance models <strong>"is a"</strong>, composition models <strong>"has a"</strong>. Prefer composition by default: it is looser
+coupled, easier to test and avoids deep hierarchies and the fragile-base-class problem (changing the base breaks
+subclasses).</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LLMClient</span><span class="p">:</span>                           <span class="c1"># HAS a backend and a cache; both can be swapped</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">backend</span><span class="p">,</span> <span class="n">cache</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="n">backend</span><span class="p">,</span> <span class="n">cache</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ask</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">prompt</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">[</span><span class="n">prompt</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">backend</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">[</span><span class="n">prompt</span><span class="p">]</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">LLMClient</span><span class="p">(</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="p">{})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">client</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">),</span> <span class="n">client</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">))</span>    <span class="c1"># prints: cba cba</span>
+</code></pre></div>
+
+<p>The alternative, <code>class CachedRetryingOpenAIClient(OpenAIClient)</code>, explodes into combinations (cached only?
+retry only? Anthropic variant?). With composition you pass the collaborators in (dependency injection), so tests
+inject a fake backend. Use inheritance when there is a genuine "is a", a stable interface and you want
+polymorphism; use mixins sparingly for orthogonal behaviour.</p>
+<h2 id="dunder-methods" data-topics="py.oop.dunder">Dunder methods</h2>
+<!-- topics: dunder -->
+
+<p>"Dunder" (double underscore) methods are the hooks the language calls for you: operators, <code>len()</code>, <code>print()</code>,
+<code>with</code>, indexing. You rarely call them directly; you implement them so your objects behave like built-ins.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Vec</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">xs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>                       <span class="c1"># for developers, unambiguous, ideally eval-able</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"Vec</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">xs</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>                        <span class="c1"># for users; falls back to __repr__ if missing</span>
+        <span class="k">return</span> <span class="s2">"&lt;"</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">xs</span><span class="p">))</span> <span class="o">+</span> <span class="s2">"&gt;"</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__add__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Vec</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">NotImplemented</span>             <span class="c1"># NOT raise: lets Python try the other operand</span>
+        <span class="k">return</span> <span class="n">Vec</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">xs</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">xs</span><span class="p">)))</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Vec</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">NotImplemented</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">xs</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">xs</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">xs</span><span class="p">)</span>
+
+<span class="n">v</span> <span class="o">=</span> <span class="n">Vec</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">Vec</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">v</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>                        <span class="c1"># prints: Vec(4, 6) &lt;4, 6&gt;</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">v</span> <span class="o">==</span> <span class="n">Vec</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span> <span class="n">v</span> <span class="ow">is</span> <span class="n">Vec</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span> <span class="nb">len</span><span class="p">({</span><span class="n">v</span><span class="p">,</span> <span class="n">Vec</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">)}))</span>   <span class="c1"># prints: True False 1</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Vec</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mi">5</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>    <span class="c1"># prints: unsupported operand type(s) for +: 'Vec' and 'int'</span>
+</code></pre></div>
+
+<p>Key rules:</p>
+<ul>
+<li><code>__repr__</code> is for debugging and logs (always define it); <code>__str__</code> is for display and defaults to <code>__repr__</code>.</li>
+<li>Return <strong><code>NotImplemented</code></strong> (the singleton, not the exception) from binary operators and <code>__eq__</code> for unsupported
+  types: Python then tries the reflected method on the other operand (<code>__radd__</code>) and finally raises <code>TypeError</code> itself.
+  Raising yourself blocks the other side from handling the operation.</li>
+<li><strong><code>__eq__</code> and <code>__hash__</code> go together.</strong> Defining <code>__eq__</code> sets <code>__hash__</code> to <code>None</code>, making the object
+  unhashable (not usable in sets or as dict keys) until you define <code>__hash__</code>. Equal objects must have equal hashes,
+  and the hash must not change while the object is in a set, so hash only immutable fields.</li>
+<li>Others you will meet: <code>__bool__</code>, <code>__iter__</code>, <code>__contains__</code>, <code>__call__</code>, <code>__enter__</code>/<code>__exit__</code>, <code>__lt__</code>
+  (with <code>functools.total_ordering</code>), <code>__getattr__</code>.</li>
+</ul>
+<h2 id="dataclasses" data-topics="py.oop.dataclasses">Dataclasses</h2>
+<!-- topics: dataclasses -->
+
+<p><code>@dataclass</code> generates <code>__init__</code>, <code>__repr__</code> and <code>__eq__</code> from annotated fields, so plain data holders (messages,
+configs, results) need no boilerplate.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span><span class="p">,</span> <span class="n">replace</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">:</span>
+    <span class="n">role</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">content</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>    <span class="c1"># NEVER `= []`</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Message</span><span class="p">(</span><span class="s2">"user"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>                                  <span class="c1"># prints: Message(role='user', content='hi', tags=[])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span> <span class="o">==</span> <span class="n">Message</span><span class="p">(</span><span class="s2">"user"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">))</span>         <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">replace</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="s2">"bye"</span><span class="p">))</span>          <span class="c1"># prints: Message(role='user', content='bye', tags=[])</span>
+</code></pre></div>
+
+<p>A mutable default like <code>tags: list = []</code> is rejected with <code>ValueError</code> precisely because it would be shared like the
+class-variable trap; use <code>field(default_factory=list)</code>.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frozen=True</code></td>
+<td>fields cannot be reassigned (<code>FrozenInstanceError</code>); with <code>eq=True</code> generates <code>__hash__</code>, so usable in sets/dict keys</td>
+</tr>
+<tr>
+<td><code>order=True</code></td>
+<td>generates <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code> comparing fields as a tuple in order</td>
+</tr>
+<tr>
+<td><code>slots=True</code></td>
+<td>generates <code>__slots__</code>: less memory, no new attributes</td>
+</tr>
+<tr>
+<td><code>kw_only=True</code></td>
+<td>all fields keyword-only</td>
+</tr>
+<tr>
+<td><code>__post_init__</code></td>
+<td>hook run after the generated <code>__init__</code> (validation, derived fields)</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Version</span><span class="p">:</span>
+    <span class="n">major</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">minor</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Version</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">Version</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>     <span class="c1"># prints: True</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Version</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">major</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>               <span class="c1"># FrozenInstanceError is a subclass of AttributeError</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>               <span class="c1"># prints: FrozenInstanceError</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">({</span><span class="n">Version</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">Version</span><span class="p">(</span><span class="mi">1</span><span class="p">)}))</span>      <span class="c1"># prints: 1</span>
+</code></pre></div>
+
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Dataclasses are ideal for chat messages, retrieval results, run configs. Use them for trusted
+internal data; reach for pydantic when you must <strong>validate and parse untrusted input</strong> (LLM JSON output, API
+payloads), since dataclasses do not check types at runtime.</p>
+<p><strong>Gotcha</strong> <code>frozen=True</code> is shallow: a frozen dataclass holding a list can still have the list mutated.</p>
+</blockquote>
+<h2 id="slots" data-topics="py.oop.slots"><strong>slots</strong></h2>
+<!-- topics: slots -->
+
+<p>Normally every instance carries a <code>__dict__</code> (a hash table) for its attributes. <code>__slots__</code> replaces it with fixed,
+compact storage: less memory per object, slightly faster attribute access and typo-protection (assigning an unknown
+attribute raises <code>AttributeError</code>). It pays off when you create millions of small objects, like embedding records
+or tokens.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Point</span><span class="p">:</span>
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span>
+
+<span class="n">p</span> <span class="o">=</span> <span class="n">Point</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"__dict__"</span><span class="p">))</span>     <span class="c1"># prints: False</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">z</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>    <span class="c1"># prints: 'Point' object has no attribute 'z' and no __dict__ for setting new attributes</span>
+</code></pre></div>
+
+<p>Gotchas: no dynamic attributes, no <code>__weakref__</code> unless listed, and slots are only effective if every class in
+the chain defines them (a subclass without <code>__slots__</code> gets a <code>__dict__</code> again). <code>@dataclass(slots=True)</code> gives
+both.</p>
+<h2 id="shallow-copy-versus-deep-copy" data-topics="py.oop.copy">Shallow copy versus deep copy</h2>
+<!-- topics: copy -->
+
+<p>Assignment never copies: <code>b = a</code> makes a second name for the same object. A <strong>shallow copy</strong> (<code>copy.copy</code>,
+<code>list(a)</code>, <code>a[:]</code>, <code>dict(a)</code>, <code>a.copy()</code>) creates a new outer container but its elements are the <em>same</em> objects. A
+<strong>deep copy</strong> (<code>copy.deepcopy</code>) recursively copies everything, handling cycles through a memo dictionary.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"cfg"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"retries"</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span> <span class="s2">"tags"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"x"</span><span class="p">]}</span>
+
+<span class="n">alias</span> <span class="o">=</span> <span class="n">a</span>
+<span class="n">shallow</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="n">deep</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+
+<span class="n">a</span><span class="p">[</span><span class="s2">"cfg"</span><span class="p">][</span><span class="s2">"retries"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">alias</span><span class="p">[</span><span class="s2">"cfg"</span><span class="p">][</span><span class="s2">"retries"</span><span class="p">],</span> <span class="n">shallow</span><span class="p">[</span><span class="s2">"cfg"</span><span class="p">][</span><span class="s2">"retries"</span><span class="p">],</span> <span class="n">deep</span><span class="p">[</span><span class="s2">"cfg"</span><span class="p">][</span><span class="s2">"retries"</span><span class="p">])</span>   <span class="c1"># prints: 99 99 3</span>
+</code></pre></div>
+
+<p>The shallow copy has its own top-level dict but shares the nested <code>cfg</code> dict, so changing nested content leaks
+through. The classic bug is <code>copy.copy(defaults)</code> for a nested config, then mutating
+the copy's inner dict and corrupting the shared defaults.</p>
+<p>You can customise copying with <code>__copy__</code> / <code>__deepcopy__(self, memo)</code>. Deep copy is slow and
+can duplicate things you do not want (clients, locks, models, open files), so for configs prefer immutable
+structures (<code>frozen</code> dataclasses, tuples) or copy only the part you will change.</p>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li><code>__new__</code> creates, <code>__init__</code> initialises; instance variables live in <code>__dict__</code>; mutable defaults and mutable class variables are shared state.</li>
+<li>Reading <code>obj.x</code> goes instance, class, bases; writing creates an instance attribute.</li>
+<li>Instance method gets <code>self</code>, classmethod gets <code>cls</code> (alternative constructors), staticmethod gets nothing.</li>
+<li>Encapsulation is convention (<code>_x</code>, mangled <code>__x</code>); <code>@property</code> is a data descriptor on the class for validation and computed values.</li>
+<li><code>super()</code> follows the MRO (C3) of the instance's class, not "the parent"; mixins need cooperative <code>super()</code> calls.</li>
+<li>Duck typing is polymorphism; <code>ABC</code> enforces at instantiation; <code>Protocol</code> is the structural alternative.</li>
+<li>Prefer composition and injected collaborators; inherit for genuine "is a".</li>
+<li>Return <code>NotImplemented</code> from binary operators; <code>__eq__</code> without <code>__hash__</code> makes the type unhashable; always define <code>__repr__</code>.</li>
+<li><code>@dataclass</code>: <code>default_factory</code> for mutables; <code>frozen</code>, <code>order</code>, <code>slots</code>, <code>__post_init__</code>; no runtime validation.</li>
+<li><code>__slots__</code> is a memory optimisation; <code>copy.copy</code> shares nested objects, <code>deepcopy</code> duplicates them.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-generators.html">&larr; Generators</a><a class="pn next" href="revise-py-exceptions.html">Exception Handling &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

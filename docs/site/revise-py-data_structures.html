@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Data Structures notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.data_structures">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Data Structures</p><div class="note-head"><div id="note-progress" data-module="py.data_structures"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#lists" data-target="lists">Lists</a></li><li><a href="#dictionaries-and-dict-lookup" data-target="dictionaries-and-dict-lookup">Dictionaries and dict lookup</a></li><li><a href="#tuples" data-target="tuples">Tuples</a></li><li><a href="#sets-set-operations-and-deduplication" data-target="sets-set-operations-and-deduplication">Sets, set operations and deduplication</a></li><li><a href="#list-vs-dict-vs-set-choosing" data-target="list-vs-dict-vs-set-choosing">List vs dict vs set: choosing</a></li><li><a href="#searching-and-complexity" data-target="searching-and-complexity">Searching and complexity</a></li><li><a href="#stack-and-queue-and-deque" data-target="stack-and-queue-and-deque">Stack and queue, and deque</a></li><li><a href="#counter-and-defaultdict" data-target="counter-and-defaultdict">Counter and defaultdict</a></li><li><a href="#ordereddict-and-namedtuple" data-target="ordereddict-and-namedtuple">OrderedDict and namedtuple</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="data-structures">Data Structures</h1>
+<p>Choosing the right container is most of the performance work you will ever do in Python. A list, a dict, a set and a deque
+differ in what they make cheap, and an interviewer asking "list or set?" is really asking whether you know what is
+happening underneath. In AI engineering this shows up as deduplicating millions of chunk ids, counting tokens, building
+inverted indexes, caching embeddings with an LRU, and keeping a sliding window of conversation messages. This note covers
+the built-ins, the <code>collections</code> extras, searching, and Big-O so you can justify each choice.</p>
+<h2 id="lists" data-topics="py.data_structures.lists">Lists</h2>
+<!-- topics: lists -->
+
+<p>A <code>list</code> is a <strong>dynamic array</strong> of references. CPython keeps a contiguous block of pointers and over-allocates, so
+<code>append</code> is <em>amortised</em> O(1): occasionally it must grow and copy, but averaged over many appends the cost is constant.</p>
+<div class="hl"><pre><span></span><code>list object ─► [ ptr0 | ptr1 | ptr2 | ... spare capacity ]
+                  │      │      └► 3.5 (a float object elsewhere)
+                  └► "hi"
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Cost</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lst[i]</code>, <code>lst[i] = x</code></td>
+<td>O(1)</td>
+<td>pointer arithmetic</td>
+</tr>
+<tr>
+<td><code>append(x)</code>, <code>pop()</code></td>
+<td>O(1) amortised</td>
+<td>touches the end only</td>
+</tr>
+<tr>
+<td><code>insert(0, x)</code>, <code>pop(0)</code>, <code>del lst[0]</code></td>
+<td>O(n)</td>
+<td>shifts every element</td>
+</tr>
+<tr>
+<td><code>x in lst</code>, <code>lst.index(x)</code>, <code>lst.count(x)</code></td>
+<td>O(n)</td>
+<td>linear scan with <code>==</code></td>
+</tr>
+<tr>
+<td><code>lst.sort()</code></td>
+<td>O(n log n)</td>
+<td>Timsort, stable</td>
+</tr>
+<tr>
+<td><code>lst[a:b]</code></td>
+<td>O(b - a)</td>
+<td>builds a new list</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="n">lst</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">lst</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">4</span><span class="p">);</span> <span class="n">lst</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]);</span> <span class="n">lst</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span>                      <span class="c1"># prints: [0, 3, 1, 2, 4, 5, 6]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">lst</span><span class="o">.</span><span class="n">pop</span><span class="p">(),</span> <span class="n">lst</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>    <span class="c1"># prints: 6 0</span>
+<span class="n">lst</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span>                      <span class="c1"># prints: [5, 4, 3, 2, 1]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">([</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">],</span> <span class="n">key</span><span class="o">=</span><span class="nb">str</span><span class="o">.</span><span class="n">lower</span><span class="p">))</span>   <span class="c1"># prints: ['A', 'b', 'c']</span>
+<span class="nb">print</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>    <span class="c1"># prints: [1, 2, 3] [0, 0, 0]</span>
+</code></pre></div>
+
+<p><code>list.sort()</code> sorts in place and returns <code>None</code>; <code>sorted(x)</code> returns a new list from any iterable. Both accept
+<code>key=</code> (called once per element) and are <strong>stable</strong>: equal keys keep their original order, so you can sort by a
+secondary key first and then the primary key.</p>
+<div class="hl"><pre><span></span><code><span class="n">docs</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">),</span> <span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">),</span> <span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">docs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="n">d</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">d</span><span class="p">[</span><span class="mi">0</span><span class="p">])))</span>   <span class="c1"># prints: [('a', 0.9), ('b', 0.9), ('c', 0.5)]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>lst.remove(x)</code> removes the first match only and raises <code>ValueError</code> if absent. Removing while iterating
+skips elements. Use a comprehension to filter: <code>lst = [x for x in lst if keep(x)]</code>.</p>
+<p><strong>Interview</strong> "Cost of <code>pop(0)</code> in a loop?" O(n) each, so O(n^2) overall. Use <code>collections.deque</code> (O(1) <code>popleft</code>).</p>
+</blockquote>
+<h2 id="dictionaries-and-dict-lookup" data-topics="py.data_structures.dicts,py.data_structures.dict_lookup">Dictionaries and dict lookup</h2>
+<!-- topics: dicts, dict_lookup -->
+
+<p>A <code>dict</code> is a <strong>hash table</strong>. To store <code>d[k] = v</code>, Python computes <code>hash(k)</code>, uses it to pick a slot in an index array,
+and stores the key, hash and value in a compact entries array. Lookup repeats the hash, jumps to the slot, and confirms
+with <code>==</code> (after an identity shortcut). Average cost is <strong>O(1)</strong>; collisions are resolved by probing, and heavy
+collisions can degrade to O(n), which is why hash quality matters.</p>
+<div class="hl"><pre><span></span><code>d[k]  ─►  hash(k) ─► slot in index table ─► entry (hash, key, value) ─► compare key ─► value
+</code></pre></div>
+
+<p>Consequences:</p>
+<ul>
+<li><strong>Keys must be hashable</strong>: immutable and hashing consistently with equality. <code>str</code>, <code>int</code>, <code>tuple</code> of hashables,
+  <code>frozenset</code> and <code>None</code> work; <code>list</code>, <code>dict</code>, <code>set</code> raise <code>TypeError: unhashable type</code>.</li>
+<li>Since Python 3.7 a dict <strong>preserves insertion order</strong> (a language guarantee). Updating an existing key keeps its position.</li>
+<li><code>1</code>, <code>1.0</code> and <code>True</code> are equal with equal hashes, so they are the <em>same key</em>.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="n">d</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
+<span class="n">d</span><span class="p">[</span><span class="s2">"c"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="s2">"a"</span><span class="p">],</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"z"</span><span class="p">),</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"z"</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>      <span class="c1"># prints: 1 None 0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"a"</span><span class="p">),</span> <span class="n">d</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"d"</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">d</span><span class="p">)</span>    <span class="c1"># prints: 1 4 {'b': 2, 'c': 3, 'd': 4}</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">d</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">values</span><span class="p">()),</span> <span class="nb">list</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">())[</span><span class="mi">0</span><span class="p">])</span>   <span class="c1"># prints: ['b', 'c', 'd'] [2, 3, 4] ('b', 2)</span>
+<span class="nb">print</span><span class="p">({</span><span class="mi">1</span><span class="p">:</span> <span class="s2">"x"</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">:</span> <span class="s2">"y"</span><span class="p">,</span> <span class="kc">True</span><span class="p">:</span> <span class="s2">"z"</span><span class="p">})</span>          <span class="c1"># prints: {1: 'z'}</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="p">{[</span><span class="mi">1</span><span class="p">]:</span> <span class="s2">"x"</span><span class="p">}</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                                  <span class="c1"># prints: unhashable type: 'list'</span>
+</code></pre></div>
+
+<p><code>d[k]</code> raises <code>KeyError</code> on a miss; <code>d.get(k, default)</code> never does. <code>k in d</code> tests keys in O(1). The <code>keys()</code>, <code>values()</code>
+and <code>items()</code> views are live (they reflect later changes), and <code>keys()</code>/<code>items()</code> support set operations (<code>a.keys() &amp; b.keys()</code>).
+Merging: <code>{**a, **b}</code> or <code>a | b</code> (3.9+), right side wins.</p>
+<div class="hl"><pre><span></span><code><span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span> <span class="p">{</span><span class="s2">"y"</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">:</span> <span class="mi">30</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">|</span> <span class="n">b</span><span class="p">)</span>                       <span class="c1"># prints: {'x': 1, 'y': 20, 'z': 30}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="o">&amp;</span> <span class="n">b</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>         <span class="c1"># prints: {'y'}</span>
+<span class="n">view</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+<span class="n">a</span><span class="p">[</span><span class="s2">"new"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">view</span><span class="p">))</span>                  <span class="c1"># prints: ['x', 'y', 'new']</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Do not change a dict's size while iterating over it (<code>RuntimeError: dictionary changed size during
+iteration</code>); iterate over <code>list(d)</code> instead. And <code>d.get(k, expensive())</code> evaluates <code>expensive()</code> every time.</p>
+<p><strong>Remember</strong> <code>__eq__</code> and <code>__hash__</code> contract: equal objects must have equal hashes. A mutable key whose hash changes
+after insertion becomes unfindable.</p>
+</blockquote>
+<h2 id="tuples" data-topics="py.data_structures.tuples">Tuples</h2>
+<!-- topics: tuples -->
+
+<p>A <code>tuple</code> is an <strong>immutable</strong> sequence. Use it for a <em>fixed-shape record</em> (a heterogeneous "row"), where position has
+meaning; use a list for a <em>homogeneous collection</em> of variable length. Because they are immutable (and their items are
+hashable) tuples can be dict keys and set members; lists cannot.</p>
+<div class="hl"><pre><span></span><code><span class="n">point</span> <span class="o">=</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">point</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>                              <span class="c1"># prints: 3 4</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">((</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">type</span><span class="p">((</span><span class="mi">1</span><span class="p">,))</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: int tuple</span>
+<span class="n">cache</span> <span class="o">=</span> <span class="p">{(</span><span class="s2">"gpt"</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">):</span> <span class="s2">"result"</span><span class="p">}</span>         <span class="c1"># tuple as a composite key</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cache</span><span class="p">[(</span><span class="s2">"gpt"</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)])</span>               <span class="c1"># prints: result</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">min_max</span><span class="p">(</span><span class="n">xs</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">xs</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>              <span class="c1"># returns ONE tuple, unpacked by the caller</span>
+<span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">min_max</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">)</span>                            <span class="c1"># prints: 2 9</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">hash</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span> <span class="o">==</span> <span class="nb">hash</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)))</span>      <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>The comma makes the tuple, not the parentheses: <code>(1)</code> is an int, <code>(1,)</code> is a tuple, <code>()</code> is empty. Tuples are slightly
+smaller and faster to build than lists. Immutability is <strong>shallow</strong>: <code>([1], 2)</code> is hashable-looking but raises
+<code>TypeError</code> on <code>hash()</code> because it contains a list.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Tuple vs list?" Immutability (hashable, safe to share), semantic meaning (record vs sequence), small
+performance edge. Not "tuples are faster at everything".</p>
+</blockquote>
+<h2 id="sets-set-operations-and-deduplication" data-topics="py.data_structures.sets,py.data_structures.set_operations,py.data_structures.dedup">Sets, set operations and deduplication</h2>
+<!-- topics: sets, set_operations, dedup -->
+
+<p>A <code>set</code> is an unordered collection of <strong>unique, hashable</strong> items, implemented as a hash table with only keys. Membership,
+<code>add</code> and <code>remove</code> are O(1) average. <code>frozenset</code> is the immutable, hashable variant.</p>
+<div class="hl"><pre><span></span><code><span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">},</span> <span class="p">{</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">|</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">&amp;</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">-</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">^</span> <span class="n">b</span><span class="p">)</span>       <span class="c1"># prints: {1, 2, 3, 4} {3} {1, 2} {1, 2, 4}</span>
+<span class="nb">print</span><span class="p">({</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">}</span> <span class="o">&lt;=</span> <span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">isdisjoint</span><span class="p">({</span><span class="mi">9</span><span class="p">}))</span>   <span class="c1"># prints: True True</span>
+<span class="n">s</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="n">s</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="mi">5</span><span class="p">);</span> <span class="n">s</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="mi">99</span><span class="p">)</span>                 <span class="c1"># discard never raises, remove does</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">type</span><span class="p">({})</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: {5} dict set</span>
+</code></pre></div>
+
+<p><code>{}</code> is an empty <strong>dict</strong>; an empty set is <code>set()</code>. Operators: union <code>|</code>, intersection <code>&amp;</code>, difference <code>-</code>, symmetric
+difference <code>^</code>, subset <code>&lt;=</code>. The method forms (<code>a.union(iterable)</code>) accept any iterable.</p>
+<p><strong>Deduplication</strong> is the classic use. <code>set(items)</code> drops duplicates but <strong>loses order</strong>. To keep first-seen order, use
+<code>dict.fromkeys</code> (dicts are ordered) or a <code>seen</code> set in a loop:</p>
+<div class="hl"><pre><span></span><code><span class="n">chunk_ids</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"c3"</span><span class="p">,</span> <span class="s2">"c1"</span><span class="p">,</span> <span class="s2">"c3"</span><span class="p">,</span> <span class="s2">"c2"</span><span class="p">,</span> <span class="s2">"c1"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">chunk_ids</span><span class="p">)))</span>        <span class="c1"># prints: ['c3', 'c1', 'c2']</span>
+
+<span class="n">seen</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="n">unique</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunk_ids</span> <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">c</span> <span class="ow">in</span> <span class="n">seen</span> <span class="ow">or</span> <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">c</span><span class="p">))]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">unique</span><span class="p">)</span>                                <span class="c1"># prints: ['c3', 'c1', 'c2']</span>
+
+<span class="n">records</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"t"</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"t"</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"t"</span><span class="p">:</span> <span class="s2">"b"</span><span class="p">}]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">({</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">items</span><span class="p">()))</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">records</span><span class="p">}))</span>   <span class="c1"># prints: 2   (dicts are unhashable; convert)</span>
+</code></pre></div>
+
+<p>Scale: for exact duplicates of 10M documents, store a <strong>content hash</strong> (<code>hashlib.sha256(text.encode()).hexdigest()</code>)
+in the set rather than the full text. For <em>near</em>-duplicates you need MinHash/SimHash, not a set.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Set iteration order is arbitrary (string hashes are randomised per process), so never depend on it; use
+<code>sorted(s)</code> for stable output. Elements must be hashable: you cannot put a list or dict in a set.</p>
+<p><strong>AI use</strong> "Which of these 100k chunk ids were already embedded?" is <code>new_ids - embedded_ids</code> with a set: O(n + m),
+versus O(n * m) with a list.</p>
+</blockquote>
+<h2 id="list-vs-dict-vs-set-choosing" data-topics="py.data_structures.list_vs_dict">List vs dict vs set: choosing</h2>
+<!-- topics: list_vs_dict -->
+
+<p>Choose by the question you ask most often.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Use</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ordered, indexable, duplicates allowed</td>
+<td><code>list</code></td>
+<td>position matters</td>
+</tr>
+<tr>
+<td>"is x present?" on many items</td>
+<td><code>set</code></td>
+<td>O(1) membership</td>
+</tr>
+<tr>
+<td>find a value by key, or count/group by key</td>
+<td><code>dict</code></td>
+<td>O(1) key to value</td>
+</tr>
+<tr>
+<td>presence plus stored data (id to embedding)</td>
+<td><code>dict</code></td>
+<td>a set cannot hold values</td>
+</tr>
+<tr>
+<td>fixed record / composite key</td>
+<td><code>tuple</code></td>
+<td>immutable, hashable</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="n">ids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">20_000</span><span class="p">))</span>
+<span class="n">as_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span>
+<span class="n">probe</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">19_000</span><span class="p">,</span> <span class="mi">21_000</span><span class="p">))</span>
+
+<span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">();</span> <span class="n">hits</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">probe</span> <span class="k">if</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ids</span><span class="p">);</span>    <span class="n">t_list</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+<span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">();</span> <span class="n">hits2</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">probe</span> <span class="k">if</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">as_set</span><span class="p">);</span> <span class="n">t_set</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">hits</span> <span class="o">==</span> <span class="n">hits2</span><span class="p">,</span> <span class="n">t_list</span> <span class="o">&gt;</span> <span class="n">t_set</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span>    <span class="c1"># prints: True True</span>
+</code></pre></div>
+
+<p>Building the set costs O(n) once, so convert when you will do many lookups. For a single lookup in a small list, the
+scan is cheaper than building anything. Sets and dicts cost more memory per element than lists.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Check 100k incoming ids against 1M known ids?" A set (or dict if you need the stored embedding). A list
+would be about 10^11 comparisons.</p>
+</blockquote>
+<h2 id="searching-and-complexity" data-topics="py.data_structures.linear_search,py.data_structures.binary_search,py.data_structures.searching,py.data_structures.complexity">Searching and complexity</h2>
+<!-- topics: linear_search, binary_search, searching, complexity -->
+
+<p><strong>Big-O</strong> describes how cost grows with input size n, ignoring constants. Memorise the ladder:
+O(1) &lt; O(log n) &lt; O(n) &lt; O(n log n) &lt; O(n^2). "Amortised" means averaged over a sequence of operations;
+"average" for hashing means assuming a good hash distribution.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Structure and op</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>list index, append, pop()</td>
+<td>O(1)</td>
+</tr>
+<tr>
+<td>list insert/pop at front, <code>in</code>, <code>index</code></td>
+<td>O(n)</td>
+</tr>
+<tr>
+<td>dict/set get, set, <code>in</code>, delete</td>
+<td>O(1) average</td>
+</tr>
+<tr>
+<td><code>deque</code> append/popleft either end</td>
+<td>O(1)</td>
+</tr>
+<tr>
+<td><code>sorted()</code>, <code>.sort()</code></td>
+<td>O(n log n)</td>
+</tr>
+<tr>
+<td><code>bisect.bisect_left</code> on sorted list</td>
+<td>O(log n)</td>
+</tr>
+<tr>
+<td><code>heapq.heappush/heappop</code></td>
+<td>O(log n)</td>
+</tr>
+<tr>
+<td><code>heapq.nlargest(k, xs)</code></td>
+<td>O(n log k)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Linear search</strong> checks items one by one: O(n), works on anything, needs no ordering. It is the right answer for small
+or one-off lookups, unsorted data, or when you need a predicate (<code>next(x for x in xs if x.ok)</code>).</p>
+<p><strong>Binary search</strong> needs a <strong>sorted</strong> sequence and halves the search range each step: O(log n). 1M items need about 20 steps.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">binary_search</span><span class="p">(</span><span class="n">xs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">target</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">while</span> <span class="n">lo</span> <span class="o">&lt;=</span> <span class="n">hi</span><span class="p">:</span>
+        <span class="n">mid</span> <span class="o">=</span> <span class="p">(</span><span class="n">lo</span> <span class="o">+</span> <span class="n">hi</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="k">if</span> <span class="n">xs</span><span class="p">[</span><span class="n">mid</span><span class="p">]</span> <span class="o">==</span> <span class="n">target</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mid</span>
+        <span class="k">if</span> <span class="n">xs</span><span class="p">[</span><span class="n">mid</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">target</span><span class="p">:</span>
+            <span class="n">lo</span> <span class="o">=</span> <span class="n">mid</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">hi</span> <span class="o">=</span> <span class="n">mid</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+
+<span class="n">xs</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">11</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">binary_search</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span> <span class="n">binary_search</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>   <span class="c1"># prints: 3 -1</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">bisect</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">bisect</span><span class="o">.</span><span class="n">bisect_left</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span> <span class="n">bisect</span><span class="o">.</span><span class="n">bisect_left</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">bisect</span><span class="o">.</span><span class="n">bisect_right</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="mi">7</span><span class="p">))</span>
+<span class="c1"># prints: 3 2 4</span>
+<span class="n">bisect</span><span class="o">.</span><span class="n">insort</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>                                           <span class="c1"># prints: [1, 3, 4, 5, 7, 9, 11]</span>
+</code></pre></div>
+
+<p><code>bisect_left</code> returns the leftmost insertion point (so it also finds "the first element &gt;= x"); <code>bisect_right</code> goes after
+equal items. Use the standard library <code>bisect</code>, not a hand-rolled version, in real code. Typical uses: bucketing a score
+into a grade, finding the chunk containing token offset N from a sorted list of offsets.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Binary search on unsorted data returns garbage with no error. Sorting first costs O(n log n), so it only
+pays off with many searches. Off-by-one errors live in <code>lo &lt;= hi</code> and <code>mid + 1</code> / <code>mid - 1</code>.</p>
+</blockquote>
+<details>
+<summary>Check yourself: you search a list once; is sorting then binary-searching faster?</summary>
+<p>No. Sorting is O(n log n), more than the single O(n) scan. Sort (or build a set/dict) only when you will search repeatedly.</p>
+</details>
+<h2 id="stack-and-queue-and-deque" data-topics="py.data_structures.stack_queue,py.data_structures.deque">Stack and queue, and deque</h2>
+<!-- topics: stack_queue, deque -->
+
+<p>A <strong>stack</strong> is LIFO (last in, first out): undo history, DFS, matching brackets, call stacks. A <strong>queue</strong> is FIFO
+(first in, first out): task scheduling, BFS, request buffers. A list is a fine stack (<code>append</code>/<code>pop</code> at the end are O(1))
+but a poor queue (<code>pop(0)</code> is O(n)). <code>collections.deque</code> is a doubly linked block list with O(1) at <strong>both</strong> ends.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+
+<span class="n">stack</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"a"</span><span class="p">);</span> <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"b"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">())</span>                 <span class="c1"># prints: b</span>
+
+<span class="n">q</span> <span class="o">=</span> <span class="n">deque</span><span class="p">()</span>
+<span class="n">q</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"job1"</span><span class="p">);</span> <span class="n">q</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"job2"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">popleft</span><span class="p">(),</span> <span class="nb">len</span><span class="p">(</span><span class="n">q</span><span class="p">))</span>         <span class="c1"># prints: job1 1</span>
+
+<span class="n">window</span> <span class="o">=</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>           <span class="c1"># fixed-size sliding window</span>
+<span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">):</span>
+    <span class="n">window</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">window</span><span class="p">)</span>                      <span class="c1"># prints: deque([3, 4, 5], maxlen=3)</span>
+<span class="n">q2</span> <span class="o">=</span> <span class="n">deque</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]);</span> <span class="n">q2</span><span class="o">.</span><span class="n">rotate</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span> <span class="n">q2</span><span class="o">.</span><span class="n">appendleft</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">q2</span><span class="p">)</span>                          <span class="c1"># prints: deque([0, 3, 1, 2])</span>
+</code></pre></div>
+
+<p>With <code>maxlen</code>, appending to a full deque silently discards from the opposite end: ideal for "last N messages" in a
+chat history or a rolling latency average. A deque is O(n) for indexing in the middle, so it is not a list replacement.</p>
+<p>Which queue? <code>deque</code> is a plain data structure (not thread-safe for coordination). <code>queue.Queue</code> is thread-safe with
+blocking <code>put/get</code> for threads. <code>asyncio.Queue</code> is for coroutines (<code>await q.get()</code>). <code>multiprocessing.Queue</code> crosses
+processes. <code>heapq</code>/<code>PriorityQueue</code> order by priority, not arrival.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">balanced</span><span class="p">(</span><span class="n">s</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">pairs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">")"</span><span class="p">:</span> <span class="s2">"("</span><span class="p">,</span> <span class="s2">"]"</span><span class="p">:</span> <span class="s2">"["</span><span class="p">,</span> <span class="s2">"}"</span><span class="p">:</span> <span class="s2">"{"</span><span class="p">}</span>
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="n">s</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">ch</span> <span class="ow">in</span> <span class="s2">"([{"</span><span class="p">:</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">ch</span> <span class="ow">in</span> <span class="n">pairs</span> <span class="ow">and</span> <span class="p">(</span><span class="ow">not</span> <span class="n">stack</span> <span class="ow">or</span> <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span> <span class="o">!=</span> <span class="n">pairs</span><span class="p">[</span><span class="n">ch</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="ow">not</span> <span class="n">stack</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">balanced</span><span class="p">(</span><span class="s2">"{[()]}"</span><span class="p">),</span> <span class="n">balanced</span><span class="p">(</span><span class="s2">"([)]"</span><span class="p">))</span>   <span class="c1"># prints: True False</span>
+
+<span class="n">graph</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">],</span> <span class="s2">"b"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"d"</span><span class="p">],</span> <span class="s2">"c"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"d"</span><span class="p">],</span> <span class="s2">"d"</span><span class="p">:</span> <span class="p">[]}</span>
+<span class="n">order</span><span class="p">,</span> <span class="n">seen</span><span class="p">,</span> <span class="n">frontier</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">},</span> <span class="n">deque</span><span class="p">([</span><span class="s2">"a"</span><span class="p">])</span>
+<span class="k">while</span> <span class="n">frontier</span><span class="p">:</span>                      <span class="c1"># BFS uses a queue</span>
+    <span class="n">node</span> <span class="o">=</span> <span class="n">frontier</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span>
+    <span class="n">order</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">nxt</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">[</span><span class="n">node</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">nxt</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">nxt</span><span class="p">);</span> <span class="n">frontier</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nxt</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">order</span><span class="p">)</span>                         <span class="c1"># prints: ['a', 'b', 'c', 'd']</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Implement a queue with a list?" Say it works but <code>pop(0)</code> is O(n); the right tool is <code>deque</code>.</p>
+</blockquote>
+<h2 id="counter-and-defaultdict" data-topics="py.data_structures.counter,py.data_structures.defaultdict">Counter and defaultdict</h2>
+<!-- topics: counter, defaultdict -->
+
+<p>Both remove the "check whether the key exists first" boilerplate.</p>
+<p><code>Counter</code> is a dict subclass mapping items to counts. Missing keys count as <code>0</code> (without being inserted).</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
+
+<span class="n">c</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="s2">"mississippi"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>                               <span class="c1"># prints: Counter({'i': 4, 's': 4, 'p': 2, 'm': 1})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">most_common</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span> <span class="n">c</span><span class="p">[</span><span class="s2">"zzz"</span><span class="p">])</span>      <span class="c1"># prints: [('i', 4), ('s', 4)] 0</span>
+<span class="n">c</span><span class="o">.</span><span class="n">update</span><span class="p">([</span><span class="s2">"m"</span><span class="p">,</span> <span class="s2">"m"</span><span class="p">]);</span> <span class="n">c</span><span class="o">.</span><span class="n">subtract</span><span class="p">(</span><span class="s2">"ss"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s2">"m"</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s2">"s"</span><span class="p">])</span>                  <span class="c1"># prints: 3 2</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Counter</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="n">Counter</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mi">5</span><span class="p">))</span>   <span class="c1"># prints: Counter({'a': 2})</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="s2">"the cat the dog the end"</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Counter</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span><span class="o">.</span><span class="n">most_common</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>  <span class="c1"># prints: [('the', 3)]</span>
+</code></pre></div>
+
+<p><code>most_common(n)</code> is sorted by count (ties in first-seen order). Subtraction operators drop zero and negative counts;
+<code>subtract()</code> keeps them. Great for token frequency, label distributions, and comparing bag-of-words.</p>
+<p><code>defaultdict(factory)</code> calls <code>factory()</code> to create the value the first time a missing key is <strong>accessed</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+
+<span class="n">groups</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"apple"</span><span class="p">,</span> <span class="s2">"avocado"</span><span class="p">,</span> <span class="s2">"banana"</span><span class="p">,</span> <span class="s2">"blueberry"</span><span class="p">,</span> <span class="s2">"cherry"</span><span class="p">]:</span>
+    <span class="n">groups</span><span class="p">[</span><span class="n">word</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">groups</span><span class="p">))</span>
+<span class="c1"># prints: {'a': ['apple', 'avocado'], 'b': ['banana', 'blueberry'], 'c': ['cherry']}</span>
+
+<span class="n">index</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>               <span class="c1"># inverted index: term -&gt; doc ids</span>
+<span class="k">for</span> <span class="n">doc_id</span><span class="p">,</span> <span class="n">text</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="s2">"red fox"</span><span class="p">,</span> <span class="s2">"red hen"</span><span class="p">,</span> <span class="s2">"blue fox"</span><span class="p">]):</span>
+    <span class="k">for</span> <span class="n">term</span> <span class="ow">in</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">():</span>
+        <span class="n">index</span><span class="p">[</span><span class="n">term</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">doc_id</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">index</span><span class="p">[</span><span class="s2">"red"</span><span class="p">]),</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">index</span><span class="p">[</span><span class="s2">"fox"</span><span class="p">]))</span>   <span class="c1"># prints: [0, 1] [0, 2]</span>
+
+<span class="n">nested</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">))</span>
+<span class="n">nested</span><span class="p">[</span><span class="s2">"a"</span><span class="p">][</span><span class="s2">"x"</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">nested</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>      <span class="c1"># prints: {'a': {'x': 1}}</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Merely <em>reading</em> <code>dd[missing]</code> inserts the key, so <code>if dd[k]:</code> and <code>len(dd)</code> can surprise you. Use <code>k in dd</code>
+or <code>dd.get(k)</code> (which does not insert) to test. The factory must be a zero-argument callable: <code>list</code>, <code>int</code>, <code>set</code>, a lambda.</p>
+</blockquote>
+<h2 id="ordereddict-and-namedtuple" data-topics="py.data_structures.ordereddict,py.data_structures.namedtuple">OrderedDict and namedtuple</h2>
+<!-- topics: ordereddict, namedtuple -->
+
+<p>Plain dicts keep insertion order, so <code>OrderedDict</code> is now niche. It still differs in three ways: equality between
+two OrderedDicts <strong>is order-sensitive</strong>, it has <code>move_to_end(key, last=True)</code> and <code>popitem(last=False)</code> for cheap reordering
+(the basis of a hand-rolled <strong>LRU cache</strong>).</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">OrderedDict</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">OrderedDict</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">==</span> <span class="n">OrderedDict</span><span class="p">(</span><span class="n">b</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>   <span class="c1"># prints: False</span>
+<span class="nb">print</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span> <span class="o">==</span> <span class="p">{</span><span class="s2">"b"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>             <span class="c1"># prints: True</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">LRU</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">capacity</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">capacity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">capacity</span><span class="p">,</span> <span class="n">OrderedDict</span><span class="p">()</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">move_to_end</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>             <span class="c1"># mark most recently used</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">move_to_end</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">capacity</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">popitem</span><span class="p">(</span><span class="n">last</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>      <span class="c1"># evict least recently used</span>
+
+<span class="n">cache</span> <span class="o">=</span> <span class="n">LRU</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">cache</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span> <span class="n">cache</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span> <span class="n">cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"a"</span><span class="p">);</span> <span class="n">cache</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>                        <span class="c1"># prints: ['a', 'c']</span>
+</code></pre></div>
+
+<p>(For function results, <code>functools.lru_cache</code> already does this.)</p>
+<p><code>namedtuple</code> creates a tuple subclass with named fields: lightweight, immutable, and still unpackable and indexable.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">namedtuple</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">NamedTuple</span>
+
+<span class="n">Hit</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s2">"Hit"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"doc_id"</span><span class="p">,</span> <span class="s2">"score"</span><span class="p">])</span>
+<span class="n">h</span> <span class="o">=</span> <span class="n">Hit</span><span class="p">(</span><span class="s2">"d1"</span><span class="p">,</span> <span class="mf">0.83</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">doc_id</span><span class="p">,</span> <span class="n">h</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">h</span><span class="p">)</span>               <span class="c1"># prints: d1 0.83 Hit(doc_id='d1', score=0.83)</span>
+<span class="n">doc</span><span class="p">,</span> <span class="n">score</span> <span class="o">=</span> <span class="n">h</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">_replace</span><span class="p">(</span><span class="n">score</span><span class="o">=</span><span class="mf">0.9</span><span class="p">),</span> <span class="n">h</span><span class="o">.</span><span class="n">_asdict</span><span class="p">())</span>
+<span class="c1"># prints: Hit(doc_id='d1', score=0.9) {'doc_id': 'd1', 'score': 0.83}</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Result</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>              <span class="c1"># typed, class syntax, supports defaults and methods</span>
+    <span class="n">doc_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Result</span><span class="p">(</span><span class="s2">"d2"</span><span class="p">))</span>                    <span class="c1"># prints: Result(doc_id='d2', score=0.0)</span>
+</code></pre></div>
+
+<p>Choosing a record type: <code>tuple</code> (throwaway), <code>namedtuple</code>/<code>NamedTuple</code> (immutable, tiny, positional), <code>@dataclass</code>
+(mutable or <code>frozen=True</code>, methods, defaults), <code>TypedDict</code> (typing for a plain dict you will JSON-serialise),
+pydantic <code>BaseModel</code> (validate untrusted input such as LLM output).</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> namedtuples are tuples: <code>h == ("d1", 0.83)</code> is <code>True</code> and they unpack positionally, which is convenient
+and occasionally surprising.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>A list is a dynamic array: O(1) index and append, O(n) for insert/pop at the front and for <code>in</code>.</li>
+<li>A dict is a hash table: O(1) average, keys must be hashable, insertion order is guaranteed (3.7+).</li>
+<li>Tuples are immutable records usable as dict keys; the comma makes the tuple; immutability is shallow.</li>
+<li>Sets give O(1) membership and the algebra <code>| &amp; - ^</code>; <code>{}</code> is a dict; dedupe preserving order with <code>dict.fromkeys</code>.</li>
+<li>Pick the container by the query: membership means set, key to value means dict, ordered/positional means list.</li>
+<li>Binary search needs sorted data and is O(log n); use <code>bisect</code>. A single search is cheaper unsorted.</li>
+<li><code>deque</code> gives O(1) at both ends and <code>maxlen</code> windows; list as queue is O(n) per <code>pop(0)</code>.</li>
+<li><code>Counter</code> counts and <code>most_common</code>; <code>defaultdict</code> groups and builds inverted indexes; reading a missing key inserts it.</li>
+<li><code>OrderedDict</code> is order-sensitive and has <code>move_to_end</code> (LRU); <code>namedtuple</code> is a cheap named immutable record.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-fundamentals.html">&larr; Python Fundamentals</a><a class="pn next" href="revise-py-functions.html">Python Functions &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

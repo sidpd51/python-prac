@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Memory Management notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.memory">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Memory Management</p><div class="note-head"><div id="note-progress" data-module="py.memory"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#the-object-model-everything-is-an-object" data-target="the-object-model-everything-is-an-object">The object model: everything is an object</a></li><li><a href="#names-references-and-identity" data-target="names-references-and-identity">Names, references and identity</a></li><li><a href="#reference-counting" data-target="reference-counting">Reference counting</a></li><li><a href="#stack-vs-heap" data-target="stack-vs-heap">Stack vs heap</a></li><li><a href="#cycles-and-the-garbage-collector" data-target="cycles-and-the-garbage-collector">Cycles and the garbage collector</a></li><li><a href="#weak-references" data-target="weak-references">Weak references</a></li><li><a href="#memory-allocation-and-what-things-cost" data-target="memory-allocation-and-what-things-cost">Memory allocation and what things cost</a></li><li><a href="#shallow-copy-vs-deep-copy" data-target="shallow-copy-vs-deep-copy">Shallow copy vs deep copy</a></li><li><a href="#measuring-memory-profiling-with-tracemalloc" data-target="measuring-memory-profiling-with-tracemalloc">Measuring memory: profiling with tracemalloc</a></li><li><a href="#memory-efficient-processing-and-generators" data-target="memory-efficient-processing-and-generators">Memory-efficient processing and generators</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="memory-management">Memory management</h1>
+<p>Python hides memory management, but interviews and production incidents do not. "Why did my list
+change when I edited the copy?", "why does this service grow 200 MB an hour?", "why is a million small
+objects so heavy?" are all questions about the object model, reference counting and the garbage
+collector. In AI work the same ideas decide whether an embedding job fits in RAM, whether a model cache
+leaks, and whether a config shared between requests gets silently mutated.</p>
+<h2 id="the-object-model-everything-is-an-object" data-topics="py.memory.object_model">The object model: everything is an object</h2>
+<!-- topics: object_model -->
+
+<p>Every value in Python, an int, a function, a class, a module, is an <strong>object</strong> living on the heap.
+Each object has three things: an <strong>identity</strong> (<code>id()</code>, its address in CPython), a <strong>type</strong>, and a
+<strong>value</strong>. Identity and type never change; the value may change if the type is mutable.</p>
+<div class="hl"><pre><span></span><code>CPython object header (every object has it)
++-----------+-----------+------------------------+
+| refcount  | type ptr  |  payload (int digits,  |
+| (8 bytes) | (8 bytes) |  list of pointers ...) |
++-----------+-----------+------------------------+
+</code></pre></div>
+
+<p>That header is why even a tiny int is not 4 bytes:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>      <span class="c1"># prints: 28</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="mf">1.0</span><span class="p">))</span>    <span class="c1"># prints: 24</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="s2">"a"</span><span class="p">))</span>    <span class="c1"># prints: 42</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">([]))</span>     <span class="c1"># prints: 56</span>
+</code></pre></div>
+
+<p>(Sizes are for 64-bit CPython 3.13; they are the same on 3.14.) A list does not contain its items; it contains
+<strong>pointers</strong> to objects. <code>getsizeof</code> reports only the object itself, not what it points to.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Python variables are not boxes holding values. Objects exist on their own; variables
+are labels attached to them. Mutable vs immutable is a property of the <em>type</em>, not the name.</p>
+</blockquote>
+<h2 id="names-references-and-identity" data-topics="py.memory.references">Names, references and identity</h2>
+<!-- topics: references -->
+
+<p>Assignment never copies. <code>b = a</code> makes a second <strong>name</strong> for the <strong>same object</strong>.</p>
+<div class="hl"><pre><span></span><code>a = [1, 2]        a ---+
+b = a                  +--&gt; [1, 2]      (one object, two names)
+                  b ---+
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="n">a</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">a</span>
+<span class="n">b</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>            <span class="c1"># prints: [1, 2, 3]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="ow">is</span> <span class="n">b</span><span class="p">)</span>       <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">a</span> <span class="ow">is</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>   <span class="c1"># prints: True False</span>
+</code></pre></div>
+
+<p><code>==</code> asks "equal values?" (calls <code>__eq__</code>); <code>is</code> asks "same object?" (compares <code>id</code>). Use <code>is</code> only for
+singletons: <code>None</code>, <code>True</code>, <code>False</code>, sentinels.</p>
+<p>Rebinding vs mutating is the distinction that explains most aliasing bugs:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add_a</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+    <span class="n">items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"a"</span><span class="p">)</span>     <span class="c1"># mutates the caller's list</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">rebind</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="n">items</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"b"</span><span class="p">]</span> <span class="c1"># creates a NEW list, only the local name changes</span>
+
+<span class="n">xs</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">add_a</span><span class="p">(</span><span class="n">xs</span><span class="p">);</span> <span class="n">rebind</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>           <span class="c1"># prints: ['a']</span>
+</code></pre></div>
+
+<p>Python passes <strong>object references by value</strong>: the function gets a new name for the same object.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Small ints (-5..256) and some strings are cached or interned, so <code>a is b</code> can be <code>True</code>
+for equal numbers and <code>False</code> for larger ones. That is an implementation detail, never rely on it:</p>
+</blockquote>
+<div class="hl"><pre><span></span><code><span class="n">a</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"1000"</span><span class="p">);</span> <span class="n">b</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"1000"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="ow">is</span> <span class="n">b</span><span class="p">)</span>   <span class="c1"># prints: True False</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>[[0] * 3] * 2</code> repeats the <em>same</em> inner list, and a mutable default argument
+(<code>def f(x=[])</code>) is one object shared by every call.</p>
+</blockquote>
+<div class="hl"><pre><span></span><code><span class="n">grid</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span>
+<span class="n">grid</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">9</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>         <span class="c1"># prints: [[9, 0], [9, 0]]</span>
+</code></pre></div>
+
+<details>
+<summary>Check yourself: why does `def f(cfg={})` leak state between calls?</summary>
+<p>The default is evaluated once, at function definition, and stored on the function. Every call that
+does not pass <code>cfg</code> gets that same dict object. Use <code>None</code> and create the dict inside.</p>
+</details>
+<h2 id="reference-counting" data-topics="py.memory.refcounting">Reference counting</h2>
+<!-- topics: refcounting -->
+
+<p>CPython's primary mechanism: every object stores how many references point at it. When the count
+reaches <strong>zero</strong> the object is freed immediately, and its <code>__del__</code> runs.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getrefcount</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>   <span class="c1"># prints: 2</span>
+<span class="n">y</span> <span class="o">=</span> <span class="n">x</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getrefcount</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>   <span class="c1"># prints: 3</span>
+<span class="k">del</span> <span class="n">y</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getrefcount</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>   <span class="c1"># prints: 2</span>
+</code></pre></div>
+
+<p>Why 2 for a single name? <code>getrefcount(x)</code> itself receives <code>x</code> as an argument, which is a temporary extra
+reference. Things that add a reference: assignment, being stored in a container, being passed as an argument,
+a closure capturing it. Things that remove one: <code>del name</code>, rebinding, the container dying, the function returning.</p>
+<p>Deterministic cleanup is the big advantage:</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Resource</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="nb">print</span><span class="p">(</span><span class="s2">"freed"</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="n">Resource</span><span class="p">(</span><span class="s2">"a"</span><span class="p">)</span>
+<span class="n">r</span> <span class="o">=</span> <span class="n">Resource</span><span class="p">(</span><span class="s2">"b"</span><span class="p">)</span>    <span class="c1"># prints: freed a      (old object hits zero on rebind)</span>
+<span class="k">del</span> <span class="n">r</span>                <span class="c1"># prints: freed b</span>
+</code></pre></div>
+
+<p>Costs and limits: every assignment touches a counter (this is part of why Python is slow, and why the GIL
+exists, see the internals note), and refcounting alone <strong>cannot free cycles</strong>. Some objects (<code>None</code>, small
+ints, interned strings) are <em>immortal</em> since 3.12: <code>sys.getrefcount(None)</code> is a huge constant and never
+reaches zero.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Don't use <code>__del__</code> for cleanup you depend on (files, locks, sockets): timing is
+implementation-specific and it runs at interpreter shutdown unpredictably. Use <code>with</code> / <code>try/finally</code>.</p>
+</blockquote>
+<h2 id="stack-vs-heap" data-topics="py.memory.stack_heap">Stack vs heap</h2>
+<!-- topics: stack_heap -->
+
+<p>Conceptually: the <strong>call stack</strong> holds one <em>frame</em> per active function call (local names, the current
+instruction, the evaluation stack); the <strong>heap</strong> holds every object. In Python the split is simpler than in C:
+<strong>all objects are on the heap</strong>, and frames only hold <em>references</em> to them.</p>
+<div class="hl"><pre><span></span><code>  call stack (frames)                 heap (objects)
+  +------------------+
+  | frame: main      |  data ------&gt;  [ 0.1, 0.2, ... ]  (the list object)
+  |   data           |
+  +------------------+
+  | frame: process   |  rows ------&gt;  same list (a new name, not a copy)
+  |   rows           |
+  +------------------+
+</code></pre></div>
+
+<p>When <code>process</code> returns, its frame is popped and the references it held are dropped; the list survives because
+<code>main</code> still refers to it. Consequences you can use in interviews:</p>
+<ul>
+<li>Returning a big list from a function does not copy it, it hands out another reference.</li>
+<li>Deep recursion exhausts the <em>frame</em> limit (<code>sys.getrecursionlimit()</code>, default 1000) long before memory.</li>
+<li>A paused generator or a closure keeps its frame/cell alive on the heap, which keeps referenced objects alive.</li>
+</ul>
+<h2 id="cycles-and-the-garbage-collector" data-topics="py.memory.cycles,py.memory.gc">Cycles and the garbage collector</h2>
+<!-- topics: cycles, gc -->
+
+<p>A <strong>reference cycle</strong> is objects that point at each other, so none of them ever reaches count zero:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">gc</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Node</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">other</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>                    <span class="c1"># start clean</span>
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">Node</span><span class="p">(),</span> <span class="n">Node</span><span class="p">()</span>
+<span class="n">a</span><span class="o">.</span><span class="n">other</span><span class="p">,</span> <span class="n">b</span><span class="o">.</span><span class="n">other</span> <span class="o">=</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span>         <span class="c1"># a &lt;-&gt; b</span>
+<span class="k">del</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span>                        <span class="c1"># names gone, but each still referenced by the other</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">)</span>        <span class="c1"># prints: True   (the cycle collector found and freed them)</span>
+</code></pre></div>
+
+<p>The <strong>cyclic garbage collector</strong> (<code>gc</code> module) periodically scans <em>container</em> objects (lists, dicts, instances;
+ints and strs cannot form cycles), finds groups reachable only from each other, and frees them.</p>
+<div class="hl"><pre><span></span><code>generation 0 (new objects) --survive--&gt; generation 1 --survive--&gt; generation 2 (long-lived)
+collected most often                                              collected rarely
+</code></pre></div>
+
+<p>It is <strong>generational</strong> because most objects die young: young objects are scanned often and cheaply, survivors
+are promoted and scanned rarely. A collection is triggered when allocations minus deallocations exceed a
+threshold.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">gc</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">gc</span><span class="o">.</span><span class="n">get_threshold</span><span class="p">())</span>   <span class="c1"># prints: (2000, 10, 10)</span>
+</code></pre></div>
+
+<p>That is the 3.13 value (3.14 prints <code>(2000, 10, 0)</code> because 3.14 introduced an incremental collector with two
+generations of work). The API is the same: <code>gc.collect()</code>, <code>gc.disable()</code>, <code>gc.get_stats()</code>,
+<code>gc.get_referrers(obj)</code>.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Does Python have garbage collection?" Strong answer: refcounting frees almost everything
+immediately; the generational cycle GC is a backstop for cycles only. Since 3.4, objects with <code>__del__</code>
+in cycles are collected too.</p>
+<p><strong>AI use</strong> Classic leak: a chat-session object holds <code>history</code>, messages hold a back-reference to the
+session. Plain refcounting won't free it; the cycle GC eventually will, but a global registry or a
+<code>lru_cache</code> pinning sessions never lets them go. Look for <em>who holds the strong reference</em>.</p>
+</blockquote>
+<details>
+<summary>Check yourself: a cycle exists but `__del__` never printed. Bug?</summary>
+<p>Not necessarily. Cycles are freed only when the GC runs, which is non-deterministic. Call <code>gc.collect()</code> to
+force it in a test. If it still never frees, something else (a global, a cache, a traceback) holds a reference.</p>
+</details>
+<h2 id="weak-references" data-topics="py.memory.weakref">Weak references</h2>
+<!-- topics: weakref -->
+
+<p>A <strong>weak reference</strong> points at an object without increasing its refcount. When the last <em>strong</em> reference
+disappears the object is freed and the weakref goes dead (returns <code>None</code>). This is how you build caches and
+registries that must not keep things alive.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">weakref</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Model</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span><span class="s2">"bert"</span><span class="p">)</span>
+<span class="n">ref</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">ref</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ref</span><span class="p">()</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>    <span class="c1"># prints: bert</span>
+<span class="k">del</span> <span class="n">m</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ref</span><span class="p">())</span>         <span class="c1"># prints: None   (freed as soon as the count hit zero)</span>
+</code></pre></div>
+
+<p>Helpers: <code>WeakValueDictionary</code> (value vanishes when nothing else holds it, ideal for "share one loaded model
+while anyone is using it"), <code>WeakKeyDictionary</code>, <code>WeakSet</code>, <code>weakref.finalize(obj, callback)</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">weakref</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Model</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+
+<span class="n">cache</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">WeakValueDictionary</span><span class="p">()</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span><span class="s2">"reranker"</span><span class="p">)</span>
+<span class="n">cache</span><span class="p">[</span><span class="s2">"rr"</span><span class="p">]</span> <span class="o">=</span> <span class="n">m</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"rr"</span> <span class="ow">in</span> <span class="n">cache</span><span class="p">)</span>   <span class="c1"># prints: True</span>
+<span class="k">del</span> <span class="n">m</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"rr"</span> <span class="ow">in</span> <span class="n">cache</span><span class="p">)</span>   <span class="c1"># prints: False</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Not everything can be weakly referenced: <code>int</code>, <code>str</code>, <code>list</code>, <code>dict</code>, <code>tuple</code> instances raise
+<code>TypeError</code>. User-defined classes work (unless they use <code>__slots__</code> without <code>"__weakref__"</code>).</p>
+<p><strong>AI use</strong> A registry that <code>get(name)</code> loads a model once, returns the shared instance while any request holds
+it, and lets it be freed afterwards: <code>WeakValueDictionary</code> plus a lock. A plain dict would pin gigabytes forever.</p>
+</blockquote>
+<h2 id="memory-allocation-and-what-things-cost" data-topics="py.memory.allocation">Memory allocation and what things cost</h2>
+<!-- topics: allocation -->
+
+<p>Python asks the OS for large <strong>arenas</strong>; its small-object allocator (<code>pymalloc</code>) carves them into pools of
+fixed-size blocks for objects up to 512 bytes. Freed blocks go back to the pool for reuse, which is fast but
+means <strong>RSS does not always shrink</strong> when you <code>del</code> things: memory is reusable by Python, not necessarily
+returned to the OS.</p>
+<p>Containers over-allocate so that <code>append</code> is amortised O(1):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">sizes</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="n">lst</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+    <span class="n">lst</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sizes</span> <span class="ow">or</span> <span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">!=</span> <span class="n">sizes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="n">sizes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">lst</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sizes</span><span class="p">)</span>   <span class="c1"># prints: [88, 120, 184]</span>
+</code></pre></div>
+
+<p>(It jumps from 4 slots to 8 to 16 pointers; the empty list is 56 bytes.)</p>
+<p>Every instance normally carries a <code>__dict__</code>. For millions of small records, <code>__slots__</code> removes it:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Plain</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc_id</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="bp">self</span><span class="o">.</span><span class="n">score</span> <span class="o">=</span> <span class="mf">0.5</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Slotted</span><span class="p">:</span>
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"doc_id"</span><span class="p">,</span> <span class="s2">"score"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">doc_id</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="bp">self</span><span class="o">.</span><span class="n">score</span> <span class="o">=</span> <span class="mf">0.5</span>
+
+<span class="n">p</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="n">Plain</span><span class="p">(),</span> <span class="n">Slotted</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">+</span> <span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">))</span>   <span class="c1"># prints: 344</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>                               <span class="c1"># prints: 48</span>
+</code></pre></div>
+
+<p><code>getsizeof</code> is shallow. To measure a nested structure, walk it (tracking <code>id</code>s so shared objects are counted
+once) or use <code>tracemalloc</code> (next sections). <code>__slots__</code> instances cannot gain new attributes, which is also a
+correctness feature. For numeric data the real fix is to leave Python objects entirely: a NumPy <code>float32</code>
+array stores 4 bytes per number, a list of floats stores an 8-byte pointer plus a 24-byte object.</p>
+<h2 id="shallow-copy-vs-deep-copy" data-topics="py.memory.copy">Shallow copy vs deep copy</h2>
+<!-- topics: copy -->
+
+<p>Because assignment aliases, you need explicit copies. They differ in how far they go:</p>
+<div class="hl"><pre><span></span><code>shallow:  new outer container, SAME inner objects
+deep:     new outer container, recursively NEW inner objects
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+
+<span class="n">cfg</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"model"</span><span class="p">:</span> <span class="s2">"m1"</span><span class="p">,</span> <span class="s2">"params"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"temp"</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">},</span> <span class="s2">"stop"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">]}</span>
+
+<span class="n">shallow</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>               <span class="c1"># same as copy.copy(cfg), dict(cfg)</span>
+<span class="n">deep</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+
+<span class="n">shallow</span><span class="p">[</span><span class="s2">"model"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"m2"</span>            <span class="c1"># rebinding a key on the copy: original untouched</span>
+<span class="n">shallow</span><span class="p">[</span><span class="s2">"params"</span><span class="p">][</span><span class="s2">"temp"</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.9</span>    <span class="c1"># mutating a shared inner dict: original changes!</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="p">[</span><span class="s2">"model"</span><span class="p">],</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">"params"</span><span class="p">][</span><span class="s2">"temp"</span><span class="p">])</span>   <span class="c1"># prints: m1 0.9</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">deep</span><span class="p">[</span><span class="s2">"params"</span><span class="p">]</span> <span class="ow">is</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">"params"</span><span class="p">])</span>       <span class="c1"># prints: False</span>
+</code></pre></div>
+
+<p>Slicing <code>xs[:]</code>, <code>list(xs)</code>, <code>dict(d)</code>, <code>d.copy()</code> are all shallow. <code>deepcopy</code> handles cycles (it keeps a memo
+of what it has already copied) and respects <code>__deepcopy__</code>; it is slow and fails on things like open files and
+locks.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">a</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>                   <span class="c1"># self-referencing list</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="n">b</span><span class="p">,</span> <span class="n">b</span> <span class="ow">is</span> <span class="n">a</span><span class="p">)</span>      <span class="c1"># prints: True False</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> The classic bug: a default config dict is shallow-copied per request, then one request edits a
+nested dict (<code>cfg["params"]["temp"] = ...</code>) and every later request sees it. Deep copy the config, or
+build immutable configs (frozen dataclasses, pydantic <code>model_copy(deep=True)</code>).</p>
+<p><strong>Interview</strong> "Shallow vs deep copy?" Say it in terms of nested mutable objects. Add that copies of
+immutables (tuples of ints, strings) are free because sharing is safe.</p>
+</blockquote>
+<h2 id="measuring-memory-profiling-with-tracemalloc" data-topics="py.memory.profiling">Measuring memory: profiling with tracemalloc</h2>
+<!-- topics: profiling -->
+
+<p>Do not guess where memory goes. <code>tracemalloc</code> (stdlib) records every Python allocation with its traceback.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tracemalloc</span>
+
+<span class="n">tracemalloc</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<span class="n">before</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">tracemalloc</span><span class="o">.</span><span class="n">get_traced_memory</span><span class="p">()</span>
+<span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">*</span> <span class="mi">10</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100_000</span><span class="p">)]</span>
+<span class="n">current</span><span class="p">,</span> <span class="n">peak</span> <span class="o">=</span> <span class="n">tracemalloc</span><span class="o">.</span><span class="n">get_traced_memory</span><span class="p">()</span>
+<span class="n">tracemalloc</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">((</span><span class="n">current</span> <span class="o">-</span> <span class="n">before</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">5_000_000</span><span class="p">)</span>   <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">peak</span> <span class="o">&gt;=</span> <span class="n">current</span><span class="p">)</span>                  <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p><code>get_traced_memory()</code> returns <code>(current, peak)</code> in bytes: <strong>peak</strong> is what decides whether a job fits in RAM.
+To find <em>where</em>, take a snapshot and group by line:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tracemalloc</span>
+
+<span class="n">tracemalloc</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="nb">bytes</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">)]</span>
+<span class="n">snap</span> <span class="o">=</span> <span class="n">tracemalloc</span><span class="o">.</span><span class="n">take_snapshot</span><span class="p">()</span>
+<span class="n">top</span> <span class="o">=</span> <span class="n">snap</span><span class="o">.</span><span class="n">statistics</span><span class="p">(</span><span class="s2">"lineno"</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">tracemalloc</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">top</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;=</span> <span class="mi">1_000_000</span><span class="p">,</span> <span class="n">top</span><span class="o">.</span><span class="n">count</span> <span class="o">&gt;=</span> <span class="mi">1000</span><span class="p">)</span>   <span class="c1"># prints: True True</span>
+</code></pre></div>
+
+<p>Comparing two snapshots (<code>snap2.compare_to(snap1, "lineno")</code>) finds leaks: lines whose size keeps growing.
+Other tools: <code>sys.getsizeof</code> (shallow), <code>pympler.asizeof</code> / <code>memory_profiler</code> (third-party, line-by-line),
+<code>resource.getrusage</code> / <code>psutil</code> for process RSS. <code>tracemalloc</code> sees Python allocations only, not native memory
+inside NumPy or torch (use RSS for that).</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Measure <strong>peak</strong>, not the final size, and measure relative to a baseline taken just before
+the call.</p>
+</blockquote>
+<h2 id="memory-efficient-processing-and-generators" data-topics="py.memory.efficient_processing,py.memory.generator_memory">Memory-efficient processing and generators</h2>
+<!-- topics: efficient_processing, generator_memory -->
+
+<p>The rule: keep <strong>one record (or one batch)</strong> in memory, not the dataset. Three levers:</p>
+<ol>
+<li><strong>Stream</strong> with generators / iterators (<code>for line in file</code>, never <code>file.read()</code> or <code>readlines()</code>).</li>
+<li><strong>Batch</strong> so you pay per-call overhead once per N items (embedding APIs take batches).</li>
+<li><strong>Compact representations</strong>: arrays/<code>float32</code>, <code>__slots__</code>, categorical codes, only the columns you need.</li>
+</ol>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tracemalloc</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">eager</span><span class="p">(</span><span class="n">n</span><span class="p">):</span> <span class="k">return</span> <span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">lazy</span><span class="p">(</span><span class="n">n</span><span class="p">):</span> <span class="k">return</span> <span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">peak_of</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+    <span class="n">tracemalloc</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="n">base</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">tracemalloc</span><span class="o">.</span><span class="n">get_traced_memory</span><span class="p">()</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">fn</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">peak</span> <span class="o">=</span> <span class="n">tracemalloc</span><span class="o">.</span><span class="n">get_traced_memory</span><span class="p">()</span>
+    <span class="n">tracemalloc</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">total</span><span class="p">,</span> <span class="n">peak</span> <span class="o">-</span> <span class="n">base</span>
+
+<span class="n">total_e</span><span class="p">,</span> <span class="n">peak_e</span> <span class="o">=</span> <span class="n">peak_of</span><span class="p">(</span><span class="n">eager</span><span class="p">,</span> <span class="mi">200_000</span><span class="p">)</span>
+<span class="n">total_l</span><span class="p">,</span> <span class="n">peak_l</span> <span class="o">=</span> <span class="n">peak_of</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="mi">200_000</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">total_e</span> <span class="o">==</span> <span class="n">total_l</span><span class="p">)</span>        <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">peak_e</span> <span class="o">&gt;</span> <span class="mi">100</span> <span class="o">*</span> <span class="n">peak_l</span><span class="p">)</span>     <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Same answer, three orders of magnitude different peak. Batching a stream keeps that property:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">batched</span>   <span class="c1"># Python 3.12+</span>
+
+<span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">batched</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">7</span><span class="p">),</span> <span class="mi">3</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
+<span class="c1"># prints: (0, 1, 2)</span>
+<span class="c1"># prints: (3, 4, 5)</span>
+<span class="c1"># prints: (6,)</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A generator saves memory only if the consumer also streams. <code>sorted(gen)</code> or <code>list(gen)</code>
+materialises everything again. Streaming also needs the <em>source</em> to stream: <code>json.load</code> of a 5 GB file
+does not; JSON Lines read line by line does.</p>
+<p><strong>AI use</strong> Corpus ingestion: read lines, parse, chunk, <code>batched(..., 64)</code>, embed, upsert, repeat. Peak
+memory is one batch, whether the corpus is 1 MB or 100 GB.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Variables are names bound to objects; assignment aliases, it never copies. <code>is</code> = identity, <code>==</code> = value.</li>
+<li>Mutating shares across names, rebinding does not. Mutable defaults are shared across calls.</li>
+<li>Refcount hits zero means immediate free; <code>sys.getrefcount</code> reads one too high; <code>__del__</code> is not for cleanup.</li>
+<li>All objects live on the heap; frames hold references. Returning a big object is O(1).</li>
+<li>Cycles defeat refcounting; the generational GC (<code>gc.collect()</code>) reclaims them. Leaks are usually a strong
+  reference held by a global, cache or registry.</li>
+<li><code>weakref</code> / <code>WeakValueDictionary</code> let caches avoid keeping objects alive; ints, strs, lists cannot be weak-referenced.</li>
+<li><code>getsizeof</code> is shallow; lists over-allocate; <code>__slots__</code> cuts per-instance cost; arrays beat lists of floats.</li>
+<li>Shallow copy shares nested mutables; <code>deepcopy</code> does not and handles cycles.</li>
+<li><code>tracemalloc</code> gives current/peak and per-line stats; measure peak against a baseline.</li>
+<li>Stream, batch, and use compact types; a generator helps only if every stage streams.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-http.html">&larr; Async HTTP and API Integration</a><a class="pn next" href="revise-py-internals.html">Python Internals and Performance &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

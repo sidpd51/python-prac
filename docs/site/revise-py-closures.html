@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Closures and Scope notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.closures">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Closures and Scope</p><div class="note-head"><div id="note-progress" data-module="py.closures"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#nested-functions-and-lexical-scoping" data-target="nested-functions-and-lexical-scoping">Nested functions and lexical scoping</a></li><li><a href="#legb-local-and-global-variables" data-target="legb-local-and-global-variables">LEGB, local and global variables</a></li><li><a href="#closures-and-free-variables" data-target="closures-and-free-variables">Closures and free variables</a></li><li><a href="#nonlocal-and-rebinding" data-target="nonlocal-and-rebinding">nonlocal and rebinding</a></li><li><a href="#unboundlocalerror-and-compile-time-scoping" data-target="unboundlocalerror-and-compile-time-scoping">UnboundLocalError and compile-time scoping</a></li><li><a href="#late-binding-in-loops" data-target="late-binding-in-loops">Late binding in loops</a></li><li><a href="#inspecting-closures" data-target="inspecting-closures">Inspecting closures</a></li><li><a href="#closures-versus-classes-and-partial" data-target="closures-versus-classes-and-partial">Closures versus classes and partial</a></li><li><a href="#closures-in-long-running-services" data-target="closures-in-long-running-services">Closures in long-running services</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="closures-and-scope">Closures and Scope</h1>
+<p>A closure is a function that remembers variables from the function it was defined in, even after
+that outer function has returned. It is the mechanism behind decorators, callbacks, factories and
+<code>functools.partial</code>-style code, and it is the first place most people meet Python's scoping rules for
+real. In AI engineering you use closures constantly without naming them: a retry wrapper that
+remembers <code>max_attempts</code>, a callback that remembers which request it belongs to, a token-budget
+tracker created per session. Interviewers probe closures to see whether you know <em>how names are
+resolved</em> and what a function object really carries around.</p>
+<h2 id="nested-functions-and-lexical-scoping" data-topics="py.closures.nested_functions,py.closures.lexical_scoping">Nested functions and lexical scoping</h2>
+<!-- topics: nested_functions, lexical_scoping -->
+
+<p>You can define a function inside another function. The inner function is created each time the outer
+one runs, and it can read the outer function's variables.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make_greeter</span><span class="p">(</span><span class="n">greeting</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">greet</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">greeting</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">!"</span>   <span class="c1"># `greeting` comes from the enclosing function</span>
+    <span class="k">return</span> <span class="n">greet</span>
+
+<span class="n">hi</span> <span class="o">=</span> <span class="n">make_greeter</span><span class="p">(</span><span class="s2">"Hi"</span><span class="p">)</span>
+<span class="n">hello</span> <span class="o">=</span> <span class="n">make_greeter</span><span class="p">(</span><span class="s2">"Hello"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">hi</span><span class="p">(</span><span class="s2">"Ada"</span><span class="p">))</span>      <span class="c1"># prints: Hi, Ada!</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">hello</span><span class="p">(</span><span class="s2">"Ada"</span><span class="p">))</span>   <span class="c1"># prints: Hello, Ada!</span>
+</code></pre></div>
+
+<p><strong>Lexical scoping</strong> means names are resolved by where the code is <em>written</em>, not by who calls it. The
+inner function looks outward through the nesting you can see in the source. It does not look at the
+caller's variables (that would be <em>dynamic</em> scoping, which Python does not have).</p>
+<div class="hl"><pre><span></span><code><span class="n">x</span> <span class="o">=</span> <span class="s2">"global"</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">outer</span><span class="p">():</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="s2">"outer"</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inner</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">x</span>
+    <span class="k">return</span> <span class="n">inner</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">caller</span><span class="p">():</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="s2">"caller"</span>          <span class="c1"># irrelevant: inner was *defined* inside outer</span>
+    <span class="k">return</span> <span class="n">outer</span><span class="p">()()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">caller</span><span class="p">())</span>   <span class="c1"># prints: outer</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> Python scoping is lexical and decided at compile time: the text of the program, not the
+call stack, determines which variable a name refers to.</p>
+</blockquote>
+<h2 id="legb-local-and-global-variables" data-topics="py.closures.local_global">LEGB, local and global variables</h2>
+<!-- topics: local_global -->
+
+<p>When Python meets a name it searches four scopes in order, stopping at the first hit:</p>
+<div class="hl"><pre><span></span><code>L  Local      names assigned inside the current function (and its parameters)
+E  Enclosing  locals of any outer *function* (not classes), innermost first
+G  Global     module-level names
+B  Built-in   len, print, ValueError ...
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="n">total</span> <span class="o">=</span> <span class="s2">"global total"</span>          <span class="c1"># G</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">():</span>
+    <span class="n">label</span> <span class="o">=</span> <span class="s2">"enclosing label"</span>   <span class="c1"># E for g()</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">g</span><span class="p">():</span>
+        <span class="n">local</span> <span class="o">=</span> <span class="s2">"local"</span>         <span class="c1"># L</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">local</span><span class="p">,</span> <span class="s2">"|"</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="s2">"|"</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="s2">"|"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">))</span>
+    <span class="n">g</span><span class="p">()</span>
+
+<span class="n">f</span><span class="p">()</span>   <span class="c1"># prints: local | enclosing label | global total | 3</span>
+</code></pre></div>
+
+<p>Reading a global from a function needs nothing special. <strong>Assigning</strong> is the catch: any assignment
+makes the name local to that function, so to rebind a module-level name you must say <code>global</code>.</p>
+<div class="hl"><pre><span></span><code><span class="n">calls</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">bump</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">calls</span>     <span class="c1"># "this name lives at module level"</span>
+    <span class="n">calls</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="n">bump</span><span class="p">();</span> <span class="n">bump</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">calls</span><span class="p">)</span>   <span class="c1"># prints: 2</span>
+</code></pre></div>
+
+<p>Mutating a global object does not need <code>global</code>, because you are not rebinding the name:</p>
+<div class="hl"><pre><span></span><code><span class="n">registry</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="n">registry</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>   <span class="c1"># no assignment to `registry` -&gt; no `global` needed</span>
+
+<span class="n">register</span><span class="p">(</span><span class="s2">"a"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">registry</span><span class="p">)</span>   <span class="c1"># prints: ['a']</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>global</code> is usually a design smell (hidden shared state, hard to test). Reach for a
+closure, a class, or an explicit argument first. Class bodies are not an "E" scope: a method cannot see
+a class variable by bare name, it must write <code>self.x</code> or <code>ClassName.x</code>.</p>
+</blockquote>
+<h2 id="closures-and-free-variables" data-topics="py.closures.closures,py.closures.free_variables">Closures and free variables</h2>
+<!-- topics: closures, free_variables -->
+
+<p>A <strong>free variable</strong> is a name used in a function but defined in an enclosing <em>function</em> scope (not local,
+not global). A <strong>closure</strong> is the function object bundled with the cells for its free variables.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make_multiplier</span><span class="p">(</span><span class="n">factor</span><span class="p">):</span>      <span class="c1"># `factor` is a local of make_multiplier</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">multiply</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">factor</span>         <span class="c1"># `factor` is FREE in multiply</span>
+    <span class="k">return</span> <span class="n">multiply</span>
+
+<span class="n">double</span> <span class="o">=</span> <span class="n">make_multiplier</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">triple</span> <span class="o">=</span> <span class="n">make_multiplier</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="k">del</span> <span class="n">make_multiplier</span>               <span class="c1"># the factory is gone; the closures still work</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">double</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="n">triple</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>     <span class="c1"># prints: 20 30</span>
+</code></pre></div>
+
+<p>How does <code>factor</code> survive after <code>make_multiplier</code> returned? The compiler notices that an inner function
+uses <code>factor</code>, so it stores <code>factor</code> not in a plain stack slot but in a <strong>cell</strong>, a small box holding the
+value. The inner function object keeps references to those cells.</p>
+<div class="hl"><pre><span></span><code>make_multiplier(2) call         make_multiplier(3) call
+  cell_A -&gt; 2                     cell_B -&gt; 3
+     ^                               ^
+  double.__closure__             triple.__closure__
+</code></pre></div>
+
+<p>Each call to the factory makes <strong>new cells</strong>, which is why two closures from the same factory are
+independent. The closure shares the <em>variable</em> (the cell), not a copy of the value at definition time,
+a distinction that matters in the next sections.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "What is a closure and what does it remember?" Strong answer: a function plus the cells
+of the enclosing-scope variables it references (only the ones it actually uses). It remembers
+<em>variables</em>, not values, so it sees later rebinding of them.</p>
+</blockquote>
+<details>
+<summary>Check yourself: is a function that only uses globals a closure?</summary>
+<p>No. Globals are looked up in the module dict, not through cells. A closure needs at least one free
+variable from an enclosing function; without one <code>f.__closure__</code> is <code>None</code>.</p>
+</details>
+<h2 id="nonlocal-and-rebinding" data-topics="py.closures.nonlocal">nonlocal and rebinding</h2>
+<!-- topics: nonlocal -->
+
+<p>A closure can <em>read</em> a free variable freely. To <em>rebind</em> it you must declare <code>nonlocal</code>; otherwise the
+assignment creates a new local instead.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make_counter</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="n">start</span> <span class="o">-</span> <span class="n">step</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">next_value</span><span class="p">():</span>
+        <span class="k">nonlocal</span> <span class="n">count</span>          <span class="c1"># rebind the enclosing variable, not a new local</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="n">step</span>
+        <span class="k">return</span> <span class="n">count</span>
+    <span class="k">return</span> <span class="n">next_value</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">make_counter</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">make_counter</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">(),</span> <span class="n">a</span><span class="p">(),</span> <span class="n">a</span><span class="p">())</span>   <span class="c1"># prints: 100 110 120</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="p">(),</span> <span class="n">b</span><span class="p">())</span>        <span class="c1"># prints: 0 1</span>
+</code></pre></div>
+
+<p><code>global</code> targets module scope; <code>nonlocal</code> targets the nearest enclosing <em>function</em> scope and is a
+SyntaxError if no such variable exists. If you only mutate an object (<code>items.append(x)</code>), neither is needed.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>You want to</th>
+<th>Need</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>read an outer variable</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td>mutate an outer object (<code>.append</code>, <code>d[k] = v</code>)</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td>rebind an outer function's variable (<code>n += 1</code>, <code>n = ...</code>)</td>
+<td><code>nonlocal n</code></td>
+</tr>
+<tr>
+<td>rebind a module-level variable</td>
+<td><code>global n</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Closures replace a one-method class when the state is tiny. A running average, in O(1) memory:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make_averager</span><span class="p">():</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">average</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+        <span class="k">nonlocal</span> <span class="n">total</span><span class="p">,</span> <span class="n">count</span>
+        <span class="n">total</span> <span class="o">+=</span> <span class="n">value</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">total</span> <span class="o">/</span> <span class="n">count</span>
+    <span class="k">return</span> <span class="n">average</span>
+
+<span class="n">avg</span> <span class="o">=</span> <span class="n">make_averager</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">avg</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="n">avg</span><span class="p">(</span><span class="mi">20</span><span class="p">),</span> <span class="n">avg</span><span class="p">(</span><span class="mi">30</span><span class="p">))</span>   <span class="c1"># prints: 10.0 15.0 20.0</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Is a closure counter thread-safe? No. <code>count += 1</code> is read, add, write (several bytecodes),
+so two threads can interleave and lose updates; guard with a <code>threading.Lock</code>. In <code>asyncio</code> (single
+thread) it is safe as long as there is no <code>await</code> between the read and the write.</p>
+</blockquote>
+<h2 id="unboundlocalerror-and-compile-time-scoping" data-topics="py.closures.unboundlocalerror">UnboundLocalError and compile-time scoping</h2>
+<!-- topics: unboundlocalerror -->
+
+<p>Python decides whether a name is local <strong>when it compiles the function</strong>, by scanning the whole body
+for assignments (<code>=</code>, <code>+=</code>, <code>for x</code>, <code>import x</code>, <code>def x</code>, <code>with ... as x</code>...). If the name is assigned anywhere in the
+function it is local <em>everywhere</em> in that function, including lines before the assignment.</p>
+<div class="hl"><pre><span></span><code><span class="n">count</span> <span class="o">=</span> <span class="mi">10</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">broken</span><span class="p">():</span>
+    <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>     <span class="c1"># `count` is local (because of +=), but has no value yet</span>
+    <span class="k">return</span> <span class="n">count</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">broken</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">UnboundLocalError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>   <span class="c1"># prints: cannot access local variable 'count' where it is not associated with a value</span>
+</code></pre></div>
+
+<p>A subtler version: it fails even when the assignment comes later and the read is first.</p>
+<div class="hl"><pre><span></span><code><span class="n">level</span> <span class="o">=</span> <span class="s2">"global"</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">surprise</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>       <span class="c1"># looks like it reads the global...</span>
+    <span class="n">level</span> <span class="o">=</span> <span class="s2">"local"</span>    <span class="c1"># ...but this line made `level` local for the whole function</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">surprise</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">UnboundLocalError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"UnboundLocalError"</span><span class="p">)</span>   <span class="c1"># prints: UnboundLocalError</span>
+</code></pre></div>
+
+<p>Why compile time? So the compiler can allocate fixed local slots (fast) and decide cell vs. local layout
+before running anything; resolving each name dynamically on every access would be slower and
+unpredictable. Fix by declaring <code>global</code>/<code>nonlocal</code>, by passing the value in as a parameter, or by
+renaming.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>UnboundLocalError</code> is a subclass of <code>NameError</code>. Message wording was tweaked in 3.11+
+("cannot access local variable ... where it is not associated with a value"); older versions said
+"referenced before assignment".</p>
+</blockquote>
+<details>
+<summary>Check yourself: why does `x = x + 1` inside a function fail when `x` is a global?</summary>
+<p>The assignment makes <code>x</code> local for the entire function, so the right-hand <code>x</code> is read from an empty
+local slot. Use <code>global x</code>, or pass <code>x</code> in and return the new value.</p>
+</details>
+<h2 id="late-binding-in-loops" data-topics="py.closures.closures,py.closures.free_variables">Late binding in loops</h2>
+<!-- topics: closures, free_variables -->
+
+<p>Because closures capture the <em>variable</em> (the cell) and not its value, closures created in a loop all
+share the same loop variable, and see its <strong>final</strong> value.</p>
+<div class="hl"><pre><span></span><code><span class="n">funcs</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">])</span>   <span class="c1"># prints: [2, 2, 2]</span>
+</code></pre></div>
+
+<p>After the loop <code>i</code> is 2 and all three lambdas look at the same cell. Three fixes:</p>
+<div class="hl"><pre><span></span><code><span class="c1"># 1. default argument: evaluated NOW, stored per function</span>
+<span class="n">funcs</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">])</span>   <span class="c1"># prints: [0, 1, 2]</span>
+
+<span class="c1"># 2. factory function: each call gets its own cell</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">make</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+    <span class="k">return</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">i</span>
+<span class="n">funcs</span> <span class="o">=</span> <span class="p">[</span><span class="n">make</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">])</span>   <span class="c1"># prints: [0, 1, 2]</span>
+
+<span class="c1"># 3. functools.partial: binds the value at creation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
+<span class="n">funcs</span> <span class="o">=</span> <span class="p">[</span><span class="n">partial</span><span class="p">(</span><span class="nb">int</span><span class="o">.</span><span class="fm">__add__</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">])</span>   <span class="c1"># prints: [10, 11, 12]</span>
+</code></pre></div>
+
+<p>The same trap hits real code: registering a callback per tool name, per retry attempt or per
+request inside a loop. If every handler reports the last item, think "late binding".</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> The default-argument trick changes the signature (callers can override <code>i</code>). Prefer a
+factory or <code>partial</code> in public APIs.</p>
+</blockquote>
+<p>Late binding also means a closure sees rebinding of the outer variable after creation, which is
+sometimes exactly what you want and sometimes a surprise:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">outer</span><span class="p">():</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">x</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="mi">2</span>          <span class="c1"># rebinds the same cell</span>
+    <span class="k">return</span> <span class="n">get</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">outer</span><span class="p">()())</span>   <span class="c1"># prints: 2</span>
+</code></pre></div>
+
+<h2 id="inspecting-closures" data-topics="py.closures.inspection,py.closures.co_freevars">Inspecting closures</h2>
+<!-- topics: inspection, co_freevars -->
+
+<p>A function carries its closure with it, so you can look inside. This is how you debug "what did this
+factory capture?".</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make_client</span><span class="p">(</span><span class="n">base_url</span><span class="p">,</span> <span class="n">timeout</span><span class="p">):</span>
+    <span class="n">retries</span> <span class="o">=</span> <span class="mi">3</span>                       <span class="c1"># local, but not used by the inner function</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">base_url</span><span class="si">}{</span><span class="n">path</span><span class="si">}</span><span class="s2"> (timeout=</span><span class="si">{</span><span class="n">timeout</span><span class="si">}</span><span class="s2">)"</span>
+    <span class="k">return</span> <span class="n">call</span>
+
+<span class="n">call</span> <span class="o">=</span> <span class="n">make_client</span><span class="p">(</span><span class="s2">"https://api.example.com"</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="vm">__code__</span><span class="o">.</span><span class="n">co_freevars</span><span class="p">)</span>                      <span class="c1"># prints: ('base_url', 'timeout')</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">c</span><span class="o">.</span><span class="n">cell_contents</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">call</span><span class="o">.</span><span class="vm">__closure__</span><span class="p">])</span>    <span class="c1"># prints: ['https://api.example.com', 30]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">call</span><span class="o">.</span><span class="vm">__code__</span><span class="o">.</span><span class="n">co_varnames</span><span class="p">)</span>                      <span class="c1"># prints: ('path',)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">make_client</span><span class="o">.</span><span class="vm">__code__</span><span class="o">.</span><span class="n">co_cellvars</span><span class="p">)</span>               <span class="c1"># prints: ('base_url', 'timeout')</span>
+</code></pre></div>
+
+<ul>
+<li><code>__code__.co_freevars</code>: names of the free variables this function uses, in the same order as...</li>
+<li><code>__closure__</code>: a tuple of <strong>cell</strong> objects (<code>None</code> for non-closures); read each with <code>.cell_contents</code>.</li>
+<li><code>co_cellvars</code> (on the <em>outer</em> function): its locals that inner functions capture.</li>
+</ul>
+<p><code>retries</code> is absent: only variables the inner function actually references are captured.
+<code>inspect.getclosurevars(func)</code> gives the same information as a friendly named tuple (nonlocals, globals, builtins).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">outer</span><span class="p">(</span><span class="n">y</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inner</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="s2">"ab"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">inner</span>
+
+<span class="n">cv</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getclosurevars</span><span class="p">(</span><span class="n">outer</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cv</span><span class="o">.</span><span class="n">nonlocals</span><span class="p">,</span> <span class="n">cv</span><span class="o">.</span><span class="n">globals</span><span class="p">,</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">cv</span><span class="o">.</span><span class="n">builtins</span><span class="p">))</span>
+<span class="c1"># prints: {'y': 5} {'x': 10} ['len']</span>
+</code></pre></div>
+
+<p>Cells are writable (<code>cell.cell_contents = ...</code>), which is occasionally used in tests but is a hack in
+production code.</p>
+<h2 id="closures-versus-classes-and-partial" data-topics="py.closures.closures,py.closures.nested_functions">Closures versus classes and partial</h2>
+<!-- topics: closures, nested_functions -->
+
+<p>Three ways to bundle behaviour with state or pre-filled arguments:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
+
+<span class="c1"># closure</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_adder</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="n">n</span>
+
+<span class="c1"># class with __call__</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Adder</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span>
+
+<span class="c1"># partial (pre-fill arguments of an existing function)</span>
+<span class="n">add5</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="nb">int</span><span class="o">.</span><span class="fm">__add__</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">make_adder</span><span class="p">(</span><span class="mi">5</span><span class="p">)(</span><span class="mi">1</span><span class="p">),</span> <span class="n">Adder</span><span class="p">(</span><span class="mi">5</span><span class="p">)(</span><span class="mi">1</span><span class="p">),</span> <span class="n">add5</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>   <span class="c1"># prints: 6 6 6</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Best when</th>
+<th>Downside</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>closure</td>
+<td>one behaviour, small private state, decorators and callbacks</td>
+<td>state is hidden: hard to inspect, test or pickle</td>
+</tr>
+<tr>
+<td>class with <code>__call__</code></td>
+<td>several methods, visible attributes, needs <code>repr</code>/pickling, inheritance</td>
+<td>more boilerplate</td>
+</tr>
+<tr>
+<td><code>functools.partial</code></td>
+<td>fixing some arguments of an existing function</td>
+<td>no extra logic or state</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Closure vs class?" A class when you need more than one operation on the state, want it
+inspectable (<code>obj.count</code>), serialisable (closures and lambdas cannot be pickled, which matters for
+<code>multiprocessing</code>) or subclassable. A closure when it is one function with a bit of private state.</p>
+<p><strong>AI use</strong> A per-session token budget tracker is a classic: one factory returns <code>track()</code>, <code>remaining()</code>
+and <code>report()</code> closures that all share the same <code>used</code> cell. It is also why decorators like
+<code>@retry(times=3)</code> work: <code>times</code> lives in a cell.</p>
+</blockquote>
+<h2 id="closures-in-long-running-services" data-topics="py.closures.closures,py.closures.free_variables">Closures in long-running services</h2>
+<!-- topics: closures, free_variables -->
+
+<p>A closure keeps every captured object alive as long as the closure itself is alive. So a callback that
+captured a huge object holds it in memory:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">gc</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">weakref</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">BigPayload</span><span class="p">:</span>
+    <span class="k">pass</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">make_callback</span><span class="p">():</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">BigPayload</span><span class="p">()</span>
+    <span class="n">ref</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">ref</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">callback</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">payload</span>        <span class="c1"># captures the payload in a cell</span>
+    <span class="k">return</span> <span class="n">callback</span><span class="p">,</span> <span class="n">ref</span>
+
+<span class="n">cb</span><span class="p">,</span> <span class="n">ref</span> <span class="o">=</span> <span class="n">make_callback</span><span class="p">()</span>
+<span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ref</span><span class="p">()</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span>   <span class="c1"># prints: True   (the closure keeps it alive)</span>
+<span class="k">del</span> <span class="n">cb</span>
+<span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ref</span><span class="p">()</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span>       <span class="c1"># prints: True   (freed once the closure is gone)</span>
+</code></pre></div>
+
+<p>Typical leaks: a global registry or event-bus list that keeps appending callbacks per request; an
+<code>lru_cache</code> or global dict holding closures that captured whole request objects or message histories;
+bound-method/closure reference cycles with large objects.</p>
+<p>Avoid by capturing only what you need (copy out the id, not the whole request), unsubscribing
+callbacks, using <code>weakref</code>/<code>WeakSet</code> for observers, and bounding caches.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> A streaming handler that captures the entire conversation history "just for logging"
+and is stored on a global list retains every conversation. Capture the request id, not the object.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Python is lexically scoped; resolution is LEGB and decided at compile time per function.</li>
+<li>Any assignment in a function body makes that name local to the whole function; reading it first gives <code>UnboundLocalError</code>.</li>
+<li><code>global</code> rebinds a module name, <code>nonlocal</code> rebinds an enclosing function's variable; mutating an object needs neither.</li>
+<li>A closure = function + cells for the free variables it uses; each factory call creates fresh cells.</li>
+<li>Closures capture variables, not values: loop-created lambdas see the final value. Fix with a default arg, a factory or <code>partial</code>.</li>
+<li>Inspect with <code>__code__.co_freevars</code>, <code>__closure__[i].cell_contents</code>, <code>inspect.getclosurevars</code>.</li>
+<li>Closure for one behaviour with tiny state, class for several operations or picklability, <code>partial</code> for pre-filled arguments.</li>
+<li>Captured objects live as long as the closure: watch registries and caches.</li>
+<li>Closure counters are not thread-safe without a lock.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-functional.html">&larr; Functional Programming</a><a class="pn next" href="revise-py-decorators.html">Decorators &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

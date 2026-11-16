@@ -3,25 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Start here - AI Eng Prep Notes</title>
+<title>Start here - AI Eng Prep</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page="doc" >
 <div class="wrap">
 <header class="top">
-  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
-  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html" aria-current="page">Start here</a><a class="tab" href="reference.html">Reference</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html" aria-current="page">Guide</a></nav>
 </header>
-<p class="src">README.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#start-in-3-steps">Start in 3 steps</a></li><li><a href="#every-day">Every day</a></li><li><a href="#read-the-notes-in-your-browser">Read the notes in your browser</a></li><li><a href="#want-more">Want more?</a></li></ol></nav><article class="prose"><h1 id="ai-engineering-prep">AI Engineering Prep</h1>
-<p>Practice material and a tracker to get you interview-ready for AI engineering (Python, LLMs, RAG, agents).
-It tells you what you're weak at, what to revise today, and gives you exercises and questions to do it.</p>
-<h2 id="start-in-3-steps">Start in 3 steps</h2>
-<ol>
-<li>Install <a href="https://docs.astral.sh/uv/">uv</a> once: <code>curl -LsSf https://astral.sh/uv/install.sh | sh</code></li>
-<li>In this folder run: <code>./study.sh</code></li>
-<li>Rate yourself on the topics you've studied (about 10 minutes). Done.</li>
-</ol>
-<p>The first run sets everything up by itself. (Windows: use WSL.)</p>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="guide.html">Guide</a> / Start here</p><p class="src">README.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#open-it">Open it</a></li><li><a href="#every-day">Every day</a></li><li><a href="#whats-inside">What&#x27;s inside</a></li><li><a href="#optional-terminal-helper">Optional: terminal helper</a></li></ol></nav><article class="prose"><h1 id="ai-engineering-prep">AI Engineering Prep</h1>
+<p>Revise the concepts, practise interview questions and coding exercises, and see what you're weak at.
+Everything runs in your browser. No terminal needed.</p>
+<h2 id="open-it">Open it</h2>
+<p>Double-click <strong><code>docs/site/index.html</code></strong>. On Windows with WSL, the same files are copied to
+<code>Documents\AI-Prep-Notes</code>, so double-click <code>index.html</code> there.</p>
+<p>It works offline, and your progress is saved in that browser. (Use <strong>My topics → Export progress</strong> to back it up
+or move it to another browser.)</p>
 <h2 id="every-day">Every day</h2>
 <div class="widget" data-widget="daily-loop">
   <h3 class="w-title">A 90-minute day</h3>
@@ -31,44 +30,63 @@ It tells you what you're weak at, what to revise today, and gives you exercises 
 </div>
 
 
-<p>Run <code>./study.sh</code> and do what it says. It's usually three things:</p>
+<ol>
+<li><strong>Today</strong>: press <em>Start today's 10 questions</em>. Answer each out loud, reveal the key points, grade yourself 0 to 5.</li>
+<li><strong>Revise</strong>: open the note for a topic you're weak on, read one section, tick it as revised, press <em>Quiz me on this</em>.</li>
+<li><strong>Exercises</strong>: do one. Write it in your editor, then compare with the reference solution and rate how it went.</li>
+</ol>
+<p>First time: open <strong>My topics</strong> and rate what you already know (about 10 minutes, be honest). That's what lets the
+app show you what to work on.</p>
+<h2 id="whats-inside">What's inside</h2>
 <div class="tablewrap"><table>
 <thead>
 <tr>
-<th>Do this</th>
-<th>Command</th>
-<th>Time</th>
+<th>Page</th>
+<th>What it's for</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Answer a few interview questions</td>
-<td><code>./study.sh quiz --due</code></td>
-<td>15 min</td>
+<td><strong>Today</strong></td>
+<td>what to do now: due reviews, weakest topics, one-click session</td>
 </tr>
 <tr>
-<td>Solve one exercise (open the file it names, write the code)</td>
-<td><code>./study.sh test &lt;module&gt;</code></td>
-<td>45 min</td>
+<td><strong>Revise</strong></td>
+<td>a theory note for every module, with runnable examples, traps and interview angles</td>
 </tr>
 <tr>
-<td>Note anything you got wrong</td>
-<td><code>./study.sh mistake "what I got wrong" -t &lt;topic&gt;</code></td>
-<td>2 min</td>
+<td><strong>Quiz</strong></td>
+<td>interview questions at three levels, spaced repetition decides what comes back</td>
+</tr>
+<tr>
+<td><strong>Exercises</strong></td>
+<td>coding problems with starter code and a reference solution</td>
+</tr>
+<tr>
+<td><strong>My topics</strong></td>
+<td>rate every topic, see mastery, back up your progress</td>
+</tr>
+<tr>
+<td><strong>Explainers</strong></td>
+<td>small interactive demos (lazy pipelines, async, retries)</td>
+</tr>
+<tr>
+<td><strong>Guide</strong></td>
+<td>the capstone project (DocMind), how the system works, how to add content</td>
 </tr>
 </tbody>
 </table></div>
-<p>Grade yourself honestly (0 to 5). Topics you do badly on come back sooner.</p>
-<h2 id="read-the-notes-in-your-browser">Read the notes in your browser</h2>
-<p><code>./study.sh notes</code> opens an interactive guide with diagrams and small demos. It works offline.
-On Windows (WSL) it also copies the notes to <code>Documents\AI-Prep-Notes</code>, so you can double-click <code>index.html</code> there any time.</p>
-<h2 id="want-more">Want more?</h2>
-<ul>
-<li>Every command, how scoring works, adding new topics: <code>docs/REFERENCE.md</code> (also in the notes)</li>
-<li>The project you build step by step (DocMind): <code>capstone/ROADMAP.md</code></li>
-<li>Stuck or something broke? Run <code>./study.sh --help</code>, or see Troubleshooting in <code>docs/REFERENCE.md</code>.</li>
-</ul></article></div>
+<h2 id="optional-terminal-helper">Optional: terminal helper</h2>
+<p>You don't need it. It adds two things: automatic test runs for exercises, and rebuilding the pages after you edit a
+note or question file.</p>
+<div class="hl"><pre><span></span><code>./study.sh<span class="w"> </span><span class="nb">test</span><span class="w"> </span>generators<span class="w">     </span><span class="c1"># run the tests for one module</span>
+./study.sh<span class="w"> </span>notes<span class="w">               </span><span class="c1"># rebuild the pages and refresh the Windows copy</span>
+</code></pre></div>
+
+<p>Setup and every command are in <code>docs/REFERENCE.md</code> (also under <strong>Guide</strong>).</p></article></div>
 </div>
+<script src="data.js"></script>
 <script src="site.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

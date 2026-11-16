@@ -1,6 +1,8 @@
 # Reference: how everything works
 
-The short version is in the README. This page has the details: every command, how mastery is scored,
+You don't need the terminal to revise or practise: the browser app (Today, Revise, Quiz, Exercises) does that and saves
+progress in the browser. The terminal helper below is optional, for running exercise tests and rebuilding the pages.
+This page has the details: every command, how mastery is scored,
 how to add new topics, and the folder layout. You can ignore it until you need it.
 
 In this page, `study X` means `./study.sh X` (or plain `study X` if you activated the venv with `source .venv/bin/activate`).

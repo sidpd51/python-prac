@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Processing with NumPy notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.numpy">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Data Processing with NumPy</p><div class="note-head"><div id="note-progress" data-module="py.numpy"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#the-ndarray-and-why-it-beats-a-list" data-target="the-ndarray-and-why-it-beats-a-list">The ndarray and why it beats a list</a></li><li><a href="#creating-arrays-and-attributes" data-target="creating-arrays-and-attributes">Creating arrays and attributes</a></li><li><a href="#indexing-slicing-views-vs-copies" data-target="indexing-slicing-views-vs-copies">Indexing, slicing: views vs copies</a></li><li><a href="#reshaping" data-target="reshaping">Reshaping</a></li><li><a href="#boolean-indexing" data-target="boolean-indexing">Boolean indexing</a></li><li><a href="#broadcasting" data-target="broadcasting">Broadcasting</a></li><li><a href="#vectorization-math-functions-and-floating-point" data-target="vectorization-math-functions-and-floating-point">Vectorization, math functions and floating point</a></li><li><a href="#aggregation-and-the-axis-argument" data-target="aggregation-and-the-axis-argument">Aggregation and the axis argument</a></li><li><a href="#random-numbers" data-target="random-numbers">Random numbers</a></li><li><a href="#linear-algebra-and-matrix-multiplication" data-target="linear-algebra-and-matrix-multiplication">Linear algebra and matrix multiplication</a></li><li><a href="#embeddings-cosine-similarity-and-top-k" data-target="embeddings-cosine-similarity-and-top-k">Embeddings: cosine similarity and top-k</a></li><li><a href="#pooling-softmax-and-attention-in-numpy" data-target="pooling-softmax-and-attention-in-numpy">Pooling, softmax and attention in NumPy</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="numpy">NumPy</h1>
+<p>NumPy is the foundation under pandas, scikit-learn, PyTorch-style tensors and every embedding pipeline. An
+embedding is a row of a <code>(n_vectors, dim)</code> array, cosine similarity is a matrix product, and top-k
+retrieval is a sort over one axis. Interviews test whether you understand <strong>memory layout</strong> (views vs copies),
+<strong>broadcasting</strong>, and <strong>axis</strong> semantics, and whether you can replace a Python loop with a whole-array
+expression. All examples here were run on NumPy 2.5.</p>
+<h2 id="the-ndarray-and-why-it-beats-a-list" data-topics="py.numpy.arrays,py.numpy.ndarray,py.numpy.vs_lists">The ndarray and why it beats a list</h2>
+<!-- topics: arrays, ndarray, vs_lists -->
+
+<p>An <code>ndarray</code> is a <strong>fixed-type, fixed-size block of contiguous memory</strong> plus metadata describing how to read it.</p>
+<div class="hl"><pre><span></span><code>Python list of floats                     ndarray float32
++----+                                    one contiguous buffer, 4 bytes per number
+| *  |--&gt; float object (24 B + header)     +-----+-----+-----+-----+
+| *  |--&gt; float object                     | 1.0 | 2.0 | 3.0 | 4.0 |   + metadata: shape, dtype, strides
+| *  |--&gt; float object                     +-----+-----+-----+-----+
++----+  (pointers 8 B each, objects scattered)
+</code></pre></div>
+
+<p>Consequences: compact (a list of 1000 ints costs about 36 KB with its int objects, the array 8 KB), cache-friendly,
+and operations run as <strong>one C loop</strong> over raw numbers instead of Python bytecode per element.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>list</code></th>
+<th><code>ndarray</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Element types</td>
+<td>mixed</td>
+<td>one <code>dtype</code></td>
+</tr>
+<tr>
+<td>Size / append</td>
+<td>grows cheaply</td>
+<td>fixed; "append" copies the whole thing</td>
+</tr>
+<tr>
+<td><code>a * 2</code></td>
+<td>repeats/concatenates (lists)</td>
+<td>multiplies every element</td>
+</tr>
+<tr>
+<td>Math speed</td>
+<td>slow (per-element objects)</td>
+<td>10-100x faster (C, SIMD, BLAS)</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="nb">print</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>            <span class="c1"># prints: [1, 2, 1, 2]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># prints: [2 4]</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> NumPy wins by moving the loop out of Python. If you write <code>for</code> over array elements you have
+lost the benefit.</p>
+<p><strong>AI use</strong> Embedding APIs return Python lists of floats. Convert once: <code>np.asarray(rows, dtype=np.float32)</code>.
+1M vectors of 768 dims in float32 is 3.07 GB; in Python lists it would be several times that.</p>
+</blockquote>
+<h2 id="creating-arrays-and-attributes" data-topics="py.numpy.creation,py.numpy.attributes">Creating arrays and attributes</h2>
+<!-- topics: creation, attributes -->
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">ndim</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>       <span class="c1"># prints: (2, 3) 2 6</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">itemsize</span><span class="p">,</span> <span class="n">a</span><span class="o">.</span><span class="n">nbytes</span><span class="p">)</span> <span class="c1"># prints: float32 4 24</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">strides</span><span class="p">)</span>                     <span class="c1"># prints: (12, 4)</span>
+</code></pre></div>
+
+<p><code>strides</code> are bytes to step to the next element along each axis: 12 bytes to the next <em>row</em> (3 numbers x 4 B),
+4 bytes to the next <em>column</em>. Everything about views, transpose and reshape follows from strides.</p>
+<p>Constructors you should know cold:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">))</span>     <span class="c1"># 2x2 of 0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">))</span>                   <span class="c1"># prints: [7 7 7]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">))</span>           <span class="c1"># prints: [0.   0.25 0.5  0.75]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>            <span class="c1"># prints: [0.   0.25 0.5  0.75 1.  ]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>                       <span class="c1"># identity matrix</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">])</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>   <span class="c1"># prints: int64 float64</span>
+</code></pre></div>
+
+<p><code>arange(start, stop, step)</code> excludes <code>stop</code> and is unreliable with float steps (use <code>linspace</code> for a known count).
+<code>np.empty</code> returns uninitialised memory; <code>zeros_like</code> / <code>ones_like</code> copy shape and dtype.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <strong>dtype is decided at creation and silently controls results.</strong> Integer arrays overflow
+instead of raising: <code>np.array([127], dtype=np.int8) + 1</code> gives <code>[-128]</code>. Mixed numeric input upcasts; <code>np.array([1, "a"])</code> becomes
+a string array. Pass <code>dtype=np.float32</code> explicitly for embeddings (default float64 doubles memory). Floats are approximate (<code>0.1 + 0.2 != 0.3</code>): compare with <code>np.isclose</code>.</p>
+</blockquote>
+<p><code>astype</code> converts (always copies). Default integer is <code>int64</code>, default float <code>float64</code> on 64-bit Linux/macOS.</p>
+<h2 id="indexing-slicing-views-vs-copies" data-topics="py.numpy.indexing">Indexing, slicing: views vs copies</h2>
+<!-- topics: indexing -->
+
+<p>Basic indexing (integers, slices) on an array returns a <strong>view</strong>: a new array object that <strong>shares the same
+buffer</strong> (new shape/strides, same memory). Advanced indexing (index arrays, boolean masks) returns a <strong>copy</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">v</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span>            <span class="c1"># slice -&gt; view</span>
+<span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span>             <span class="c1"># writes through to x</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>              <span class="c1"># prints: [ 0  1 99  3  4  5  6  7  8  9]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">base</span> <span class="ow">is</span> <span class="n">x</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">shares_memory</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">v</span><span class="p">))</span>   <span class="c1"># prints: True True</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="n">x</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]]</span>         <span class="c1"># list of indices ("fancy") -&gt; copy</span>
+<span class="n">f</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>           <span class="c1"># prints: 1</span>
+</code></pre></div>
+
+<p>2-D indexing is <code>a[rows, cols]</code>, with slices per axis:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="c1"># [[ 0  1  2  3]</span>
+<span class="c1">#  [ 4  5  6  7]</span>
+<span class="c1">#  [ 8  9 10 11]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>            <span class="c1"># prints: [4 5 6 7]        (row)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span>         <span class="c1"># prints: [1 5 9]          (column)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="p">::</span><span class="mi">2</span><span class="p">])</span>      <span class="c1"># prints: [[ 4  6]</span>
+                       <span class="c1">#          [ 8 10]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">]])</span>   <span class="c1"># prints: [ 1 11]      (pairs (0,1) and (2,3), NOT a 2x2 block)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ix_</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">])])</span>   <span class="c1"># prints: [[ 1  3]</span>
+                                   <span class="c1">#          [ 9 11]]   (the 2x2 block)</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Views mean a function that modifies a slice modifies the caller's array. Ask <code>arr.base</code> or
+<code>np.shares_memory(a, b)</code>; take <code>.copy()</code> when you need independence. The opposite bug: assuming <code>a[idx] = ...</code>
+with a fancy index "copies": assignment through an index writes into <code>a</code>, it is <em>reading</em> with fancy indexing that copies.
+Also <code>x[1:3]</code> on a <strong>list</strong> is a copy; on an array it is a view.</p>
+</blockquote>
+<h2 id="reshaping" data-topics="py.numpy.reshaping">Reshaping</h2>
+<!-- topics: reshaping -->
+
+<p><code>reshape</code> changes the shape without changing the data; the total element count must match, and one dimension may be <code>-1</code>
+(inferred). It returns a <strong>view when the memory layout allows it</strong>, otherwise a copy.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>                       <span class="c1"># prints: [[0 1 2]</span>
+                               <span class="c1">#          [3 4 5]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># prints: (3, 2)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">shares_memory</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span>  <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">b</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">strides</span><span class="p">,</span> <span class="n">b</span><span class="o">.</span><span class="n">strides</span><span class="p">)</span>   <span class="c1"># prints: (3, 2) (8, 24) (24, 8)</span>
+</code></pre></div>
+
+<p><code>.T</code> (transpose) is free: it only swaps strides, so a transposed array is <strong>not C-contiguous</strong>, and reshaping it
+may need a copy. <code>ravel()</code> returns a view if possible; <code>flatten()</code> always copies. Related tools: <code>np.newaxis</code> /
+<code>None</code> to add an axis (<code>v[:, None]</code> turns shape <code>(n,)</code> into <code>(n, 1)</code>), <code>np.squeeze</code>, <code>np.stack</code> / <code>np.concatenate</code>,
+<code>np.transpose(axes)</code> for N-d.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">v</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">v</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>   <span class="c1"># prints: (3, 1) (1, 3)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">])</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">v</span><span class="p">,</span> <span class="n">v</span><span class="p">])</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>   <span class="c1"># prints: (6,) (2, 3)</span>
+</code></pre></div>
+
+<h2 id="boolean-indexing" data-topics="py.numpy.boolean_indexing">Boolean indexing</h2>
+<!-- topics: boolean_indexing -->
+
+<p>A comparison produces a boolean array; using it as an index selects the <code>True</code> positions (always a <strong>copy</strong>).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">12</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="n">m</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">])</span>                 <span class="c1"># prints: [ 0  2  4  6  8 10]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">m</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>         <span class="c1"># elementwise if/else</span>
+<span class="c1"># [[0 0 0 0]</span>
+<span class="c1">#  [0 0 1 1]</span>
+<span class="c1">#  [1 1 1 1]]</span>
+<span class="n">m2</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">m2</span><span class="p">[</span><span class="n">m2</span> <span class="o">&gt;</span> <span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>                       <span class="c1"># masked assignment writes in place</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m2</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>                         <span class="c1"># prints: [8 0 0 0]</span>
+</code></pre></div>
+
+<p>Combine conditions with <code>&amp;</code>, <code>|</code>, <code>~</code> and <strong>parentheses</strong> (<code>and</code>/<code>or</code> do not work on arrays):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">])</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">s</span> <span class="o">&gt;</span> <span class="mf">0.3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">s</span> <span class="o">&lt;</span> <span class="mf">0.8</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">s</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>   <span class="c1"># prints: [False False  True  True] [0.7 0.4]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>s &gt; 0.3 and s &lt; 0.8</code> raises "truth value of an array is ambiguous", and <code>s &gt; 0.3 &amp; s &lt; 0.8</code>
+parses as <code>s &gt; (0.3 &amp; s) &lt; 0.8</code> because <code>&amp;</code> binds tighter than comparison. Always parenthesise each comparison.</p>
+<p><strong>AI use</strong> Metadata filtering before ranking: <code>scores[(lang == "en") &amp; (age_days &lt; 30)]</code>, or set masked-out scores to
+<code>-inf</code> so they can never reach the top-k.</p>
+</blockquote>
+<h2 id="broadcasting" data-topics="py.numpy.broadcasting">Broadcasting</h2>
+<!-- topics: broadcasting -->
+
+<p><strong>Broadcasting</strong> lets arrays of different shapes combine in one operation without copying data. The rule, applied
+<strong>from the right</strong>, dimension by dimension:</p>
+<ol>
+<li>Align shapes at the <strong>trailing</strong> end, padding the shorter one with 1s on the left.</li>
+<li>For each dimension the sizes must be <strong>equal</strong>, or <strong>one of them is 1</strong> (a size-1 dimension is stretched).</li>
+<li>The result dimension is the larger of the two; otherwise <code>ValueError</code>.</li>
+</ol>
+<div class="hl"><pre><span></span><code>a: (3, 1)        b:    (4,)       -&gt;  pad b:  (1, 4)
+        3  1                                   1  4
+        ^  ^   -&gt; each pair: (3,1) ok, (1,4) ok  -&gt; result (3, 4)
+
+(3, 2) + (3,)     pad: (3, 2) vs (1, 3)   trailing: 2 vs 3  -&gt; mismatch -&gt; error
+(3, 2) + (3, 1)   trailing: 2 vs 1 ok, 3 vs 3 ok          -&gt; (3, 2)
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">((</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>      <span class="c1"># prints: (3, 4)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span>
+<span class="c1"># [[0 1 2 3]</span>
+<span class="c1">#  [1 2 3 4]</span>
+<span class="c1">#  [2 3 4 5]]</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>    <span class="c1"># prints: operands could not be broadcast together with shapes (3,2) (3,)</span>
+</code></pre></div>
+
+<p>The practical pattern is <strong>centering / normalising by row or column statistics</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">X</span> <span class="o">-</span> <span class="n">X</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>                      <span class="c1"># column means, shape (3,) broadcasts across rows</span>
+<span class="c1"># [[-1.5 -1.5 -1.5]</span>
+<span class="c1">#  [ 1.5  1.5  1.5]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">X</span> <span class="o">/</span> <span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>        <span class="c1"># row sums need shape (2, 1)</span>
+<span class="c1"># [[0.16666667 0.33333333 0.5       ]</span>
+<span class="c1">#  [0.26666667 0.33333333 0.4       ]]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>X / X.sum(axis=1)</code> fails (shapes <code>(2, 3)</code> and <code>(2,)</code>: trailing <code>3</code> vs <code>2</code>). The fix is
+<code>keepdims=True</code> or <code>[:, None]</code>, which keeps the reduced axis as size 1. A "wrong but runs" version arises when the
+sizes happen to match (a square matrix divides by the wrong axis silently).</p>
+</blockquote>
+<details>
+<summary>Check yourself: shapes `(5, 1, 3)` and `(4, 1)`. Result?</summary>
+<p>Pad <code>(4, 1)</code> to <code>(1, 4, 1)</code>. Compare right to left: 3 vs 1 -&gt; 3, 1 vs 4 -&gt; 4, 5 vs 1 -&gt; 5. Result <code>(5, 4, 3)</code>.</p>
+</details>
+<h2 id="vectorization-math-functions-and-floating-point" data-topics="py.numpy.vectorization,py.numpy.math">Vectorization, math functions and floating point</h2>
+<!-- topics: vectorization, math -->
+
+<p><strong>Vectorisation</strong> means expressing work as whole-array operations (<strong>ufuncs</strong> such as <code>+</code>, <code>np.sqrt</code>, <code>np.exp</code>,
+<code>np.maximum</code>) so the loop runs in compiled C. Rewrite loops by thinking "what is the operation on the whole array?".</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">4.0</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">,</span> <span class="mf">16.0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">e</span><span class="p">))</span>   <span class="c1"># prints: [2. 3. 4.] [ 16.  81. 256.] 1.0 1.0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">([</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>                      <span class="c1"># prints: [0 5 6]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mf">2.5</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mf">3.5</span><span class="p">))</span>                    <span class="c1"># prints: 2.0 4.0   (round half to even)</span>
+</code></pre></div>
+
+<p>Floating-point realities: <code>NaN != NaN</code>, <code>inf</code> appears on division by zero (with a <code>RuntimeWarning</code>, not an exception),
+and results are approximate.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="n">np</span><span class="o">.</span><span class="n">nansum</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>        <span class="c1"># prints: nan 3.0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>   <span class="c1"># prints: False [ True False False]</span>
+<span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]))</span>   <span class="c1"># prints: [inf nan]</span>
+</code></pre></div>
+
+<p>Vectorisation is fast because there is one Python-level call, a tight C loop with SIMD, and no per-element objects. It stops helping with many tiny arrays or big temporaries (<code>a * b + c</code> allocates intermediates; <code>out=</code> avoids that).</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>np.vectorize</code> is <strong>not</strong> vectorisation: it is a Python loop in disguise (convenience, not speed).
+Real speed needs ufuncs, <code>np.where</code>, boolean masks, or <code>einsum</code> / matmul.</p>
+</blockquote>
+<h2 id="aggregation-and-the-axis-argument" data-topics="py.numpy.aggregation,py.numpy.axis">Aggregation and the axis argument</h2>
+<!-- topics: aggregation, axis -->
+
+<p>Aggregations (<code>sum</code>, <code>mean</code>, <code>std</code>, <code>min</code>, <code>max</code>, <code>argmax</code>, <code>cumsum</code>, ...) reduce an array. <strong><code>axis</code> names the
+dimension that disappears</strong>: you collapse along it.</p>
+<div class="hl"><pre><span></span><code>X = [[1, 2, 3],        axis=0 collapses rows  (go DOWN each column)   -&gt; [5, 7, 9]       shape (3,)
+     [4, 5, 6]]        axis=1 collapses columns (go ACROSS each row)  -&gt; [6, 15]         shape (2,)
+                       axis=None (default): everything                -&gt; 21
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>   <span class="c1"># prints: 21.0 [5. 7. 9.] [ 6. 15.]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">X</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>        <span class="c1"># prints: [2.5 3.5 4.5] [2 2]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+<span class="c1"># [[ 1.  3.  6.]</span>
+<span class="c1">#  [ 4.  9. 15.]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>      <span class="c1"># prints: (2, 1)</span>
+</code></pre></div>
+
+<p>For N-d, <code>axis</code> can be a negative number or a tuple: with shape <code>(B, T, D)</code>, <code>axis=-1</code> reduces <code>D</code>, and
+<code>axis=(0, 2)</code> leaves <code>(T,)</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Z</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">Z</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>   <span class="c1"># prints: (2, 3) (3,)</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>std</code> defaults to population std (<code>ddof=0</code>), pandas defaults to sample std (<code>ddof=1</code>). <code>argmax</code> returns the
+<em>first</em> maximum, and an index into the flattened array when <code>axis=None</code>. NaNs poison <code>sum</code>/<code>mean</code>; use <code>nansum</code>, <code>nanmean</code>.</p>
+</blockquote>
+<h2 id="random-numbers" data-topics="py.numpy.random">Random numbers</h2>
+<!-- topics: random -->
+
+<p>Use the modern <strong>Generator API</strong>: <code>rng = np.random.default_rng(seed)</code>. It is reproducible, independent per
+instance (no hidden global state), and statistically better than the legacy <code>np.random.seed</code> / <code>np.random.rand</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>            <span class="c1"># prints: [0.63696169 0.26978671 0.04097352]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>   <span class="c1"># prints: [0 0 1 8]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>       <span class="c1"># prints: [0.36159505 1.30400005]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>   <span class="c1"># prints: 0.6369616873214543   (same seed -&gt; same stream)</span>
+</code></pre></div>
+
+<p>Handy: <code>rng.choice(n, size, replace=False)</code> for sampling, <code>rng.permutation(n)</code> / <code>rng.shuffle</code> for shuffles,
+<code>rng.standard_normal((n, d))</code> for fake embeddings. Pass the <code>rng</code> object into functions rather than seeding globally.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Seed everything that creates eval splits, negatives or synthetic data; record the seed with the
+result. Fake embeddings for tests: <code>rng.standard_normal((100, 8)).astype(np.float32)</code>.</p>
+</blockquote>
+<h2 id="linear-algebra-and-matrix-multiplication" data-topics="py.numpy.linalg,py.numpy.matmul">Linear algebra and matrix multiplication</h2>
+<!-- topics: linalg, matmul -->
+
+<p>Elementwise <code>*</code> is <strong>not</strong> matrix multiplication. Use <code>@</code> (<code>np.matmul</code>):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]])</span>
+<span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">A</span> <span class="o">*</span> <span class="n">B</span><span class="p">)</span>    <span class="c1"># elementwise</span>
+<span class="c1"># [[0 2]</span>
+<span class="c1">#  [3 0]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">A</span> <span class="o">@</span> <span class="n">B</span><span class="p">)</span>    <span class="c1"># matrix product: rows of A dot columns of B</span>
+<span class="c1"># [[2 1]</span>
+<span class="c1">#  [4 3]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]))</span>   <span class="c1"># prints: 11 5.0</span>
+</code></pre></div>
+
+<p>Shape rule: <code>(m, k) @ (k, n) -&gt; (m, n)</code>: inner dimensions must match. For stacks, leading dimensions broadcast:
+<code>(B, T, D) @ (B, D, S) -&gt; (B, T, S)</code>. <code>@</code> on a 1-D vector treats it as a row/column as needed (<code>(n,) @ (n,)</code> is a scalar).</p>
+<p><code>np.linalg</code> basics: <code>norm(x, axis=...)</code>, <code>inv</code>, <code>det</code>, <code>solve(A, b)</code> (prefer this to <code>inv(A) @ b</code>), <code>eig</code>, <code>svd</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">]))</span>        <span class="c1"># prints: [-4.   4.5]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>             <span class="c1"># prints: [2.23606798 5.        ]</span>
+</code></pre></div>
+
+<p>Matrix products dispatch to optimised BLAS (multi-threaded, no Python GIL involved), which is why one <code>@</code> beats a loop
+of dot products by orders of magnitude.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>A @ B.T</code> vs <code>A.T @ B</code> are the shape mistakes interviewers like. Write the shapes in a comment before
+multiplying, and remember <code>*</code> never means matrix product on ndarrays.</p>
+</blockquote>
+<h2 id="embeddings-cosine-similarity-and-top-k" data-topics="py.numpy.vectorization,py.numpy.matmul,py.numpy.axis,py.numpy.boolean_indexing,py.numpy.indexing">Embeddings: cosine similarity and top-k</h2>
+<!-- topics: vectorization, matmul, axis, boolean_indexing, indexing -->
+
+<p>Cosine similarity between vectors is the dot product of their <strong>L2-normalised</strong> versions. Normalise the corpus
+once, normalise each query, then one matrix product scores everything.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">l2_normalize</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="n">norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">divide</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">where</span><span class="o">=</span><span class="n">norm</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>   <span class="c1"># zero vectors stay zero</span>
+
+<span class="n">docs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="n">query</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+<span class="n">scores</span> <span class="o">=</span> <span class="n">l2_normalize</span><span class="p">(</span><span class="n">docs</span><span class="p">)</span> <span class="o">@</span> <span class="n">l2_normalize</span><span class="p">(</span><span class="n">query</span><span class="p">)</span>       <span class="c1"># (5, 3) @ (3,) -&gt; (5,)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">scores</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>   <span class="c1"># prints: [ 0.981  0.902  0.     0.196 -0.981] float32</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>docs (N, D) @ query (D,) = scores (N,)           queries (Q, D) @ docs.T (D, N) = scores (Q, N)
+cosine = dot(unit_a, unit_b)                      unit vectors: |a| = |b| = 1, so dot = cos(angle)
+</code></pre></div>
+
+<p>For top-k you do not need a full sort. <code>np.argpartition</code> finds the k best in O(n) (but unordered); sort just those k:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">scores</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.981</span><span class="p">,</span> <span class="mf">0.902</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.196</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.981</span><span class="p">])</span>
+<span class="n">k</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">part</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argpartition</span><span class="p">(</span><span class="o">-</span><span class="n">scores</span><span class="p">,</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)[:</span><span class="n">k</span><span class="p">]</span>        <span class="c1"># indices of the k largest, unordered</span>
+<span class="n">top</span> <span class="o">=</span> <span class="n">part</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">scores</span><span class="p">[</span><span class="n">part</span><span class="p">])]</span>             <span class="c1"># order only those k</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">top</span><span class="p">,</span> <span class="n">scores</span><span class="p">[</span><span class="n">top</span><span class="p">])</span>                            <span class="c1"># prints: [0 1] [0.981 0.902]</span>
+
+<span class="n">batch</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">]])</span>    <span class="c1"># (Q, N): top-1 per query</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>                    <span class="c1"># prints: [1 2]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">batch</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">:</span><span class="mi">2</span><span class="p">])</span>           <span class="c1"># prints: [[1 2]</span>
+                                                   <span class="c1">#          [2 0]]</span>
+</code></pre></div>
+
+<p>Using <code>-scores</code> avoids the descending-sort copy; <code>np.argsort(scores)[::-1]</code> also works but is a view with
+negative stride. Filtering and thresholds are boolean masks (<code>scores &gt;= 0.5</code>), and <code>np.where(valid, scores, -np.inf)</code> hides
+masked items before the top-k.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Zero vectors give <code>0/0 = NaN</code> in a naive normalisation (hence the <code>where=norm &gt; 0</code> guard). Also
+dot product equals cosine <strong>only if both sides are normalised</strong>: many embedding models return unit vectors, some do not;
+check <code>np.linalg.norm(vectors, axis=1)</code>.</p>
+<p><strong>Interview</strong> "Brute-force vs ANN?" Exact search is one matmul: O(N x D) per query, perfectly fine up to
+~1M vectors on a laptop with float32 and BLAS. ANN indexes (HNSW, IVF in FAISS/pgvector) trade recall for speed beyond
+that, and you evaluate them against this exact baseline (recall@k).</p>
+</blockquote>
+<h2 id="pooling-softmax-and-attention-in-numpy" data-topics="py.numpy.broadcasting,py.numpy.reshaping,py.numpy.axis,py.numpy.matmul">Pooling, softmax and attention in NumPy</h2>
+<!-- topics: broadcasting, reshaping, axis, matmul -->
+
+<p>Transformer models output one vector per <strong>token</strong>: shape <code>(B, T, D)</code>. A sentence embedding is a <strong>masked mean</strong> over the
+token axis: padding tokens (mask 0) must not count.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>                  <span class="c1"># (B=2, T=4, D=3)</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>   <span class="c1"># (B, T): 1 = real token</span>
+
+<span class="n">summed</span> <span class="o">=</span> <span class="p">(</span><span class="n">tokens</span> <span class="o">*</span> <span class="n">mask</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="kc">None</span><span class="p">])</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>       <span class="c1"># mask (B,T,1) broadcasts over D</span>
+<span class="n">pooled</span> <span class="o">=</span> <span class="n">summed</span> <span class="o">/</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>     <span class="c1"># divide by true length per row</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>                                    <span class="c1"># prints: (2, 3)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">pooled</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)))</span>   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p><strong>Softmax</strong> turns scores into probabilities along an axis. The naive <code>exp(x)</code> overflows for big values; subtract
+the max first (the result is unchanged, because softmax is shift-invariant):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">softmax</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">e</span> <span class="o">/</span> <span class="n">e</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">softmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1001.0</span><span class="p">])))</span>   <span class="c1"># prints: [0.26894142 0.73105858]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">softmax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]]))</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="c1"># [[0.09  0.245 0.665]</span>
+<span class="c1">#  [0.333 0.333 0.333]]</span>
+</code></pre></div>
+
+<p><strong>Attention</strong> scores are <code>softmax(Q K^T / sqrt(d)) V</code>, batched with matmul and transposes of the last two axes:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">Q</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">))</span>     <span class="c1"># (B, T queries, D)</span>
+<span class="n">K</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">))</span>     <span class="c1"># (B, S keys, D)</span>
+<span class="n">V</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">))</span>
+<span class="n">scores</span> <span class="o">=</span> <span class="n">Q</span> <span class="o">@</span> <span class="n">K</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span>    <span class="c1"># (B,T,D) @ (B,D,S) -&gt; (B,T,S)</span>
+<span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">scores</span> <span class="o">-</span> <span class="n">scores</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">));</span> <span class="n">w</span> <span class="o">/=</span> <span class="n">w</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">out</span> <span class="o">=</span> <span class="n">w</span> <span class="o">@</span> <span class="n">V</span>                                        <span class="c1"># (B,T,S) @ (B,S,D) -&gt; (B,T,D)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mi">1</span><span class="p">))</span>   <span class="c1"># prints: (2, 3, 5) (2, 3, 8) True</span>
+</code></pre></div>
+
+<p>Write the shape of every intermediate in a comment; prefer <code>axis=-1</code> so the code works for 1-D, 2-D and batched input.</p>
+<details>
+<summary>Check yourself: why is dividing by `mask.sum(axis=1, keepdims=True)` needed rather than dividing by `T`?</summary>
+<p>Padding positions are zeroed in the numerator but would still be counted in the denominator, shrinking every
+short sequence's mean. Dividing by the real token count fixes that; <code>keepdims</code> keeps shape <code>(B, 1)</code> so it broadcasts.</p>
+</details>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li><code>ndarray</code> = one contiguous typed buffer plus shape, dtype and strides; lists are pointer arrays to objects.</li>
+<li>Slicing/<code>reshape</code>/<code>.T</code>/<code>ravel</code> give views (shared memory); fancy and boolean indexing, <code>astype</code>, <code>flatten</code> copy. Check <code>np.shares_memory</code>.</li>
+<li>Broadcasting: align trailing dims; each pair equal or one is 1; add axes with <code>[:, None]</code> or <code>keepdims=True</code>.</li>
+<li><code>axis</code> is the dimension that disappears; result shape = input shape minus that axis.</li>
+<li>Vectorise with ufuncs, <code>np.where</code>, masks and <code>@</code>; <code>np.vectorize</code> is just a loop. Combine masks with <code>&amp;</code>, <code>|</code>, <code>~</code> and parentheses.</li>
+<li>dtype is chosen at creation: integer overflow wraps silently, floats are approximate, use <code>float32</code> for embeddings, <code>isclose</code> to compare.</li>
+<li>Use <code>np.random.default_rng(seed)</code>; pass the generator around.</li>
+<li><code>A @ B</code> needs matching inner dimensions; <code>solve</code> beats <code>inv</code>; batched matmul broadcasts leading dims.</li>
+<li>Cosine = dot of L2-normalised vectors (guard zero norms); top-k with <code>argpartition</code> then sort the k; masks for filters.</li>
+<li>Masked mean pooling and max-subtracted softmax are the standard embedding-model building blocks.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-internals.html">&larr; Python Internals and Performance</a><a class="pn next" href="revise-py-pandas.html">Data Processing with Pandas &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Functions notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.functions">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Functions</p><div class="note-head"><div id="note-progress" data-module="py.functions"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#defining-and-calling-functions-return-values" data-target="defining-and-calling-functions-return-values">Defining and calling functions, return values</a></li><li><a href="#positional-and-keyword-arguments" data-target="positional-and-keyword-arguments">Positional and keyword arguments</a></li><li><a href="#default-arguments" data-target="default-arguments">Default arguments</a></li><li><a href="#args-and-kwargs" data-target="args-and-kwargs">*args and **kwargs</a></li><li><a href="#argument-unpacking" data-target="argument-unpacking">Argument unpacking</a></li><li><a href="#positional-only-and-keyword-only-parameters" data-target="positional-only-and-keyword-only-parameters">Positional-only and keyword-only parameters</a></li><li><a href="#first-class-and-higher-order-functions" data-target="first-class-and-higher-order-functions">First-class and higher-order functions</a></li><li><a href="#function-reference-vs-function-call" data-target="function-reference-vs-function-call">Function reference vs function call</a></li><li><a href="#recursion" data-target="recursion">Recursion</a></li><li><a href="#variable-scope-legb" data-target="variable-scope-legb">Variable scope (LEGB)</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="functions">Functions</h1>
+<p>Functions are the unit of reuse, and in Python they are also ordinary objects: you can store them in a dict, pass them
+around, and return them. Almost every interesting Python feature (decorators, callbacks, dependency injection, tool
+dispatch for LLM agents) rests on two things you must understand precisely: how arguments are bound to parameters,
+and how names are resolved (scope). Interviews probe both with small traps: mutable defaults, <code>*args</code> ordering,
+<code>f</code> versus <code>f()</code>, and <code>UnboundLocalError</code>.</p>
+<h2 id="defining-and-calling-functions-return-values" data-topics="py.functions.definition,py.functions.return_values">Defining and calling functions, return values</h2>
+<!-- topics: definition, return_values -->
+
+<p><code>def</code> is an <strong>executable statement</strong>: when it runs, it creates a function object and binds the name to it. The body runs
+only when the function is <em>called</em>. A call evaluates the arguments, binds them to parameters in a fresh local scope, runs
+the body, and produces the return value.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return a + b."""</span>
+    <span class="k">return</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">add</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">add</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">add</span><span class="o">.</span><span class="vm">__doc__</span><span class="p">)</span>   <span class="c1"># prints: 5 add Return a + b.</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">add</span><span class="o">.</span><span class="vm">__annotations__</span><span class="p">)</span>                    <span class="c1"># prints: {'a': &lt;class 'int'&gt;, 'b': &lt;class 'int'&gt;, 'return': &lt;class 'int'&gt;}</span>
+</code></pre></div>
+
+<p>Type hints are metadata, not enforcement. The docstring is the first string literal in the body.</p>
+<p><strong>Return values.</strong> A function with no <code>return</code> (or a bare <code>return</code>) returns <code>None</code>. To return several values you
+return <strong>one tuple</strong> and the caller unpacks it. <code>return</code> ends the function immediately, so early returns replace deep nesting.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">stats</span><span class="p">(</span><span class="n">xs</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">xs</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>                      <span class="c1"># early exit, explicit</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">xs</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">xs</span><span class="p">),</span> <span class="nb">sum</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">stats</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]))</span>                  <span class="c1"># prints: (2, 6, 4.0)</span>
+<span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">,</span> <span class="n">mean</span> <span class="o">=</span> <span class="n">stats</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">stats</span><span class="p">([]))</span>                         <span class="c1"># prints: None</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">log</span><span class="p">(</span><span class="n">msg</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>                           <span class="c1"># no return statement</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">log</span><span class="p">(</span><span class="s2">"hi"</span><span class="p">))</span>                         <span class="c1"># prints: hi  then None</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Functions that mutate their argument and also return it (like <code>sorted</code> versus <code>list.sort</code>) confuse callers.
+Convention: mutate and return <code>None</code>, or build and return a new object. Not both.</p>
+<p><strong>Remember</strong> <code>return</code> and <code>print</code> are different. A function that prints but does not return gives its caller <code>None</code>.</p>
+</blockquote>
+<h2 id="positional-and-keyword-arguments" data-topics="py.functions.positional_args,py.functions.keyword_args">Positional and keyword arguments</h2>
+<!-- topics: positional_args, keyword_args -->
+
+<p><strong>Positional</strong> arguments bind left to right by position. <strong>Keyword</strong> arguments bind by parameter name, in any order,
+and make call sites self-documenting. Rules: positional first, then keyword; a parameter may not be bound twice.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">call_llm</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">prompt</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span> <span class="n">max_tokens</span><span class="o">=</span><span class="mi">256</span><span class="p">):</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model</span><span class="si">}</span><span class="s2">|</span><span class="si">{</span><span class="n">prompt</span><span class="si">}</span><span class="s2">|</span><span class="si">{</span><span class="n">temperature</span><span class="si">}</span><span class="s2">|</span><span class="si">{</span><span class="n">max_tokens</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">call_llm</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">))</span>                              <span class="c1"># prints: m1|hi|0.7|256</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">call_llm</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">,</span> <span class="n">max_tokens</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>               <span class="c1"># prints: m1|hi|0.7|10</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">call_llm</span><span class="p">(</span><span class="n">prompt</span><span class="o">=</span><span class="s2">"hi"</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">"m1"</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>  <span class="c1"># prints: m1|hi|0|256</span>
+
+<span class="k">for</span> <span class="n">bad</span> <span class="ow">in</span> <span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">call_llm</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">),</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">call_llm</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">"x"</span><span class="p">),</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">call_llm</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">,</span> <span class="n">top_p</span><span class="o">=</span><span class="mi">1</span><span class="p">)):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">bad</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+<span class="c1"># prints: call_llm() missing 1 required positional argument: 'prompt'</span>
+<span class="c1"># prints: call_llm() got multiple values for argument 'model'</span>
+<span class="c1"># prints: call_llm() got an unexpected keyword argument 'top_p'</span>
+</code></pre></div>
+
+<p><code>TypeError</code> for a bad call is raised <strong>before</strong> the body runs. Prefer keyword arguments for anything with more than two
+parameters or boolean flags (<code>retry(True, 3)</code> is unreadable; <code>retry(jitter=True, attempts=3)</code> is not).</p>
+<h2 id="default-arguments" data-topics="py.functions.default_args">Default arguments</h2>
+<!-- topics: default_args -->
+
+<p>Defaults are evaluated <strong>once, when <code>def</code> executes</strong>, and stored on the function object (<code>f.__defaults__</code>). The same
+object is reused on every call that omits the argument. For immutable defaults (numbers, strings, <code>None</code>, tuples) that is
+harmless. For mutable ones it is a shared global in disguise.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">collect</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">bucket</span><span class="o">=</span><span class="p">[]):</span>
+    <span class="n">bucket</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">bucket</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">collect</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">collect</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>            <span class="c1"># prints: [1, 2] [1, 2]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">collect</span><span class="o">.</span><span class="vm">__defaults__</span><span class="p">)</span>              <span class="c1"># prints: ([1, 2],)</span>
+</code></pre></div>
+
+<p>Both calls returned the same list object, so the first result already shows the second append. The idiom is a <code>None</code>
+sentinel, created fresh inside the body:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">collect</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">bucket</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">bucket</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">bucket</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">bucket</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">bucket</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">collect</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">collect</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>            <span class="c1"># prints: [1] [2]</span>
+
+<span class="n">_MISSING</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span>                      <span class="c1"># use a private sentinel when None is a valid value</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">_MISSING</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">default</span> <span class="ow">is</span> <span class="n">_MISSING</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"required:</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="n">default</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get</span><span class="p">(</span><span class="s2">"a"</span><span class="p">),</span> <span class="n">get</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>          <span class="c1"># prints: required:a None</span>
+</code></pre></div>
+
+<p>Another consequence: a default like <code>ts=time.time()</code> is frozen at definition time, not call time. Parameters with defaults
+must come after those without (<code>def f(a=1, b)</code> is a <code>SyntaxError</code>).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why does the default list persist between calls?" Because <code>def</code> runs once and the default is an attribute
+of the function object; the call does not re-evaluate it. Show <code>__defaults__</code>.</p>
+<p><strong>AI use</strong> A shared mutable default such as <code>messages=[]</code> in a chat helper leaks one user's conversation into the next
+request, a real production bug. Default to <code>None</code> and build the list inside.</p>
+</blockquote>
+<h2 id="args-and-kwargs" data-topics="py.functions.args,py.functions.kwargs">*args and **kwargs</h2>
+<!-- topics: args, kwargs -->
+
+<p><code>*args</code> collects extra <strong>positional</strong> arguments into a <strong>tuple</strong>; <code>**kwargs</code> collects extra <strong>keyword</strong> arguments into a
+<strong>dict</strong>. The names are convention; the stars are the syntax.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">show</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+
+<span class="n">show</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>                         <span class="c1"># prints: 1 () {}</span>
+<span class="n">show</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>         <span class="c1"># prints: 1 (2, 3) {'x': 4, 'y': 5}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">total</span><span class="p">(</span><span class="o">*</span><span class="n">nums</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nums</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">total</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>           <span class="c1"># prints: 6</span>
+</code></pre></div>
+
+<p>Their main job is <strong>forwarding</strong>: wrappers and decorators accept whatever the wrapped function accepts and pass it
+through without knowing the signature.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">logged</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>                    <span class="c1"># keeps fn.__name__ and __doc__</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"calling"</span><span class="p">,</span> <span class="n">fn</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="nd">@logged</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">greet</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">punct</span><span class="o">=</span><span class="s2">"!"</span><span class="p">):</span>
+    <span class="k">return</span> <span class="s2">"hi "</span> <span class="o">+</span> <span class="n">name</span> <span class="o">+</span> <span class="n">punct</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">greet</span><span class="p">(</span><span class="s2">"ada"</span><span class="p">,</span> <span class="n">punct</span><span class="o">=</span><span class="s2">"?"</span><span class="p">))</span>
+<span class="c1"># prints: calling greet ('ada',) {'punct': '?'}</span>
+<span class="c1"># prints: hi ada?</span>
+</code></pre></div>
+
+<p>Parameter order in a signature is fixed: normal, <code>*args</code>, keyword-only, <code>**kwargs</code>. <strong>Overriding an SDK call</strong> is the
+typical use: <code>def chat(prompt, **overrides): return client.create(model="m", **{"temperature": 0.2, **overrides})</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>**kwargs</code> swallows typos silently (<code>temprature=0</code>) if you forward it to something permissive. Validate
+known keys or avoid <code>**kwargs</code> in public APIs where explicit parameters are clearer.</p>
+</blockquote>
+<h2 id="argument-unpacking" data-topics="py.functions.unpacking">Argument unpacking</h2>
+<!-- topics: unpacking -->
+
+<p>The stars also work at the <strong>call site</strong>: <code>*iterable</code> expands into positional arguments, <code>**mapping</code> expands into keyword
+arguments. The same operators unpack in assignments and build collections.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">area</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">w</span> <span class="o">*</span> <span class="n">h</span> <span class="o">*</span> <span class="n">scale</span>
+
+<span class="n">dims</span> <span class="o">=</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="n">opts</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"scale"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">area</span><span class="p">(</span><span class="o">*</span><span class="n">dims</span><span class="p">),</span> <span class="n">area</span><span class="p">(</span><span class="o">*</span><span class="n">dims</span><span class="p">,</span> <span class="o">**</span><span class="n">opts</span><span class="p">))</span>     <span class="c1"># prints: 12 24</span>
+
+<span class="n">first</span><span class="p">,</span> <span class="o">*</span><span class="n">middle</span><span class="p">,</span> <span class="n">last</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">middle</span><span class="p">,</span> <span class="n">last</span><span class="p">)</span>                  <span class="c1"># prints: 1 [2, 3, 4] 5</span>
+<span class="nb">print</span><span class="p">([</span><span class="o">*</span><span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="o">*</span><span class="s2">"ab"</span><span class="p">],</span> <span class="p">{</span><span class="o">**</span><span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span> <span class="o">**</span><span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mi">3</span><span class="p">}})</span>
+<span class="c1"># prints: [0, 1, 2, 'a', 'b'] {'a': 2, 'b': 3}</span>
+</code></pre></div>
+
+<p>Later keys win in <code>{**a, **b}</code>. Duplicate keyword arguments across several <code>**</code> in a <em>call</em> raise <code>TypeError</code>, unlike in a dict
+literal. A common LLM pattern is building a request dict, then <code>client.create(**request)</code>.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>*</code> unpacks any iterable into positionals; <code>**</code> unpacks a mapping with <strong>string keys</strong> into keywords.</p>
+</blockquote>
+<h2 id="positional-only-and-keyword-only-parameters" data-topics="py.functions.pos_kw_only">Positional-only and keyword-only parameters</h2>
+<!-- topics: pos_kw_only -->
+
+<p>A bare <code>*</code> or <code>*args</code> in a signature makes everything after it <strong>keyword-only</strong>. A <code>/</code> makes everything before it
+<strong>positional-only</strong> (3.8+).</p>
+<div class="hl"><pre><span></span><code>def f(a, b, /, c, *, d):
+        ───────  ─  ───
+   positional-only | keyword-only
+            positional-or-keyword
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span> <span class="n">f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>   <span class="c1"># prints: (1, 2, 3, 4) (1, 2, 3, 4)</span>
+<span class="k">for</span> <span class="n">call</span> <span class="ow">in</span> <span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">f</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">d</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">f</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">call</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+<span class="c1"># prints: f() got some positional-only arguments passed as keyword arguments: 'a, b'</span>
+<span class="c1"># prints: f() takes 3 positional arguments but 4 were given</span>
+</code></pre></div>
+
+<p>Why use them in a library:</p>
+<ul>
+<li><strong>Keyword-only</strong> (<code>*</code>) forces call sites to name risky parameters (<code>timeout=</code>, <code>strict=</code>), and lets you add
+  parameters later without breaking positional callers. Great for boolean flags.</li>
+<li><strong>Positional-only</strong> (<code>/</code>) lets you rename a parameter without breaking callers and frees the name for <code>**kwargs</code>:
+  <code>def update(self, key, /, **kwargs)</code> works even if someone passes <code>key="x"</code> as a keyword.</li>
+</ul>
+<p>Built-ins use it everywhere: <code>len(obj, /)</code>, and <code>sorted(iterable, /, *, key=None, reverse=False)</code>.</p>
+<h2 id="first-class-and-higher-order-functions" data-topics="py.functions.first_class,py.functions.higher_order">First-class and higher-order functions</h2>
+<!-- topics: first_class, higher_order -->
+
+<p><strong>First-class</strong> means functions are objects like any other: you can assign them to names, put them in collections, pass them
+as arguments and return them. A <strong>higher-order function</strong> takes or returns a function.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">shout</span><span class="p">(</span><span class="n">s</span><span class="p">):</span> <span class="k">return</span> <span class="n">s</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">whisper</span><span class="p">(</span><span class="n">s</span><span class="p">):</span> <span class="k">return</span> <span class="n">s</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+<span class="n">styles</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"loud"</span><span class="p">:</span> <span class="n">shout</span><span class="p">,</span> <span class="s2">"quiet"</span><span class="p">:</span> <span class="n">whisper</span><span class="p">}</span>        <span class="c1"># functions in a dict</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">styles</span><span class="p">[</span><span class="s2">"loud"</span><span class="p">](</span><span class="s2">"Hello"</span><span class="p">))</span>                    <span class="c1"># prints: HELLO</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">shout</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">callable</span><span class="p">(</span><span class="n">shout</span><span class="p">),</span> <span class="nb">type</span><span class="p">(</span><span class="n">shout</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: shout True function</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">apply_twice</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="n">fn</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">apply_twice</span><span class="p">(</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="n">n</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>            <span class="c1"># prints: 18</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">multiplier</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>                                <span class="c1"># returns a function</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mul</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">k</span>
+    <span class="k">return</span> <span class="n">mul</span>
+<span class="n">triple</span> <span class="o">=</span> <span class="n">multiplier</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">triple</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>                                  <span class="c1"># prints: 15</span>
+</code></pre></div>
+
+<p>Built-in higher-order functions: <code>sorted(key=)</code>, <code>max(key=)</code>, <code>map</code>, <code>filter</code>, <code>functools.partial</code>. Practical uses in
+an LLM application:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="c1"># 1. Tool dispatch: model returns a tool NAME and arguments; look the function up.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_weather</span><span class="p">(</span><span class="n">city</span><span class="p">):</span> <span class="k">return</span> <span class="sa">f</span><span class="s2">"sunny in </span><span class="si">{</span><span class="n">city</span><span class="si">}</span><span class="s2">"</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span> <span class="k">return</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span>
+<span class="n">TOOLS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"get_weather"</span><span class="p">:</span> <span class="n">get_weather</span><span class="p">,</span> <span class="s2">"add"</span><span class="p">:</span> <span class="n">add</span><span class="p">}</span>
+
+<span class="n">call</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"add"</span><span class="p">,</span> <span class="s2">"arguments"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mi">3</span><span class="p">}}</span>      <span class="c1"># as parsed from model output</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">TOOLS</span><span class="p">[</span><span class="n">call</span><span class="p">[</span><span class="s2">"name"</span><span class="p">]](</span><span class="o">**</span><span class="n">call</span><span class="p">[</span><span class="s2">"arguments"</span><span class="p">]))</span>            <span class="c1"># prints: 5</span>
+
+<span class="c1"># 2. Retry wrapper: a higher-order function that adds behaviour to any call.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">retry</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">attempts</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ConnectionError</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">attempts</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">raise</span>
+    <span class="k">return</span> <span class="n">run</span>
+
+<span class="n">state</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">flaky</span><span class="p">():</span>
+    <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ConnectionError</span>
+    <span class="k">return</span> <span class="s2">"ok"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">retry</span><span class="p">(</span><span class="n">flaky</span><span class="p">)(),</span> <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">])</span>                          <span class="c1"># prints: ok 3</span>
+
+<span class="c1"># 3. Pre-configure with partial.</span>
+<span class="n">embed</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="k">lambda</span> <span class="n">model</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">model</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"ada-002"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">embed</span><span class="p">(</span><span class="s2">"hello"</span><span class="p">))</span>                                      <span class="c1"># prints: ada-002:hello</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "What does first-class mean and why care?" Functions are objects, so behaviour can be data: dispatch tables
+replace <code>if/elif</code> chains, and decorators, callbacks and strategy injection all rely on it. Mention <code>callable()</code>.</p>
+<p><strong>Gotcha</strong> In the retry above, catching <code>Exception</code> instead of <code>ConnectionError</code> would also retry bugs. Catch only
+transient errors, add backoff plus jitter, and only retry idempotent calls.</p>
+</blockquote>
+<h2 id="function-reference-vs-function-call" data-topics="py.functions.reference_vs_call">Function reference vs function call</h2>
+<!-- topics: reference_vs_call -->
+
+<p><code>f</code> is the function <strong>object</strong>; <code>f()</code> <strong>calls</strong> it and evaluates to its return value. Passing a callback means passing
+<code>f</code>, not <code>f()</code>, otherwise you pass the <em>result</em> (often <code>None</code>) and the work runs immediately.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make_greeting</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"computing"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"hello"</span>
+
+<span class="n">ref</span> <span class="o">=</span> <span class="n">make_greeting</span>                  <span class="c1"># no call, nothing printed</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">callable</span><span class="p">(</span><span class="n">ref</span><span class="p">))</span>                 <span class="c1"># prints: True</span>
+<span class="n">value</span> <span class="o">=</span> <span class="n">make_greeting</span><span class="p">()</span>              <span class="c1"># prints: computing</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>                         <span class="c1"># prints: hello</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">run_later</span><span class="p">(</span><span class="n">callback</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">callback</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">run_later</span><span class="p">(</span><span class="n">make_greeting</span><span class="p">))</span>      <span class="c1"># prints: computing  then hello</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">run_later</span><span class="p">(</span><span class="n">make_greeting</span><span class="p">())</span>       <span class="c1"># computing runs now, then 'str' is not callable</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                         <span class="c1"># prints: computing  then 'str' object is not callable</span>
+</code></pre></div>
+
+<p>The same distinction explains <code>sorted(xs, key=len)</code> (not <code>len(xs)</code>), <code>threading.Thread(target=work)</code> (not <code>work()</code>),
+and <code>@decorator</code> versus <code>@decorator()</code> (a decorator <em>factory</em> is called first and returns the real decorator).
+Bound methods are references too: <code>obj.method</code> is a callable object that remembers <code>obj</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>default_factory=list</code>, not <code>list()</code>; <code>key=str.lower</code>, not <code>str.lower()</code>. A frequent bug is writing
+<code>button.on_click(handler())</code> so the handler fires at setup time.</p>
+</blockquote>
+<h2 id="recursion" data-topics="py.functions.recursion">Recursion</h2>
+<!-- topics: recursion -->
+
+<p>A recursive function calls itself on a smaller problem until it reaches a <strong>base case</strong>. Every call gets its own frame
+(locals) on the call stack. Without a base case that always gets reached, the stack overflows.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">factorial</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>                       <span class="c1"># base case</span>
+        <span class="k">return</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">n</span> <span class="o">*</span> <span class="n">factorial</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>      <span class="c1"># recursive case: smaller input</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>                  <span class="c1"># prints: 120</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">depth</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Nesting depth of lists."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="mi">1</span> <span class="o">+</span> <span class="nb">max</span><span class="p">((</span><span class="n">depth</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">),</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">depth</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="p">[</span><span class="mi">3</span><span class="p">]],</span> <span class="p">[]]))</span>      <span class="c1"># prints: 3</span>
+</code></pre></div>
+
+<p>Recursion fits naturally on <strong>trees and nested data</strong> (JSON, ASTs, file systems, deep merge). Python limits depth
+(default 1000, <code>sys.getrecursionlimit()</code>) and <strong>does not do tail-call optimisation</strong>, so deep linear recursion
+raises <code>RecursionError</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getrecursionlimit</span><span class="p">())</span>       <span class="c1"># prints: 1000</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">count_down</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">return</span> <span class="mi">0</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">count_down</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">count_down</span><span class="p">(</span><span class="mi">10_000</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">RecursionError</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"too deep"</span><span class="p">)</span>                <span class="c1"># prints: too deep</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">count_down_loop</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">while</span> <span class="n">n</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">-=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="mi">0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">count_down_loop</span><span class="p">(</span><span class="mi">10_000</span><span class="p">))</span>       <span class="c1"># prints: 0</span>
+</code></pre></div>
+
+<p>Workarounds, in order of preference: rewrite as a <strong>loop</strong> (or with an explicit stack list), use <code>functools.cache</code> to
+memoise overlapping subproblems (Fibonacci), or use an iterative algorithm. Raising the limit with
+<code>sys.setrecursionlimit</code> risks a real C-stack crash. (Since 3.12 the limit counts only Python frames; C-level recursion has its own separate limit.)</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache</span>
+
+<span class="nd">@cache</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">fib</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fib</span><span class="p">(</span><span class="mi">80</span><span class="p">))</span>                       <span class="c1"># prints: 23416728348467685</span>
+</code></pre></div>
+
+<p>Without <code>@cache</code>, naive <code>fib</code> is O(2^n); with it, O(n).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Recursion vs iteration?" Recursion mirrors tree-shaped problems and reads well; iteration avoids the
+depth limit and call overhead. Always name the base case and the progress step first.</p>
+</blockquote>
+<h2 id="variable-scope-legb" data-topics="py.functions.legb">Variable scope (LEGB)</h2>
+<!-- topics: legb -->
+
+<p>Python resolves a name by searching four scopes in order: <strong>L</strong>ocal (the current function), <strong>E</strong>nclosing (outer
+functions), <strong>G</strong>lobal (module), <strong>B</strong>uilt-in (<code>len</code>, <code>print</code>, ...). The first hit wins.</p>
+<div class="hl"><pre><span></span><code><span class="n">x</span> <span class="o">=</span> <span class="s2">"global"</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">outer</span><span class="p">():</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="s2">"enclosing"</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inner</span><span class="p">():</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="s2">"local"</span>
+        <span class="k">return</span> <span class="n">x</span>
+    <span class="k">return</span> <span class="n">inner</span><span class="p">(),</span> <span class="n">x</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">outer</span><span class="p">(),</span> <span class="n">x</span><span class="p">)</span>                    <span class="c1"># prints: ('local', 'enclosing') global</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">)</span>                           <span class="c1"># prints: &lt;built-in function len&gt;</span>
+</code></pre></div>
+
+<p>Key rule: a name is <strong>local to the whole function if it is assigned anywhere in it</strong> (decided at compile time).
+Reading a global is fine; assigning makes it local and breaks reads that come first.</p>
+<div class="hl"><pre><span></span><code><span class="n">counter</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">bad</span><span class="p">():</span>
+    <span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>                     <span class="c1"># assigns -&gt; counter is local -&gt; read fails</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">bad</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">UnboundLocalError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>    <span class="c1"># prints: cannot access local variable 'counter' where it is not associated with a value</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">ok</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">counter</span>                   <span class="c1"># declare: rebind the module-level name</span>
+    <span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="n">ok</span><span class="p">();</span> <span class="n">ok</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">counter</span><span class="p">)</span>                       <span class="c1"># prints: 2</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">make_counter</span><span class="p">():</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">tick</span><span class="p">():</span>
+        <span class="k">nonlocal</span> <span class="n">n</span>                   <span class="c1"># rebind the enclosing function's variable</span>
+        <span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">n</span>
+    <span class="k">return</span> <span class="n">tick</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">make_counter</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="p">(),</span> <span class="n">t</span><span class="p">(),</span> <span class="n">t</span><span class="p">())</span>                 <span class="c1"># prints: 1 2 3</span>
+</code></pre></div>
+
+<p><code>global</code> and <code>nonlocal</code> are needed only to <strong>rebind</strong> a name. <em>Mutating</em> an object (<code>lst.append</code>, <code>d[k] = v</code>) needs neither,
+because you are not assigning the name. Class bodies are not an enclosing scope for methods, and comprehension variables
+live in their own scope. <code>nonlocal</code> is the basis of closures (see the closures module).</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Mutable global state (a module-level dict you <code>.append</code> to) is a hidden dependency that makes tests order-dependent
+and breaks under multiple workers. Prefer passing state in and returning it.</p>
+</blockquote>
+<details>
+<summary>Check yourself: `def f(): print(x); x = 1` with a global `x` raises. Why?</summary>
+<p><code>x</code> is assigned in <code>f</code>, so the compiler makes it local to the whole function; the <code>print(x)</code> reads the local before it
+has a value, raising <code>UnboundLocalError</code>, instead of falling back to the global.</p>
+</details>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li><code>def</code> runs at definition time and creates a function object; the body runs only on call. No <code>return</code> means <code>None</code>.</li>
+<li>Multiple returns are one tuple. Bad calls raise <code>TypeError</code> before the body runs.</li>
+<li>Defaults are evaluated once at <code>def</code>; use a <code>None</code> (or private sentinel) default for anything mutable.</li>
+<li><code>*args</code> is a tuple, <code>**kwargs</code> is a dict; <code>*</code>/<code>**</code> at a call site unpack; signature order is normal, <code>*args</code>, keyword-only, <code>**kwargs</code>.</li>
+<li><code>/</code> makes earlier parameters positional-only; <code>*</code> makes later ones keyword-only.</li>
+<li>Functions are objects: store them in dicts, pass them, return them. <code>f</code> is the object, <code>f()</code> is the result.</li>
+<li>Recursion needs a base case, hits <code>RecursionError</code> near 1000 frames, has no tail-call optimisation: use loops or <code>functools.cache</code>.</li>
+<li>LEGB: assignment anywhere in a function makes the name local; <code>global</code>/<code>nonlocal</code> rebind, mutation does not need them.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-data_structures.html">&larr; Python Data Structures</a><a class="pn next" href="revise-py-functional.html">Functional Programming &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

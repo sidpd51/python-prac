@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File Handling notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.files">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / File Handling</p><div class="note-head"><div id="note-progress" data-module="py.files"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#opening-and-closing-files" data-target="opening-and-closing-files">Opening and closing files</a></li><li><a href="#file-modes" data-target="file-modes">File modes</a></li><li><a href="#reading-and-writing" data-target="reading-and-writing">Reading and writing</a></li><li><a href="#the-with-statement-for-files" data-target="the-with-statement-for-files">The with statement for files</a></li><li><a href="#text-versus-binary-and-encoding" data-target="text-versus-binary-and-encoding">Text versus binary and encoding</a></li><li><a href="#csv-and-json" data-target="csv-and-json">CSV and JSON</a></li><li><a href="#pathlib" data-target="pathlib">pathlib</a></li><li><a href="#directory-and-file-operations" data-target="directory-and-file-operations">Directory and file operations</a></li><li><a href="#temporary-files" data-target="temporary-files">Temporary files</a></li><li><a href="#large-file-processing" data-target="large-file-processing">Large file processing</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="files">Files</h1>
+<p>Files are where your program meets the outside world: configs, logs, prompt templates, and above all the
+corpora that feed RAG and fine-tuning. The Python file API is small, but the traps are real: forgetting to
+close handles, text versus bytes, the wrong encoding on Windows, loading a 20 GB file into RAM, and writing a
+half-finished file when the process dies. Interviewers ask about <code>with</code>, modes, encodings, <code>pathlib</code>, and how
+you would process a file that does not fit in memory.</p>
+<p>Every example below builds its files in a temporary directory so it runs standalone.</p>
+<h2 id="opening-and-closing-files" data-topics="py.files.open_close,py.files.open">Opening and closing files</h2>
+<!-- topics: open_close, open -->
+
+<p><code>open(path, mode="r", encoding=None, ...)</code> asks the OS for a <strong>file descriptor</strong> and returns a file object that
+wraps it with a buffer. Descriptors are a limited resource, and written data may sit in the buffer until you
+flush or close. So every <code>open</code> needs a matching <code>close</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">()</span>
+<span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="s2">"a.txt"</span><span class="p">)</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"hello"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">closed</span><span class="p">)</span>       <span class="c1"># prints: False</span>
+<span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>             <span class="c1"># flushes the buffer and releases the descriptor</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">closed</span><span class="p">)</span>       <span class="c1"># prints: True</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"more"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>          <span class="c1"># prints: I/O operation on closed file.</span>
+</code></pre></div>
+
+<p>Manual <code>close()</code> is skipped if anything raises between <code>open</code> and <code>close</code>. CPython often closes an unreferenced
+file when it is garbage collected, but that is an implementation detail (PyPy differs), and you get a
+<code>ResourceWarning</code>. Use <code>with</code> (next sections).</p>
+<p>Useful <code>open</code> parameters: <code>encoding</code> (always pass it for text), <code>newline</code> (control line-ending translation),
+<code>buffering</code> (0 only for binary), <code>errors</code> (<code>"strict"</code>, <code>"replace"</code>, <code>"ignore"</code>), <code>closefd</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A write that "succeeded" can still be lost: data lives in Python's buffer and the OS cache.
+<code>flush()</code> empties Python's buffer, <code>os.fsync(f.fileno())</code> asks the OS to hit the disk.</p>
+</blockquote>
+<h2 id="file-modes" data-topics="py.files.modes">File modes</h2>
+<!-- topics: modes -->
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Meaning</th>
+<th>Creates?</th>
+<th>Truncates?</th>
+<th>Position</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>r</code></td>
+<td>read (default)</td>
+<td>no, error if missing</td>
+<td>no</td>
+<td>start</td>
+</tr>
+<tr>
+<td><code>w</code></td>
+<td>write</td>
+<td>yes</td>
+<td><strong>yes, immediately</strong></td>
+<td>start</td>
+</tr>
+<tr>
+<td><code>a</code></td>
+<td>append</td>
+<td>yes</td>
+<td>no</td>
+<td>always end</td>
+</tr>
+<tr>
+<td><code>x</code></td>
+<td>exclusive create</td>
+<td>yes, error if exists</td>
+<td>n/a</td>
+<td>start</td>
+</tr>
+<tr>
+<td><code>r+</code></td>
+<td>read and write</td>
+<td>no</td>
+<td>no</td>
+<td>start</td>
+</tr>
+<tr>
+<td><code>w+</code></td>
+<td>read and write</td>
+<td>yes</td>
+<td>yes</td>
+<td>start</td>
+</tr>
+</tbody>
+</table></div>
+<p>Add <code>b</code> for binary (<code>rb</code>, <code>wb</code>), <code>t</code> (default) for text.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"m.txt"</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"one</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"two</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">())</span>    <span class="c1"># prints: ['one', 'two']</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">FileExistsError</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"x refuses to overwrite"</span><span class="p">)</span>   <span class="c1"># prints: x refuses to overwrite</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">pass</span>                              <span class="c1"># opening with "w" already emptied it</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getsize</span><span class="p">(</span><span class="n">p</span><span class="p">))</span>             <span class="c1"># prints: 0</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>"w"</code> destroys the existing content the moment you open it, before you write anything. If your
+code then crashes, you have lost the old data too. See atomic writes below.</p>
+</blockquote>
+<h2 id="reading-and-writing" data-topics="py.files.read_write">Reading and writing</h2>
+<!-- topics: read_write -->
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Returns</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>f.read()</code></td>
+<td>whole content as one string</td>
+<td>small files</td>
+</tr>
+<tr>
+<td><code>f.read(n)</code></td>
+<td>up to n characters/bytes</td>
+<td>chunked reads</td>
+</tr>
+<tr>
+<td><code>f.readline()</code></td>
+<td>one line including <code>\n</code></td>
+<td>manual loops</td>
+</tr>
+<tr>
+<td><code>f.readlines()</code></td>
+<td>list of all lines</td>
+<td>small files</td>
+</tr>
+<tr>
+<td><code>for line in f</code></td>
+<td>lines lazily</td>
+<td><strong>default for text</strong></td>
+</tr>
+<tr>
+<td><code>f.write(s)</code></td>
+<td>number of chars written</td>
+<td>no newline added</td>
+</tr>
+<tr>
+<td><code>f.writelines(seq)</code></td>
+<td>None</td>
+<td>no newlines added either</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"r.txt"</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"a</span><span class="se">\n</span><span class="s2">b</span><span class="se">\n</span><span class="s2">c</span><span class="se">\n</span><span class="s2">"</span><span class="p">))</span>        <span class="c1"># prints: 6</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">writelines</span><span class="p">([</span><span class="s2">"d</span><span class="se">\n</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"e</span><span class="se">\n</span><span class="s2">"</span><span class="p">])</span>        <span class="c1"># you must supply the \n yourself</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">readline</span><span class="p">())</span>                 <span class="c1"># prints: a (followed by a blank line, the \n is kept)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"|"</span><span class="p">))</span> <span class="c1"># prints: b|c</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">tell</span><span class="p">())</span>                     <span class="c1"># prints: 5</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">([</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">])</span> <span class="c1"># prints: ['a', 'b', 'c', 'd', 'e']</span>
+</code></pre></div>
+
+<p>The file object is an <strong>iterator</strong> over lines (the same one-pass behaviour as generators): after the loop, it is
+exhausted until you <code>seek(0)</code>. <code>print(line)</code> shows blank lines because the line already carries <code>\n</code>; use
+<code>line.rstrip("\n")</code> or <code>print(line, end="")</code>.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>write</code> and <code>writelines</code> never add newlines. <code>read()</code> on a huge file loads all of it.</p>
+</blockquote>
+<h2 id="the-with-statement-for-files" data-topics="py.files.with">The with statement for files</h2>
+<!-- topics: with -->
+
+<p><code>with open(...) as f:</code> closes the file on every exit path: normal completion, <code>return</code>, <code>break</code> or an
+exception. It is <code>try/finally: f.close()</code> in one line (the protocol behind it is in the context managers module).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"w.txt"</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">write_then_fail</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">f</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"data"</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"boom"</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">write_then_fail</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+    <span class="k">pass</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">closed</span><span class="p">)</span>           <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>     <span class="c1"># prints: data</span>
+</code></pre></div>
+
+<p>The file was flushed and closed even though the function raised. After the block the name <code>f</code> is still bound, but the object is closed. Open two files in one statement: <code>with open(a) as src, open(b, "w") as dst:</code>.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why <code>with</code> and not <code>close()</code>?" Exception safety and no leaked descriptors. A leak shows up as
+<code>OSError: Too many open files</code> in a long-running service.</p>
+</blockquote>
+<h2 id="text-versus-binary-and-encoding" data-topics="py.files.text_vs_binary,py.files.encoding">Text versus binary and encoding</h2>
+<!-- topics: text_vs_binary, encoding -->
+
+<p>Disks store <strong>bytes</strong>. <strong>Text mode</strong> decodes those bytes into <code>str</code> using an encoding and translates line
+endings; <strong>binary mode</strong> gives you raw <code>bytes</code> untouched.</p>
+<div class="hl"><pre><span></span><code>disk bytes  --(decode with encoding)--&gt;  str      mode "r"  / "w"   (adds newline translation)
+disk bytes  ------------ as is -------&gt;  bytes    mode "rb" / "wb"
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"e.txt"</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"café"</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>                         <span class="c1"># prints: b'caf\xc3\xa9'</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="s2">"café"</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span>       <span class="c1"># prints: 4 5</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">))</span>         <span class="c1"># prints: café</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"latin-1"</span><span class="p">))</span>       <span class="c1"># prints: cafÃ©</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">raw</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"ascii"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">UnicodeDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"decode failed at byte"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">start</span><span class="p">)</span>   <span class="c1"># prints: decode failed at byte 3</span>
+</code></pre></div>
+
+<p>UTF-8 uses 1 to 4 bytes per character, so characters and bytes are not the same count. Decoding with the wrong
+encoding either raises <code>UnicodeDecodeError</code> or, worse, produces <strong>mojibake</strong> (<code>cafÃ©</code>) silently.</p>
+<p>Rules:
+* <strong>Always pass <code>encoding="utf-8"</code></strong> for text. The default is locale-dependent (often cp1252 on Windows,
+  UTF-8 on modern Linux/macOS). Python 3.15 will make UTF-8 the default everywhere (PEP 686); do not rely on it today.
+* <code>errors="replace"</code> swaps undecodable bytes for the replacement character, handy for dirty scraped text.
+  <code>"ignore"</code> drops them silently, which hides data loss.
+* <code>utf-8-sig</code> strips the BOM Excel likes to add to CSV files.
+* Use binary for images, PDFs, pickles, and anything where you must not alter bytes.
+* Text mode translates <code>\r\n</code> to <code>\n</code> on read; pass <code>newline=""</code> to disable (required for the <code>csv</code> module).</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Scraped web text and PDFs are full of bad bytes. A corpus loader that opens with
+<code>encoding="utf-8", errors="replace"</code> and logs how many replacements happened beats one that crashes at row 4 million.
+Tokenizers also count tokens, not characters or bytes: all three differ.</p>
+</blockquote>
+<details>
+<summary>Check yourself: why is `len("café")` 4 but the file 5 bytes?</summary>
+<p>The <code>é</code> encodes to two bytes in UTF-8 (<code>c3 a9</code>). <code>len</code> of a <code>str</code> counts characters (code points); the file stores bytes.</p>
+</details>
+<h2 id="csv-and-json" data-topics="py.files.csv,py.files.json">CSV and JSON</h2>
+<!-- topics: csv, json -->
+
+<p><strong>csv</strong> handles quoting, embedded commas and newlines. Do not split on <code>","</code> by hand. Open with <code>newline=""</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">csv</span><span class="o">,</span><span class="w"> </span><span class="nn">io</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">()</span>
+<span class="n">w</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">writer</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+<span class="n">w</span><span class="o">.</span><span class="n">writerow</span><span class="p">([</span><span class="s2">"id"</span><span class="p">,</span> <span class="s2">"text"</span><span class="p">])</span>
+<span class="n">w</span><span class="o">.</span><span class="n">writerow</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'He said "hi", twice'</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">1</span><span class="p">])</span>      <span class="c1"># prints: 1,"He said ""hi"", twice"</span>
+
+<span class="n">buf</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">csv</span><span class="o">.</span><span class="n">DictReader</span><span class="p">(</span><span class="n">buf</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+<span class="c1"># prints: {'id': '1', 'text': 'He said "hi", twice'}</span>
+</code></pre></div>
+
+<p>Everything read from CSV is a <strong>string</strong>; convert types yourself (or use pandas). <code>DictReader</code>/<code>DictWriter</code> map
+rows to header names.</p>
+<p><strong>json</strong> round-trips dicts, lists, strings, numbers, bools and <code>None</code>. <code>load/dump</code> work on file objects,
+<code>loads/dumps</code> on strings.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span><span class="o">,</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"c.json"</span><span class="p">)</span>
+<span class="n">cfg</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"model"</span><span class="p">:</span> <span class="s2">"m1"</span><span class="p">,</span> <span class="s2">"temperature"</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span> <span class="s2">"stop"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"naïve"</span><span class="p">}</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="o">==</span> <span class="n">cfg</span><span class="p">)</span>               <span class="c1"># prints: True</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)}))</span>             <span class="c1"># prints: {"a": [1, 2]}   tuple becomes list</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"t"</span><span class="p">:</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">}})</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                                 <span class="c1"># prints: Object of type set is not JSON serializable</span>
+</code></pre></div>
+
+<p>Traps: non-string dict keys become strings; tuples come back as lists; <code>datetime</code>, <code>set</code> and custom classes need
+<code>default=</code> or a custom encoder; <code>ensure_ascii=False</code> keeps non-ASCII readable.</p>
+<p><strong>JSONL</strong> (one JSON object per line) is the standard container for large LLM datasets because you can stream it
+and append to it. Do not <code>json.load</code> a 10 GB array:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span><span class="o">,</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"data.jsonl"</span><span class="p">)</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"prompt"</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"label"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span> <span class="p">{</span><span class="s2">"prompt"</span><span class="p">:</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"label"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}]</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">r</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)[</span><span class="s2">"prompt"</span><span class="p">])</span>
+<span class="c1"># prints: a</span>
+<span class="c1"># prints: b</span>
+</code></pre></div>
+
+<h2 id="pathlib" data-topics="py.files.pathlib">pathlib</h2>
+<!-- topics: pathlib -->
+
+<p><code>pathlib.Path</code> replaces <code>os.path</code> string-juggling with objects. The <code>/</code> operator joins parts portably.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"docs"</span> <span class="o">/</span> <span class="s2">"report.final.md"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">stem</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">suffix</span><span class="p">)</span>           <span class="c1"># prints: report.final.md report.final .md</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".txt"</span><span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>         <span class="c1"># prints: report.final.txt</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>                      <span class="c1"># prints: docs</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">exists</span><span class="p">())</span>                         <span class="c1"># prints: False</span>
+
+<span class="n">p</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">p</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"# hi</span><span class="se">\n</span><span class="s2">"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">))</span>      <span class="c1"># prints: # hi</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_size</span><span class="p">)</span>                   <span class="c1"># prints: 5</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">root</span><span class="p">))</span>                <span class="c1"># prints: docs/report.final.md</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>os / open style</th>
+<th>pathlib</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>os.path.join(a, b)</code></td>
+<td><code>Path(a) / b</code></td>
+</tr>
+<tr>
+<td><code>os.path.exists(p)</code></td>
+<td><code>p.exists()</code></td>
+</tr>
+<tr>
+<td><code>os.makedirs(p, exist_ok=True)</code></td>
+<td><code>p.mkdir(parents=True, exist_ok=True)</code></td>
+</tr>
+<tr>
+<td><code>open(p).read()</code></td>
+<td><code>p.read_text(encoding=...)</code></td>
+</tr>
+<tr>
+<td><code>os.path.splitext</code></td>
+<td><code>p.suffix</code>, <code>p.stem</code></td>
+</tr>
+<tr>
+<td><code>os.listdir</code>, <code>glob</code></td>
+<td><code>p.iterdir()</code>, <code>p.glob("*.md")</code>, <code>p.rglob("*.md")</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>Path.home()</code>, <code>Path.cwd()</code>, <code>p.resolve()</code> (absolute, symlinks resolved), <code>p.is_file()</code>, <code>p.is_dir()</code> complete the
+toolbox. <code>read_text</code> loads the whole file, so it is for small files only.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>Path("a") / "/etc"</code> yields <code>/etc</code>: an absolute right-hand side discards the left. Never join
+untrusted user input to a base path without checking that <code>resolve()</code> stays inside the base (path traversal).</p>
+</blockquote>
+<h2 id="directory-and-file-operations" data-topics="py.files.dir_ops">Directory and file operations</h2>
+<!-- topics: dir_ops -->
+
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span><span class="o">,</span><span class="w"> </span><span class="nn">tempfile</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a"</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">()</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a"</span> <span class="o">/</span> <span class="s2">"x.md"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"x"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a"</span> <span class="o">/</span> <span class="s2">"y.txt"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"y"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"b"</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()))</span>        <span class="c1"># prints: ['a', 'b']</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">"*.md"</span><span class="p">)))</span>    <span class="c1"># prints: ['x.md']</span>
+
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a"</span> <span class="o">/</span> <span class="s2">"x.md"</span><span class="p">)</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"b"</span> <span class="o">/</span> <span class="s2">"x.md"</span><span class="p">)</span>    <span class="c1"># move/rename</span>
+<span class="n">shutil</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a"</span> <span class="o">/</span> <span class="s2">"y.txt"</span><span class="p">,</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"b"</span><span class="p">)</span>        <span class="c1"># copy file</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"b"</span><span class="p">)</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()))</span>  <span class="c1"># prints: ['x.md', 'y.txt']</span>
+
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a"</span> <span class="o">/</span> <span class="s2">"y.txt"</span><span class="p">)</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>                      <span class="c1"># delete a file</span>
+<span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"b"</span><span class="p">)</span>                            <span class="c1"># delete a tree (dangerous, no undo)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">root</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()))</span>        <span class="c1"># prints: ['a']</span>
+</code></pre></div>
+
+<p><code>Path.rmdir()</code> removes only an empty directory. <code>os.walk(top)</code> yields <code>(dirpath, dirnames, filenames)</code> and
+lets you prune the walk; <code>rglob</code> is simpler when you just need matching files. <code>iterdir</code> and <code>glob</code> return
+generators in unspecified order, so <code>sorted(...)</code> for deterministic pipelines. <code>shutil.copytree</code>, <code>shutil.move</code>
+and <code>os.replace</code> (atomic rename) round out the set.</p>
+<h2 id="temporary-files" data-topics="py.files.tempfiles">Temporary files</h2>
+<!-- topics: tempfiles -->
+
+<p>Use <code>tempfile</code> instead of inventing <code>/tmp/foo.txt</code>: names are unique, permissions are safe, and cleanup is
+automatic.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">d</span><span class="p">:</span>          <span class="c1"># directory removed on exit</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"x.txt"</span>
+    <span class="n">p</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"scratch"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">exists</span><span class="p">())</span>                             <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">exists</span><span class="p">())</span>                                 <span class="c1"># prints: False</span>
+
+<span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="s2">"w+"</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".txt"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"tmp"</span><span class="p">)</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>               <span class="c1"># prints: tmp</span>
+</code></pre></div>
+
+<p><code>TemporaryFile</code> has no visible name; <code>NamedTemporaryFile</code> does (on Windows you cannot reopen it while open unless
+<code>delete=False</code>). Pytest's <code>tmp_path</code> fixture does the same for tests.</p>
+<p><strong>Atomic write pattern</strong>: write to a temp file in the <em>same directory</em>, then <code>os.replace</code> it over the target.
+Readers see the old file or the new one, never a half-written one.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">os</span><span class="o">,</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">atomic_write</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">fd</span><span class="p">,</span> <span class="n">tmp</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">mkstemp</span><span class="p">(</span><span class="nb">dir</span><span class="o">=</span><span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>   <span class="c1"># same filesystem, so replace is atomic</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">os</span><span class="o">.</span><span class="n">fdopen</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span>
+        <span class="k">raise</span>
+
+<span class="n">target</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span> <span class="o">/</span> <span class="s2">"state.json"</span>
+<span class="n">atomic_write</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="s1">'{"v": 1}'</span><span class="p">)</span>
+<span class="n">atomic_write</span><span class="p">(</span><span class="n">target</span><span class="p">,</span> <span class="s1">'{"v": 2}'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">target</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>                         <span class="c1"># prints: {"v": 2}</span>
+</code></pre></div>
+
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Checkpointing embeddings or an eval-run state file this way means a crash mid-write never corrupts
+yesterday's checkpoint.</p>
+</blockquote>
+<h2 id="large-file-processing" data-topics="py.files.large_files">Large file processing</h2>
+<!-- topics: large_files -->
+
+<p>Never <code>read()</code> or <code>readlines()</code> a file you do not know the size of. Iterate, so memory stays flat:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"big.txt"</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">):</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">"line </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span>              <span class="c1"># one line in memory at a time (buffered under the hood)</span>
+        <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"7</span><span class="se">\n</span><span class="s2">"</span><span class="p">):</span>
+            <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>                    <span class="c1"># prints: 100</span>
+</code></pre></div>
+
+<p>Strategies:
+* <strong>Line iteration</strong> for text/JSONL; wrap in a generator that parses and yields records.
+* <strong>Fixed-size chunks</strong> for binary or one giant line: <code>while chunk := f.read(1 &lt;&lt; 20): ...</code>.
+* <strong>Batches</strong>: group N records (embedding APIs take lists) with <code>itertools.batched</code> (3.12+).
+* <strong><code>mmap</code></strong> for random access into huge binary files without loading them.
+* <strong>pandas <code>read_csv(chunksize=...)</code></strong> or Parquet row groups for tables.
+* Write results incrementally (append JSONL) so a crash does not lose everything, and make jobs resumable by
+  recording the last processed offset or id.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">batched</span>
+
+<span class="n">p</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"b.bin"</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"wb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">sizes</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="n">chunk</span> <span class="o">:=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>          <span class="c1"># walrus: read until empty bytes</span>
+        <span class="n">sizes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sizes</span><span class="p">)</span>                           <span class="c1"># prints: [4, 4, 2]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">batched</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">),</span> <span class="mi">2</span><span class="p">)))</span>      <span class="c1"># prints: [(0, 1), (2, 3), (4,)]</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Process a 50 GB file on a 16 GB machine?" Stream it: iterate lines or chunks, keep running
+aggregates or emit results incrementally, avoid <code>readlines</code>/<code>json.load</code>/<code>read_text</code>, and make the job restartable.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li><code>open</code> hands out a file descriptor plus a buffer; always close, which <code>with</code> guarantees on every exit path.</li>
+<li><code>w</code> truncates on open, <code>a</code> appends, <code>x</code> refuses to overwrite, <code>r+</code> reads and writes without truncating.</li>
+<li>Iterate a file (<code>for line in f</code>) instead of <code>readlines()</code>; <code>write</code> never adds newlines.</li>
+<li>Text = bytes decoded with an encoding; always pass <code>encoding="utf-8"</code>; wrong decoding means errors or mojibake.</li>
+<li>Use <code>csv</code> (with <code>newline=""</code>) and <code>json</code>; CSV values are all strings; JSON turns tuples to lists and keys to strings.</li>
+<li>JSONL (one object per line) streams and appends: the default format for big LLM datasets.</li>
+<li><code>pathlib.Path</code> with <code>/</code>, <code>read_text</code>, <code>mkdir(parents=True, exist_ok=True)</code>, <code>glob</code>/<code>rglob</code> replaces <code>os.path</code>.</li>
+<li><code>tempfile</code> gives safe unique scratch space; write to temp then <code>os.replace</code> for atomic updates.</li>
+<li>Large files: stream lines or chunks, batch, write incrementally, keep jobs resumable.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-exceptions.html">&larr; Exception Handling</a><a class="pn next" href="revise-py-context_managers.html">Context Managers &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

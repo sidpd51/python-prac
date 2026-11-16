@@ -3,17 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Reference - AI Eng Prep Notes</title>
+<title>Reference - AI Eng Prep</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page="doc" >
 <div class="wrap">
 <header class="top">
-  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
-  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="reference.html" aria-current="page">Reference</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html" aria-current="page">Guide</a></nav>
 </header>
-<p class="src">docs/REFERENCE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#read-these-notes-in-a-browser-interactive">Read these notes in a browser (interactive)</a></li><li><a href="#setup-once-on-each-machine">Setup (once, on each machine)</a></li><li><a href="#the-daily-loop-60-120-min">The daily loop (60-120 min)</a></li><li><a href="#commands">Commands</a></li><li><a href="#working-on-the-docmind-capstone">Working on the DocMind capstone</a></li><li><a href="#adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</a></li><li><a href="#layout">Layout</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#what-3-4-years-of-experience-actually-means-in-interviews">What &quot;3-4 years of experience&quot; actually means in interviews</a></li></ol></nav><article class="prose"><h1 id="reference-how-everything-works">Reference: how everything works</h1>
-<p>The short version is in the README. This page has the details: every command, how mastery is scored,
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="guide.html">Guide</a> / Reference</p><p class="src">docs/REFERENCE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#read-these-notes-in-a-browser-interactive">Read these notes in a browser (interactive)</a></li><li><a href="#setup-once-on-each-machine">Setup (once, on each machine)</a></li><li><a href="#the-daily-loop-60-120-min">The daily loop (60-120 min)</a></li><li><a href="#commands">Commands</a></li><li><a href="#working-on-the-docmind-capstone">Working on the DocMind capstone</a></li><li><a href="#adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</a></li><li><a href="#layout">Layout</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#what-3-4-years-of-experience-actually-means-in-interviews">What &quot;3-4 years of experience&quot; actually means in interviews</a></li></ol></nav><article class="prose"><h1 id="reference-how-everything-works">Reference: how everything works</h1>
+<p>You don't need the terminal to revise or practise: the browser app (Today, Revise, Quiz, Exercises) does that and saves
+progress in the browser. The terminal helper below is optional, for running exercise tests and rebuilding the pages.
+This page has the details: every command, how mastery is scored,
 how to add new topics, and the folder layout. You can ignore it until you need it.</p>
 <p>In this page, <code>study X</code> means <code>./study.sh X</code> (or plain <code>study X</code> if you activated the venv with <code>source .venv/bin/activate</code>).</p>
 <p>A personal system for going from "I've covered the syllabus" to "I can do this in an interview
@@ -290,6 +293,8 @@ docs/              CONTENT_GUIDE.md (how to write exercises/questions)
    not remember them later.</li>
 </ol></article></div>
 </div>
+<script src="data.js"></script>
 <script src="site.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

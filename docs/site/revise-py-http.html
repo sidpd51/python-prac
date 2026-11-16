@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Async HTTP and API Integration notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.http">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Async HTTP and API Integration</p><div class="note-head"><div id="note-progress" data-module="py.http"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#http-fundamentals" data-target="http-fundamentals">HTTP fundamentals</a></li><li><a href="#sync-versus-async-requests-versus-httpx" data-target="sync-versus-async-requests-versus-httpx">Sync versus async, requests versus httpx</a></li><li><a href="#client-and-asyncclient" data-target="client-and-asyncclient">Client and AsyncClient</a></li><li><a href="#connection-pooling-and-reuse" data-target="connection-pooling-and-reuse">Connection pooling and reuse</a></li><li><a href="#timeouts-connect-read-write-pool" data-target="timeouts-connect-read-write-pool">Timeouts: connect, read, write, pool</a></li><li><a href="#status-codes-and-error-handling" data-target="status-codes-and-error-handling">Status codes and error handling</a></li><li><a href="#retries-what-to-retry-and-idempotency" data-target="retries-what-to-retry-and-idempotency">Retries: what to retry and idempotency</a></li><li><a href="#exponential-backoff-jitter-and-retry-limits" data-target="exponential-backoff-jitter-and-retry-limits">Exponential backoff, jitter and retry limits</a></li><li><a href="#rate-limiting-versus-concurrency-limits" data-target="rate-limiting-versus-concurrency-limits">Rate limiting versus concurrency limits</a></li><li><a href="#concurrent-calls" data-target="concurrent-calls">Concurrent calls</a></li><li><a href="#batching" data-target="batching">Batching</a></li><li><a href="#partial-failures" data-target="partial-failures">Partial failures</a></li><li><a href="#validating-responses-with-pydantic" data-target="validating-responses-with-pydantic">Validating responses with Pydantic</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="async-http-and-api-integration">Async HTTP and API Integration</h1>
+<p>Every LLM call, embedding job and tool invocation is an HTTP request, and in production most of the engineering is
+not the happy path: it is timeouts, 429s, retries, concurrency caps, partial failures and validating what came
+back. This note uses <code>httpx</code> and, for every example, <code>httpx.MockTransport</code>: a fake transport that runs your own
+function instead of touching the network, so all code here runs offline and deterministically. The same trick is how
+you unit-test API clients. Interviews ask: which errors do you retry, why jitter, why one shared client, how do you
+cap concurrency, and what happens when 3 of 50 batches fail.</p>
+<h2 id="http-fundamentals" data-topics="py.http.fundamentals">HTTP fundamentals</h2>
+<!-- topics: fundamentals -->
+
+<p>HTTP is request/response over a TCP connection (TLS on top for <code>https</code>). A request is a <strong>method</strong>, a <strong>URL</strong>,
+<strong>headers</strong> and an optional <strong>body</strong>; a response is a <strong>status code</strong>, headers and a body.</p>
+<div class="hl"><pre><span></span><code>POST /v1/chat/completions HTTP/1.1          HTTP/1.1 200 OK
+Host: api.example.com                       Content-Type: application/json
+Authorization: Bearer sk-...                x-request-id: req_123
+Content-Type: application/json
+                                            {"choices": [...]}
+{"model": "m", "messages": [...]}
+</code></pre></div>
+
+<p><strong>Safe</strong> methods (GET, HEAD, OPTIONS) have no side effects. <strong>Idempotent</strong> methods (those plus PUT, DELETE) have the same
+effect when repeated. <strong>POST is neither.</strong></p>
+<p>Almost every LLM endpoint is a <code>POST</code>. A <code>POST</code> retried after an ambiguous failure may run twice (two charges,
+two emails sent by a tool). That is why idempotency matters so much for retries, see below.</p>
+<p>The client section below shows a real request. <code>json=</code> serialises the body and sets <code>Content-Type: application/json</code>.</p>
+<h2 id="sync-versus-async-requests-versus-httpx" data-topics="py.http.sync_vs_async,py.http.requests_vs_httpx">Sync versus async, requests versus httpx</h2>
+<!-- topics: sync_vs_async, requests_vs_httpx -->
+
+<p>A network call spends nearly all its time <strong>waiting</strong>. A sync call blocks the thread while waiting; 100 sequential
+calls of 1 s each take 100 s. With async, the event loop runs other coroutines during each wait, so 100 concurrent
+calls take about 1 s (if the server and your limits allow it). LLM work is I/O-bound, so async is the natural fit
+for fan-out: embedding many chunks, parallel tool calls, many users on one server.</p>
+<p>Concurrency is demonstrated in the gather section below.</p>
+<p>Async does not make one request faster; it lets many waits overlap.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>requests</code></th>
+<th><code>httpx</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sync API</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Async API</td>
+<td><strong>no</strong></td>
+<td>yes (<code>AsyncClient</code>)</td>
+</tr>
+<tr>
+<td>HTTP/2</td>
+<td>no</td>
+<td>optional (<code>http2=True</code>)</td>
+</tr>
+<tr>
+<td>Timeouts</td>
+<td>none by default (hangs forever)</td>
+<td><strong>5 s default</strong>, four-part <code>Timeout</code></td>
+</tr>
+<tr>
+<td>Redirects</td>
+<td>followed by default</td>
+<td><strong>not</strong> followed by default (<code>follow_redirects=True</code>)</td>
+</tr>
+<tr>
+<td>Test transport</td>
+<td>third-party mocks</td>
+<td>built-in <code>MockTransport</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Alternatives: <code>aiohttp</code> (async only, own API) and the official provider SDKs (<code>openai</code>, <code>anthropic</code>), which sit on httpx
+and add retries and typed errors.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Calling blocking <code>requests.post</code> inside an <code>async def</code> freezes the whole event loop; every other
+task stalls. Use <code>httpx.AsyncClient</code>, or <code>asyncio.to_thread</code> for unavoidable blocking code.</p>
+</blockquote>
+<h2 id="client-and-asyncclient" data-topics="py.http.client,py.http.async_client,py.http.get_post">Client and AsyncClient</h2>
+<!-- topics: client, async_client, get_post -->
+
+<p><code>httpx.Client</code> (sync) and <code>httpx.AsyncClient</code> (async) hold shared configuration (base URL, headers, timeout, auth)
+and the <strong>connection pool</strong>. Use them as context managers so connections are closed.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s2">"GET"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]})</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>                       <span class="c1"># raw bytes of the body</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">201</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"echo"</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">"content-type"</span><span class="p">],</span> <span class="s2">"len"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">)})</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">base_url</span><span class="o">=</span><span class="s2">"https://api.test"</span><span class="p">,</span>
+                                 <span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">))</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items"</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="mi">7</span><span class="p">})</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items"</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"x"</span><span class="p">})</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">g</span><span class="o">.</span><span class="n">url</span><span class="p">,</span> <span class="n">g</span><span class="o">.</span><span class="n">json</span><span class="p">())</span>             <span class="c1"># prints: https://api.test/items?id=7 {'id': '7'}</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">p</span><span class="o">.</span><span class="n">json</span><span class="p">())</span>     <span class="c1"># prints: 201 {'echo': 'application/json', 'len': 12}</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<ul>
+<li><code>params=</code> builds the query string and encodes it. <code>json=</code> sends JSON; <code>data=</code> sends form fields;
+  <code>content=</code> sends raw bytes/text; <code>files=</code> multipart.</li>
+<li><code>await</code> every <code>AsyncClient</code> call (forgetting gives a coroutine, not a response). <code>response.json()</code>, <code>.text</code>, <code>.content</code>
+  parse the body; a client is unusable after <code>async with</code> ends.</li>
+</ul>
+<h2 id="connection-pooling-and-reuse" data-topics="py.http.pooling,py.http.reuse">Connection pooling and reuse</h2>
+<!-- topics: pooling, reuse -->
+
+<p>Opening a connection is expensive: DNS lookup, TCP handshake, TLS handshake (several round trips, tens to
+hundreds of ms). HTTP/1.1 keep-alive lets one connection carry many requests in sequence; a <strong>pool</strong> keeps idle
+connections around and hands them to the next request.</p>
+<div class="hl"><pre><span></span><code>new client per request:   [DNS][TCP][TLS][request] ... close   x N     (N handshakes)
+one shared client:        [DNS][TCP][TLS][req][req][req]...            (1 handshake, reused)
+</code></pre></div>
+
+<p>That is why you create <strong>one <code>AsyncClient</code> per application</strong> (at start-up, closed at shutdown) and reuse it:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="n">limits</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Limits</span><span class="p">(</span><span class="n">max_connections</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">max_keepalive_connections</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">keepalive_expiry</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">limits</span><span class="o">=</span><span class="n">limits</span><span class="p">)</span>          <span class="c1"># created once, shared by every task</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">limits</span><span class="o">.</span><span class="n">max_connections</span><span class="p">,</span> <span class="n">limits</span><span class="o">.</span><span class="n">max_keepalive_connections</span><span class="p">)</span>    <span class="c1"># prints: 100 20</span>
+</code></pre></div>
+
+<ul>
+<li><code>max_connections</code> is a hard cap; extra requests <strong>queue</strong> for the pool (the <code>pool</code> timeout below). Idle connections
+  beyond <code>max_keepalive_connections</code>, or idle longer than <code>keepalive_expiry</code>, are closed.</li>
+</ul>
+<p>A shared <code>AsyncClient</code> is safe to use from many tasks at once. The mistakes: building <code>AsyncClient()</code> inside the
+function that makes each call (loses reuse, leaks sockets if you forget <code>aclose()</code>), or sharing one client across
+different event loops (it is bound to the loop it first ran in).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why reuse a client?" Avoids repeated DNS/TCP/TLS setup, bounds connections via <code>Limits</code>,
+centralises headers/timeouts/auth. Mention that <code>max_connections</code> is a <em>client-side</em> limit, separate from the
+provider's rate limits.</p>
+</blockquote>
+<h2 id="timeouts-connect-read-write-pool" data-topics="py.http.connect_timeouts,py.http.request_timeouts">Timeouts: connect, read, write, pool</h2>
+<!-- topics: connect_timeouts, request_timeouts -->
+
+<p>httpx's default is a 5 s timeout, and "timeout" is really four separate limits, each a <em>per-operation</em> gap, not a
+total deadline:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Timeout</th>
+<th>Covers</th>
+<th>Exception</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>connect</code></td>
+<td>establishing the TCP/TLS connection</td>
+<td><code>ConnectTimeout</code></td>
+</tr>
+<tr>
+<td><code>read</code></td>
+<td>waiting for the next chunk of response bytes</td>
+<td><code>ReadTimeout</code></td>
+</tr>
+<tr>
+<td><code>write</code></td>
+<td>sending the next chunk of the request</td>
+<td><code>WriteTimeout</code></td>
+</tr>
+<tr>
+<td><code>pool</code></td>
+<td>waiting for a free connection in the pool</td>
+<td><code>PoolTimeout</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>All four subclass <code>httpx.TimeoutException</code>, which is a <code>TransportError</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="mf">60.0</span><span class="p">,</span> <span class="n">connect</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span>         <span class="c1"># 60 s for everything, but only 5 s to connect</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">connect</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">read</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">write</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">pool</span><span class="p">)</span>    <span class="c1"># prints: 5.0 60.0 60.0 60.0</span>
+</code></pre></div>
+
+<p>Choose them differently for LLMs: a <strong>short connect</strong> (a few seconds: if you cannot connect, fail fast and retry)
+but a <strong>long read</strong> (a non-streaming completion may legitimately take 30-120 s). A single 5 s default would kill
+valid long generations; <code>timeout=None</code> would hang forever on a dead server.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>read=60</code> does not mean "the request may last 60 s". It is the maximum silence between bytes. A
+streaming response that sends a token every second never trips it and can run for minutes. For a real total
+deadline wrap the call: <code>async with asyncio.timeout(90):</code> (3.11+) or <code>asyncio.wait_for</code>.</p>
+</blockquote>
+<p>Per-request override: <code>client.post(url, timeout=120)</code>. Both <code>ConnectTimeout</code> and <code>ReadTimeout</code> are usually
+retryable, but a <code>ReadTimeout</code> on a POST is ambiguous: the server may have processed it.</p>
+<h2 id="status-codes-and-error-handling" data-topics="py.http.status_codes,py.http.error_handling">Status codes and error handling</h2>
+<!-- topics: status_codes, error_handling -->
+
+<p>The first digit is the family, and it decides your reaction:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Meaning</th>
+<th>Examples</th>
+<th>Typical reaction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2xx</td>
+<td>success</td>
+<td>200, 201, 204</td>
+<td>use the body</td>
+</tr>
+<tr>
+<td>3xx</td>
+<td>redirect</td>
+<td>301, 302, 307</td>
+<td>httpx does not follow unless told to</td>
+</tr>
+<tr>
+<td>4xx</td>
+<td><strong>client</strong> error: the request is wrong</td>
+<td>400, 401, 403, 404, 422</td>
+<td>fix it; do not retry</td>
+</tr>
+<tr>
+<td>429</td>
+<td>rate limited</td>
+<td>429</td>
+<td><strong>retry</strong> after waiting (<code>Retry-After</code>)</td>
+</tr>
+<tr>
+<td>5xx</td>
+<td><strong>server</strong> error</td>
+<td>500, 502, 503, 504</td>
+<td>retry (transient)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Exceptions to "4xx never retry": <code>408</code> (request timeout) and <code>429</code>, sometimes <code>409</code>. LLM providers also use <code>529</code>/<code>503</code>
+for overload. <code>401</code>/<code>403</code> mean credentials or permissions: retrying only hammers the API.</p>
+<p>httpx does <strong>not</strong> raise on error status by default; you get a normal <code>Response</code>. Call <code>raise_for_status()</code>, which
+raises <code>httpx.HTTPStatusError</code> (carrying <code>.response</code>) for 4xx/5xx.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="s2">"/bad"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"max_tokens too large"</span><span class="p">}},</span>
+                              <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">"x-request-id"</span><span class="p">:</span> <span class="s2">"req_9"</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">503</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">"upstream unavailable"</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Client</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">),</span> <span class="n">base_url</span><span class="o">=</span><span class="s2">"https://api.test"</span><span class="p">)</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/bad"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">r</span><span class="o">.</span><span class="n">is_error</span><span class="p">,</span> <span class="n">r</span><span class="o">.</span><span class="n">is_client_error</span><span class="p">)</span>    <span class="c1"># prints: 400 True True</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">r</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">httpx</span><span class="o">.</span><span class="n">HTTPStatusError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">"error"</span><span class="p">][</span><span class="s2">"message"</span><span class="p">]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">msg</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">"x-request-id"</span><span class="p">])</span>
+        <span class="c1"># prints: 400 max_tokens too large req_9</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/other"</span><span class="p">)</span><span class="o">.</span><span class="n">is_server_error</span><span class="p">)</span>                <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Exception hierarchy to remember:</p>
+<div class="hl"><pre><span></span><code>httpx.HTTPError
+ |- httpx.RequestError            (no usable response)
+ |   |- httpx.TransportError  -&gt; TimeoutException, NetworkError (ConnectError, ReadError), ProtocolError
+ |- httpx.HTTPStatusError         (only raised by raise_for_status())
+</code></pre></div>
+
+<p>Good error handling extracts the <strong>message and request id</strong> from the body/headers (providers' support teams ask for
+it), maps statuses to typed exceptions (<code>AuthError</code>, <code>RateLimitError</code>, <code>ServerError</code>) so callers write
+<code>except RateLimitError</code>, and logs the request id.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>Retry-After</code> is either delta-seconds (<code>"2"</code>) or an HTTP-date. Parse both; never assume one.
+Some providers also send non-standard variants such as <code>retry-after-ms</code>.</p>
+</blockquote>
+<h2 id="retries-what-to-retry-and-idempotency" data-topics="py.http.retries">Retries: what to retry and idempotency</h2>
+<!-- topics: retries -->
+
+<p>A retry is only correct if repeating the request is <strong>safe</strong> and the failure is <strong>transient</strong>.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Retry?</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>connect error, connect timeout</td>
+<td>yes</td>
+<td>request never reached the server</td>
+</tr>
+<tr>
+<td>read timeout / connection reset after sending</td>
+<td>only if idempotent</td>
+<td>server may have acted</td>
+</tr>
+<tr>
+<td>429</td>
+<td>yes, honour <code>Retry-After</code></td>
+<td>capacity, will pass</td>
+</tr>
+<tr>
+<td>500, 502, 503, 504, 529</td>
+<td>yes</td>
+<td>transient server trouble</td>
+</tr>
+<tr>
+<td>400, 401, 403, 404, 422</td>
+<td><strong>no</strong></td>
+<td>the request is wrong; same input, same failure</td>
+</tr>
+</tbody>
+</table></div>
+<p>Idempotency decides the ambiguous cases: GET, PUT, DELETE can be repeated. <code>POST</code> can not, <strong>unless</strong> you send an
+<strong>idempotency key</strong>: a unique id the server uses to recognise a repeat and return the first result instead of
+re-running it (Stripe popularised it; many APIs support <code>Idempotency-Key</code>).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">is_idempotent</span><span class="p">(</span><span class="n">req</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">req</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"GET"</span><span class="p">,</span> <span class="s2">"HEAD"</span><span class="p">,</span> <span class="s2">"OPTIONS"</span><span class="p">,</span> <span class="s2">"PUT"</span><span class="p">,</span> <span class="s2">"DELETE"</span><span class="p">}</span> <span class="ow">or</span> <span class="s2">"idempotency-key"</span> <span class="ow">in</span> <span class="n">req</span><span class="o">.</span><span class="n">headers</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">is_retryable_status</span><span class="p">(</span><span class="n">code</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">code</span> <span class="ow">in</span> <span class="p">{</span><span class="mi">408</span><span class="p">,</span> <span class="mi">409</span><span class="p">,</span> <span class="mi">429</span><span class="p">}</span> <span class="ow">or</span> <span class="n">code</span> <span class="o">&gt;=</span> <span class="mi">500</span>
+
+<span class="n">post</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="s2">"POST"</span><span class="p">,</span> <span class="s2">"https://api.test/charge"</span><span class="p">)</span>
+<span class="n">keyed</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="s2">"POST"</span><span class="p">,</span> <span class="s2">"https://api.test/charge"</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">"Idempotency-Key"</span><span class="p">:</span> <span class="s2">"abc-1"</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">is_idempotent</span><span class="p">(</span><span class="n">post</span><span class="p">),</span> <span class="n">is_idempotent</span><span class="p">(</span><span class="n">keyed</span><span class="p">),</span> <span class="n">is_retryable_status</span><span class="p">(</span><span class="mi">429</span><span class="p">),</span> <span class="n">is_retryable_status</span><span class="p">(</span><span class="mi">400</span><span class="p">))</span>
+<span class="c1"># prints: False True True False</span>
+</code></pre></div>
+
+<p>(Headers are case-insensitive in httpx, so <code>"idempotency-key" in req.headers</code> matches.)</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Is it safe to retry a POST that timed out?" Not blindly: the timeout means you do not know if it
+ran. Safe if the endpoint is idempotent or you send an idempotency key. For pure LLM completions the cost of a
+duplicate is a wasted generation, so retrying is usually fine; for tool calls with side effects it is not.</p>
+</blockquote>
+<h2 id="exponential-backoff-jitter-and-retry-limits" data-topics="py.http.backoff,py.http.retry_limits">Exponential backoff, jitter and retry limits</h2>
+<!-- topics: backoff, retry_limits -->
+
+<p>Retrying immediately makes overload worse. <strong>Exponential backoff</strong> waits <code>base * 2**n</code> before retry <code>n</code> (0, 1, 2...),
+capped by <code>max_delay</code>. But if 1000 clients all failed together, they all retry together: a <strong>thundering herd</strong>.
+<strong>Jitter</strong> randomises the wait to spread them out. <strong>Full jitter</strong> picks uniformly between 0 and the exponential
+ceiling.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">backoff</span><span class="p">(</span><span class="n">retry</span><span class="p">,</span> <span class="n">base</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">cap</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">rng</span><span class="o">=</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">rng</span><span class="p">()</span> <span class="o">*</span> <span class="nb">min</span><span class="p">(</span><span class="n">cap</span><span class="p">,</span> <span class="n">base</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">**</span> <span class="n">retry</span><span class="p">)</span>        <span class="c1"># full jitter</span>
+
+<span class="nb">print</span><span class="p">([</span><span class="nb">min</span><span class="p">(</span><span class="mf">8.0</span><span class="p">,</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">**</span> <span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">)])</span>     <span class="c1"># prints: [0.5, 1.0, 2.0, 4.0, 8.0, 8.0]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">backoff</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">rng</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">))</span>                    <span class="c1"># prints: 2.0</span>
+</code></pre></div>
+
+<p>Injecting <code>rng</code> (and the <code>sleep</code> function) makes the policy deterministic in tests. Rules:</p>
+<ul>
+<li><strong>Server hints beat your formula.</strong> If the response has <code>Retry-After</code>, wait at least that long.</li>
+<li><strong>Cap attempts</strong> (<code>retry_limits</code>): 3-5 attempts. Unbounded retries turn an outage into an infinite loop and
+  multiply load on a struggling provider.</li>
+<li><strong>Cap the delay</strong> and ideally set an overall deadline; a user will not wait 5 minutes.</li>
+<li><strong>Retry only retryable outcomes</strong> (previous section) and only idempotent requests.</li>
+<li>Every layer that retries multiplies attempts (3 retries in the SDK x 3 in your code = 9). Retry in one place.</li>
+</ul>
+<p>A complete retry loop with a mock server that fails twice then succeeds:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="n">calls</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+    <span class="n">calls</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">calls</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">429</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">"Retry-After"</span><span class="p">:</span> <span class="s2">"2"</span><span class="p">})</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">calls</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">503</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"ok"</span><span class="p">:</span> <span class="kc">True</span><span class="p">})</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">send_with_retries</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">max_attempts</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">sleep</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_attempts</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">!=</span> <span class="mi">429</span> <span class="ow">and</span> <span class="n">resp</span><span class="o">.</span><span class="n">status_code</span> <span class="o">&lt;</span> <span class="mi">500</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">resp</span>
+        <span class="k">except</span> <span class="n">httpx</span><span class="o">.</span><span class="n">TransportError</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">attempt</span> <span class="o">==</span> <span class="n">max_attempts</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">hint</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"Retry-After"</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span> <span class="k">if</span> <span class="n">resp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">0.0</span>
+        <span class="n">delay</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">hint</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">**</span> <span class="n">attempt</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"attempt </span><span class="si">{</span><span class="n">attempt</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> failed, sleeping </span><span class="si">{</span><span class="n">delay</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"retries exhausted"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fake_sleep</span><span class="p">(</span><span class="n">_</span><span class="p">):</span> <span class="k">pass</span>                  <span class="c1"># do not really wait in the example</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">))</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">send_with_retries</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">c</span><span class="o">.</span><span class="n">build_request</span><span class="p">(</span><span class="s2">"GET"</span><span class="p">,</span> <span class="s2">"https://api.test/x"</span><span class="p">),</span> <span class="n">sleep</span><span class="o">=</span><span class="n">fake_sleep</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">calls</span><span class="p">))</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: attempt 1 failed, sleeping 2.0</span>
+<span class="c1"># prints: attempt 2 failed, sleeping 0.2</span>
+<span class="c1"># prints: 200 3</span>
+</code></pre></div>
+
+<p>The loop sent three requests (429, 503, 200). The server hint (2 s) beat the formula (0.1 s) on the first retry.</p>
+<h2 id="rate-limiting-versus-concurrency-limits" data-topics="py.http.rate_limiting,py.http.concurrency_limits">Rate limiting versus concurrency limits</h2>
+<!-- topics: rate_limiting, concurrency_limits -->
+
+<p>Two different limits that people confuse:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Rate limit</th>
+<th>Concurrency limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Question</td>
+<td>how many requests/tokens <strong>per unit time</strong>?</td>
+<td>how many requests <strong>in flight at once</strong>?</td>
+</tr>
+<tr>
+<td>Units</td>
+<td>RPM, TPM (requests/tokens per minute)</td>
+<td>simultaneous connections or tasks</td>
+</tr>
+<tr>
+<td>Who enforces</td>
+<td>the provider (returns 429)</td>
+<td>you (semaphore, pool <code>Limits</code>)</td>
+</tr>
+<tr>
+<td>Tool</td>
+<td>token bucket / sliding window</td>
+<td><code>asyncio.Semaphore</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>With fast responses you can exceed a 60 RPM limit while only 2 requests are in flight; with slow generations you can
+have hundreds in flight and stay under the rate limit. Neither implies the other. LLM providers limit <strong>both RPM and
+TPM</strong>, so a few huge prompts can trip TPM while RPM is low.</p>
+<p>A <strong>concurrency limit</strong> is an <code>asyncio.Semaphore(n)</code>: at most n tasks inside the block.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">sem</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Semaphore</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">running</span> <span class="o">=</span> <span class="n">peak</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+        <span class="k">nonlocal</span> <span class="n">running</span><span class="p">,</span> <span class="n">peak</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">sem</span><span class="p">:</span>                       <span class="c1"># acquire around the request only</span>
+            <span class="n">running</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">peak</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">peak</span><span class="p">,</span> <span class="n">running</span><span class="p">)</span>
+            <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+            <span class="n">running</span> <span class="o">-=</span> <span class="mi">1</span>
+
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">call</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"peak concurrency:"</span><span class="p">,</span> <span class="n">peak</span><span class="p">)</span>          <span class="c1"># prints: peak concurrency: 3</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>A <strong>rate limit</strong> needs time. The <strong>token bucket</strong>: a bucket holds up to <code>capacity</code> tokens and refills at <code>rate</code>
+tokens/second; each request takes a token (or waits). It allows bursts up to capacity and a long-run average of
+<code>rate</code>. Refill is computed lazily from an injectable clock, no background task:</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">TokenBucket</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rate</span><span class="p">,</span> <span class="n">capacity</span><span class="p">,</span> <span class="n">clock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rate</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">capacity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">clock</span> <span class="o">=</span> <span class="n">rate</span><span class="p">,</span> <span class="n">capacity</span><span class="p">,</span> <span class="n">clock</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tokens</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">last</span> <span class="o">=</span> <span class="n">capacity</span><span class="p">,</span> <span class="n">clock</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">try_acquire</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cost</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">now</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">clock</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tokens</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">capacity</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokens</span> <span class="o">+</span> <span class="p">(</span><span class="n">now</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">last</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last</span> <span class="o">=</span> <span class="n">now</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokens</span> <span class="o">&gt;=</span> <span class="n">cost</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tokens</span> <span class="o">-=</span> <span class="n">cost</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+<span class="n">bucket</span> <span class="o">=</span> <span class="n">TokenBucket</span><span class="p">(</span><span class="n">rate</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">capacity</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">clock</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">bucket</span><span class="o">.</span><span class="n">try_acquire</span><span class="p">()</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)])</span>    <span class="c1"># prints: [True, True, True, False]</span>
+<span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>                                         <span class="c1"># one second later: 2 tokens refilled</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">bucket</span><span class="o">.</span><span class="n">try_acquire</span><span class="p">()</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)])</span>    <span class="c1"># prints: [True, True, False]</span>
+</code></pre></div>
+
+<p>An async <code>acquire()</code> loops: <code>await sleep(deficit / rate)</code>, re-check, with a lock so waiters are served in order. Pass
+<code>cost=prompt_tokens</code> to respect TPM. The limiter is cooperative; the server's 429 stays the source of truth, so keep
+retries.</p>
+<h2 id="concurrent-calls" data-topics="py.http.concurrent_calls">Concurrent calls</h2>
+<!-- topics: concurrent_calls -->
+
+<p><code>asyncio.gather(*coros)</code> runs coroutines concurrently and returns results <strong>in the order you passed them</strong>, not
+completion order. That ordering guarantee is what lets you map results back to inputs.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s2">"n"</span><span class="p">])</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.03</span> <span class="o">-</span> <span class="n">n</span> <span class="o">*</span> <span class="mf">0.01</span><span class="p">)</span>          <span class="c1"># later items finish first</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="n">n</span><span class="p">})</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">))</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+        <span class="n">rs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"https://x.test/"</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="n">n</span><span class="p">})</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)))</span>
+        <span class="nb">print</span><span class="p">([</span><span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">"n"</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rs</span><span class="p">])</span>        <span class="c1"># prints: [0, 1, 2]  (they finished in order 2, 1, 0)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Alternatives: <code>asyncio.as_completed</code> yields as each finishes (progress bars, first useful answer);
+<code>asyncio.TaskGroup</code> (3.11+) gives structured concurrency but <strong>cancels siblings on the first failure</strong>. Always
+combine fan-out with a semaphore: <code>gather</code> over 10,000 coroutines creates 10,000 tasks at once.</p>
+<h2 id="batching" data-topics="py.http.batching">Batching</h2>
+<!-- topics: batching -->
+
+<p>Many APIs accept a list per request: embeddings take up to a few thousand inputs, with limits on item count and
+total tokens. Sending 10,000 texts one by one means 10,000 round trips and 10,000 against your RPM limit. Sending
+them in batches of 64 means about 157 requests. Batching trades latency per request for throughput and fewer
+requests.</p>
+<div class="hl"><pre><span></span><code><span class="n">texts</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"t</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">7</span><span class="p">)]</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="nb">print</span><span class="p">([(</span><span class="n">s</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">texts</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">s</span> <span class="o">+</span> <span class="n">size</span><span class="p">]))</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">texts</span><span class="p">),</span> <span class="n">size</span><span class="p">)])</span>   <span class="c1"># prints: [(0, 3), (3, 3), (6, 1)]</span>
+</code></pre></div>
+
+<p>Keep the <strong>start offset</strong> with each batch: the response's per-item <code>index</code> is relative to the batch, and providers
+may return items out of order, so place each vector at <code>start + item["index"]</code>, never rely on arrival order.</p>
+<p>Batch size is bounded by the API's max items, max tokens per request (a big batch of long chunks can exceed it), and
+the cost of a failure: one failed batch of 2,000 wastes more than one of 64. Typical: 64-256 items.</p>
+<h2 id="partial-failures" data-topics="py.http.partial_failures">Partial failures</h2>
+<!-- topics: partial_failures -->
+
+<p>With 100 batches, assume some will fail. Plain <code>await asyncio.gather(*coros)</code> raises the <strong>first</strong> exception to the
+caller while the other tasks keep running unobserved; you lose every result you were waiting for. With
+<code>return_exceptions=True</code>, exceptions are returned <strong>as values in the result list</strong>, so every task's outcome
+is kept.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s2">"n"</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">500</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">httpx</span><span class="o">.</span><span class="n">ConnectError</span><span class="p">(</span><span class="s2">"refused"</span><span class="p">,</span> <span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="n">n</span><span class="p">})</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"https://x.test/"</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="n">n</span><span class="p">})</span>
+    <span class="n">r</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">"n"</span><span class="p">]</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">))</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">fetch</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)),</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">res</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"failed"</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">)</span> <span class="k">else</span> <span class="s2">"ok"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">res</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: 0 ok int</span>
+<span class="c1"># prints: 1 failed HTTPStatusError</span>
+<span class="c1"># prints: 2 failed ConnectError</span>
+<span class="c1"># prints: 3 ok int</span>
+</code></pre></div>
+
+<p>Pattern: split <code>results</code> into successes and failures, keep failures with their <strong>input indices</strong>, retry just those, and
+return a result object (values list with <code>None</code> where failed, plus <code>(index, error)</code> failures) that makes partial
+success explicit.</p>
+<h2 id="validating-responses-with-pydantic" data-topics="py.http.response_validation">Validating responses with Pydantic</h2>
+<!-- topics: response_validation -->
+
+<p>A 200 status does not mean the body is what you expect. Providers change fields, proxies return HTML error pages
+with 200, models return <code>null</code> for a field. Validate the body at the boundary with a pydantic model, and treat
+"invalid shape" as its own failure category (typically <strong>not</strong> retryable, or retried once).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">EmbeddingItem</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">index</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">embedding</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">EmbeddingResponse</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">data</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">EmbeddingItem</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="n">resp</span><span class="p">:</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EmbeddingResponse</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">EmbeddingResponse</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"invalid response:"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"type"</span><span class="p">],</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"loc"</span><span class="p">])</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+<span class="n">html</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">"&lt;html&gt;Bad gateway&lt;/html&gt;"</span><span class="p">)</span>
+<span class="n">wrong</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"data"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"index"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}]})</span>
+<span class="n">parse</span><span class="p">(</span><span class="n">html</span><span class="p">)</span>                             <span class="c1"># prints: invalid response: json_invalid ()</span>
+<span class="n">parse</span><span class="p">(</span><span class="n">wrong</span><span class="p">)</span>                            <span class="c1"># prints: invalid response: missing ('data', 0, 'embedding')</span>
+</code></pre></div>
+
+<p>Beyond shape, check <strong>semantics</strong> the schema cannot: the returned indices are exactly <code>0..n-1</code>, the number of
+vectors equals the number of inputs, dimensions match your index. A mismatch is a failed batch, not silent data
+corruption.</p>
+<p>Full picture of a robust client call:</p>
+<div class="hl"><pre><span></span><code>build request -&gt; rate limit (token bucket) -&gt; concurrency limit (semaphore)
+  -&gt; send with timeouts -&gt; retry transient failures (backoff + jitter + Retry-After)
+  -&gt; raise_for_status / map to typed error -&gt; validate body with pydantic -&gt; result or recorded failure
+</code></pre></div>
+
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> The same flow wraps chat completions: validate <code>choices[0].message</code>, check <code>finish_reason</code>
+(<code>"length"</code> means truncated output), and parse tool-call <code>arguments</code> with the tool's pydantic model.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>HTTP = method + URL + headers + body, status + headers + body. POST is not idempotent; 4xx = your fault, 5xx = theirs.</li>
+<li>Async lets many network waits overlap; it does not speed up a single call. Never block the loop with <code>requests</code>.</li>
+<li>httpx: sync + async, 5 s default timeout, no redirects by default, <code>MockTransport</code> for offline tests.</li>
+<li>One shared <code>AsyncClient</code> per app reuses connections (no repeat DNS/TCP/TLS) and bounds them with <code>Limits</code>.</li>
+<li>Four timeouts: connect (short), read (long for LLMs), write, pool. Read is per-gap, not a total deadline.</li>
+<li>httpx does not raise on 4xx/5xx; <code>raise_for_status()</code> does. Extract message and request id from the error.</li>
+<li>Retry connect errors, 408/429/5xx; not other 4xx. Retry POST only with an idempotency key.</li>
+<li>Backoff = exponential, capped, full jitter, honour <code>Retry-After</code>, limited attempts, retry in one layer only.</li>
+<li>Rate limit = per time (token bucket, RPM/TPM). Concurrency limit = in flight (Semaphore). You need both.</li>
+<li><code>gather</code> preserves input order; <code>return_exceptions=True</code> keeps partial results; record failures by input index.</li>
+<li>Batch inputs, keep batch offsets, place results by index; validate every response body with pydantic plus semantic checks.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-async.html">&larr; Asynchronous Programming</a><a class="pn next" href="revise-py-memory.html">Python Memory Management &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

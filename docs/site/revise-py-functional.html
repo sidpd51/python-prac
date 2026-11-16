@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Functional Programming notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.functional">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Functional Programming</p><div class="note-head"><div id="note-progress" data-module="py.functional"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#lambda-functions" data-target="lambda-functions">Lambda functions</a></li><li><a href="#map-filter-and-reduce" data-target="map-filter-and-reduce">map, filter and reduce</a></li><li><a href="#lazy-evaluation" data-target="lazy-evaluation">Lazy evaluation</a></li><li><a href="#iterator-consumption" data-target="iterator-consumption">Iterator consumption</a></li><li><a href="#functional-programming-concepts" data-target="functional-programming-concepts">Functional programming concepts</a></li><li><a href="#pure-functions" data-target="pure-functions">Pure functions</a></li><li><a href="#side-effects-and-functional-core" data-target="side-effects-and-functional-core">Side effects and functional core</a></li><li><a href="#immutability" data-target="immutability">Immutability</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="functional-programming">Functional Programming</h1>
+<p>Python is not a functional language, but it borrows enough ideas to be useful: functions as values, <code>map</code>/<code>filter</code>/<code>reduce</code>,
+lazy iterators, and a style that favours pure functions and immutable data. The value for you is not syntax trivia; it is
+a design habit. Code that computes results from inputs without touching hidden state is easy to test, cache, run in
+parallel and debug, which is exactly what you want for ranking retrieved chunks, transforming LLM responses and building
+agent loops with a small impure shell. The traps (single-use iterators, <code>reduce</code> quadratics, late-binding lambdas) are
+common interview material.</p>
+<h2 id="lambda-functions" data-topics="py.functional.lambda">Lambda functions</h2>
+<!-- topics: lambda -->
+
+<p>A <code>lambda</code> is an anonymous function limited to <strong>one expression</strong>; the value of that expression is returned. It is
+exactly the same kind of object as a <code>def</code> function, only with no name, no statements and no annotations.</p>
+<div class="hl"><pre><span></span><code><span class="n">square</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">*</span> <span class="n">x</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">square</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span> <span class="nb">type</span><span class="p">(</span><span class="n">square</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">square</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: 16 function &lt;lambda&gt;</span>
+
+<span class="n">pairs</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="mi">2</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>     <span class="c1"># prints: [('b', 1), ('c', 2), ('a', 3)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])[</span><span class="mi">0</span><span class="p">])</span>     <span class="c1"># prints: a</span>
+</code></pre></div>
+
+<p>Use a lambda for a short throwaway key or callback, passed inline. Use <code>def</code> when it needs a name, a docstring,
+statements, type hints or reuse. Assigning a lambda to a name (as <code>square</code> above) is discouraged style: the traceback shows
+<code>&lt;lambda&gt;</code>, so use <code>def</code>. <code>operator.itemgetter(1)</code> and <code>attrgetter("score")</code> are faster, clearer replacements for the most
+common lambdas.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">itemgetter</span>
+<span class="n">pairs</span> <span class="o">=</span> <span class="p">[(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="mi">2</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">itemgetter</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">==</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pairs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Lambdas capture <strong>variables, not values</strong> (late binding). In a loop, every lambda sees the final value:</p>
+</blockquote>
+<div class="hl"><pre><span></span><code><span class="n">fns</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">])</span>                    <span class="c1"># prints: [2, 2, 2]</span>
+<span class="n">fns</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>      <span class="c1"># default argument freezes the value now</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">])</span>                    <span class="c1"># prints: [0, 1, 2]</span>
+</code></pre></div>
+
+<h2 id="map-filter-and-reduce" data-topics="py.functional.map,py.functional.filter,py.functional.reduce">map, filter and reduce</h2>
+<!-- topics: map, filter, reduce -->
+
+<p><strong><code>map(fn, *iterables)</code></strong> applies <code>fn</code> to each item. <strong><code>filter(pred, it)</code></strong> keeps items for which <code>pred</code> is truthy (<code>None</code>
+as predicate keeps truthy items). Both return <strong>lazy iterators</strong> in Python 3, not lists. <strong><code>reduce(fn, it, initial)</code></strong>
+(from <code>functools</code>) folds a sequence into one value by repeatedly applying a two-argument function.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">reduce</span>
+
+<span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="n">nums</span><span class="p">)))</span>           <span class="c1"># prints: [2, 4, 6, 8, 10]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">pow</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">])))</span>             <span class="c1"># prints: [8, 9]   (several iterables, stops at the shortest)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">%</span> <span class="mi">2</span><span class="p">,</span> <span class="n">nums</span><span class="p">)))</span>        <span class="c1"># prints: [1, 3, 5]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">7</span><span class="p">])))</span>  <span class="c1"># prints: ['a', 7]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">acc</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">acc</span> <span class="o">+</span> <span class="n">x</span><span class="p">,</span> <span class="n">nums</span><span class="p">))</span>       <span class="c1"># prints: 15</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">acc</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">acc</span> <span class="o">*</span> <span class="n">x</span><span class="p">,</span> <span class="n">nums</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>   <span class="c1"># prints: 1200</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">nums</span><span class="p">))</span>                             <span class="c1"># prints: &lt;map object at 0x...&gt;  (address varies)</span>
+</code></pre></div>
+
+<p><code>reduce</code> evaluates <code>fn(fn(fn(a, b), c), d)</code>. With an <code>initial</code> value it also works on an empty sequence (returns the
+initial); <strong>without one, an empty iterable raises <code>TypeError</code></strong>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">reduce</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">,</span> <span class="p">[])</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>             <span class="c1"># prints: reduce() of empty iterable with no initial value</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">,</span> <span class="p">[],</span> <span class="mi">0</span><span class="p">))</span>   <span class="c1"># prints: 0</span>
+</code></pre></div>
+
+<p><strong>Comprehension vs <code>map</code>/<code>filter</code>.</strong> <code>[f(x) for x in xs if p(x)]</code> is usually clearer than <code>map(f, filter(p, xs))</code>, and
+<code>map</code> is only neat when you already have a named function (<code>map(str.strip, lines)</code>). Use a generator expression for laziness.
+For summing and joining prefer the dedicated tools: <code>sum</code>, <code>max</code>, <code>min</code>, <code>any</code>, <code>all</code>, <code>"".join</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Using <code>reduce(operator.add, list_of_lists)</code> or <code>sum(list_of_lists, [])</code> to flatten is <strong>O(n^2)</strong>: each
+<code>+</code> creates a new list and copies everything so far. Use <code>itertools.chain.from_iterable(list_of_lists)</code> or a nested comprehension.</p>
+</blockquote>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span>
+<span class="n">lol</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">lol</span><span class="p">)))</span>   <span class="c1"># prints: [1, 2, 3, 4, 5]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">x</span> <span class="k">for</span> <span class="n">sub</span> <span class="ow">in</span> <span class="n">lol</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">sub</span><span class="p">])</span>  <span class="c1"># prints: [1, 2, 3, 4, 5]</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why did <code>reduce</code> move out of the built-ins?" Guido found most uses unreadable compared to an explicit
+loop; it lives in <code>functools</code>. A strong answer shows one good use (composition, products, merging dicts) and the empty-input rule.</p>
+</blockquote>
+<h2 id="lazy-evaluation" data-topics="py.functional.lazy_evaluation">Lazy evaluation</h2>
+<!-- topics: lazy_evaluation -->
+
+<p><code>map</code>, <code>filter</code>, <code>zip</code>, <code>enumerate</code>, <code>reversed</code>, <code>range</code> (a lazy sequence) and generator expressions compute values <strong>on
+demand</strong>. Nothing happens when you build the pipeline; work happens when a consumer (<code>for</code>, <code>list</code>, <code>sum</code>, <code>next</code>) pulls.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">noisy</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"computing"</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="mi">10</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">noisy</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>      <span class="c1"># nothing printed: no work done yet</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>                 <span class="c1"># prints: computing 1  then 10</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>                 <span class="c1"># prints: computing 2, computing 3  then [20, 30]</span>
+</code></pre></div>
+
+<p>Laziness also defers <strong>exceptions</strong>: a bug in <code>fn</code> fires at consumption, far from where you built the <code>map</code>. Use it for big
+or streaming data (LLM token streams, JSONL files); use a list when you need random access, a length or several passes.
+<code>any()</code>/<code>all()</code> stop at the first decisive item, which is the payoff of laziness (and why side effects inside can be skipped).</p>
+<h2 id="iterator-consumption" data-topics="py.functional.iterator_consumption">Iterator consumption</h2>
+<!-- topics: iterator_consumption -->
+
+<p>The matching trap: lazy iterators are <strong>single-use</strong>. They are consumed as you read them, and once exhausted they yield
+nothing again, silently.</p>
+<div class="hl"><pre><span></span><code><span class="n">evens</span> <span class="o">=</span> <span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="n">n</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">evens</span><span class="p">))</span>             <span class="c1"># prints: [0, 2, 4, 6, 8]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">evens</span><span class="p">))</span>             <span class="c1"># prints: []</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">evens</span><span class="p">))</span>              <span class="c1"># prints: 0</span>
+
+<span class="n">it</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"2"</span> <span class="ow">in</span> <span class="n">it</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>     <span class="c1"># prints: True ['3']   (the membership test consumed 1 and 2)</span>
+</code></pre></div>
+
+<p>Related traps:</p>
+<ul>
+<li><code>len(map(...))</code> and indexing fail: iterators have no length or position.</li>
+<li>Sharing one iterator between two consumers (or calling <code>list(x)</code> for logging, then passing <code>x</code> on) steals items.</li>
+<li>A generator expression evaluates its <strong>outermost iterable immediately</strong> but everything else lazily, so later changes to
+  variables it uses are visible.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="n">lines</span> <span class="o">=</span> <span class="p">(</span><span class="n">l</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">lines</span><span class="p">))</span>   <span class="c1"># prints: 3 []</span>
+</code></pre></div>
+
+<p>Fixes: <strong>materialise</strong> once (<code>data = list(it)</code>), recreate the pipeline from a function, or <code>itertools.tee</code> (buffers
+memory).</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Streaming a chat completion yields chunks once. If you iterate it to print and then try to join the text
+afterwards, the second pass is empty. Collect pieces while you consume.</p>
+</blockquote>
+<details>
+<summary>Check yourself: why does `print(list(m), list(m))` show an empty second list?</summary>
+<p><code>m</code> is an iterator and the first <code>list(m)</code> exhausted it. Iterators do not rewind. An iterable like a list would produce a
+fresh iterator on each <code>list()</code> call; a <code>map</code> object is its own iterator.</p>
+</details>
+<h2 id="functional-programming-concepts" data-topics="py.functional.concepts">Functional programming concepts</h2>
+<!-- topics: concepts -->
+
+<p>Functional style rests on a few ideas, and Python supports them to varying degrees:</p>
+<ul>
+<li><strong>Functions as values</strong> (first-class, higher-order): fully supported.</li>
+<li><strong>Pure functions</strong> and <strong>immutable data</strong>: supported by convention, not enforced.</li>
+<li><strong>Declarative pipelines</strong> (<code>map</code>/<code>filter</code>, comprehensions, generators, <code>itertools</code>, <code>functools</code>): well supported.</li>
+<li><strong>Composition and currying</strong>: <code>functools.partial</code> gives partial application; compose with a small helper or <code>reduce</code>.</li>
+<li><strong>Recursion as the loop</strong>: poorly supported (no tail-call optimisation, depth limit 1000).</li>
+<li><strong>Pattern matching, algebraic types</strong>: partial (<code>match</code>, dataclasses, <code>Enum</code>).</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span><span class="p">,</span> <span class="n">reduce</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">compose</span><span class="p">(</span><span class="o">*</span><span class="n">fns</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""compose(f, g, h)(x) == f(g(h(x)))"""</span>
+    <span class="k">return</span> <span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">f</span><span class="p">,</span> <span class="n">g</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">f</span><span class="p">(</span><span class="n">g</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span> <span class="n">fns</span><span class="p">)</span>
+
+<span class="n">clean</span> <span class="o">=</span> <span class="n">compose</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">title</span><span class="p">,</span> <span class="nb">str</span><span class="o">.</span><span class="n">strip</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">clean</span><span class="p">(</span><span class="s2">"  hello world "</span><span class="p">))</span>        <span class="c1"># prints: Hello World</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">power</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">exp</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">base</span> <span class="o">**</span> <span class="n">exp</span>
+
+<span class="n">square_it</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">power</span><span class="p">,</span> <span class="n">exp</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>       <span class="c1"># partial application: fix one argument</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">square_it</span><span class="p">(</span><span class="mi">7</span><span class="p">))</span>                          <span class="c1"># prints: 49</span>
+</code></pre></div>
+
+<p>The practical middle ground ("pragmatic Python"): write small pure functions for the transformations, keep I/O at the
+edges, prefer comprehensions to <code>map</code>/<code>filter</code>, and do not contort code to avoid a plain loop or a local mutable accumulator.
+A local variable that no one else can see is fine, because mutation that cannot be observed is not a side effect.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Where does Python fall short as a functional language?" No tail-call optimisation, no enforced
+immutability, a one-expression lambda, no persistent data structures, and <code>map</code>/<code>filter</code> are less composable than method chains.</p>
+</blockquote>
+<h2 id="pure-functions" data-topics="py.functional.pure_functions">Pure functions</h2>
+<!-- topics: pure_functions -->
+
+<p>A function is <strong>pure</strong> if (1) its result depends only on its arguments, and (2) it has no observable <strong>side effects</strong>.
+Same input always gives the same output, so it can be cached, tested with a one-line assert, reordered or run in parallel.</p>
+<p>A <strong>side effect</strong> is anything beyond returning a value: mutating an argument or global, writing a file or DB, printing,
+logging, making an HTTP call, reading the clock, generating random numbers, or reading mutable global state.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">random</span><span class="o">,</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="c1"># Impure: depends on the clock, randomness, and mutates its argument</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">stamp</span><span class="p">(</span><span class="n">record</span><span class="p">):</span>
+    <span class="n">record</span><span class="p">[</span><span class="s2">"at"</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">record</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">record</span>
+
+<span class="c1"># Pure: same input, same output; the input is untouched</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">with_fields</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">at</span><span class="p">,</span> <span class="n">id_</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="o">**</span><span class="n">record</span><span class="p">,</span> <span class="s2">"at"</span><span class="p">:</span> <span class="n">at</span><span class="p">,</span> <span class="s2">"id"</span><span class="p">:</span> <span class="n">id_</span><span class="p">}</span>
+
+<span class="n">original</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"q"</span><span class="p">:</span> <span class="s2">"hi"</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">with_fields</span><span class="p">(</span><span class="n">original</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"x1"</span><span class="p">))</span>      <span class="c1"># prints: {'q': 'hi', 'at': 1.0, 'id': 'x1'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">original</span><span class="p">)</span>                              <span class="c1"># prints: {'q': 'hi'}</span>
+</code></pre></div>
+
+<h2 id="side-effects-and-functional-core" data-topics="py.functional.side_effects">Side effects and functional core</h2>
+<!-- topics: side_effects -->
+
+<p>Pure code can still <em>use</em> time and randomness: <strong>pass them in</strong> (<code>now: float</code>, a <code>random.Random(seed)</code>) so the function
+stays deterministic. Mutating an argument is the sneakiest side effect:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">normalise_bad</span><span class="p">(</span><span class="n">scores</span><span class="p">):</span>
+    <span class="n">scores</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>                  <span class="c1"># mutates caller's list</span>
+    <span class="n">top</span> <span class="o">=</span> <span class="n">scores</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">s</span> <span class="o">/</span> <span class="n">top</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">scores</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">normalise</span><span class="p">(</span><span class="n">scores</span><span class="p">):</span>
+    <span class="n">top</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">s</span> <span class="o">/</span> <span class="n">top</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">scores</span><span class="p">]</span>   <span class="c1"># builds new; caller's list unchanged</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">normalise</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">data</span><span class="p">)</span>       <span class="c1"># prints: [1.0, 0.3333333333333333, 0.6666666666666666] [3, 1, 2]</span>
+</code></pre></div>
+
+<p><strong>Functional core, imperative shell</strong>: keep decisions (parse a model reply, choose the next tool, rank results) in pure
+functions that take data and return data; confine I/O (HTTP, DB, logging, <code>input</code>) to a thin outer layer.</p>
+<div class="hl"><pre><span></span><code><span class="c1"># pure core: decide what to do from the model's reply</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">next_action</span><span class="p">(</span><span class="n">reply</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+    <span class="n">calls</span> <span class="o">=</span> <span class="n">reply</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"tool_calls"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">calls</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"tool"</span><span class="p">,</span> <span class="n">calls</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="s2">"answer"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"text"</span><span class="p">:</span> <span class="n">reply</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"content"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">}</span>
+
+<span class="c1"># impure shell would loop: reply = call_llm(...); kind, payload = next_action(reply); run tool / print answer</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">next_action</span><span class="p">({</span><span class="s2">"tool_calls"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"search"</span><span class="p">}]}))</span>   <span class="c1"># prints: ('tool', {'name': 'search'})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">next_action</span><span class="p">({</span><span class="s2">"content"</span><span class="p">:</span> <span class="s2">"42"</span><span class="p">}))</span>                      <span class="c1"># prints: ('answer', {'text': '42'})</span>
+</code></pre></div>
+
+<p>The core is testable with plain dicts and no mocks, while only the shell needs fakes or recorded responses.
+<code>functools.lru_cache</code> is only safe on pure functions: cache a function that reads a file, and you serve stale data.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A function that looks pure but reads a global config, a module-level cache or <code>os.environ</code> is not. A
+function that returns a <em>mutable</em> object it also keeps (a cached list) lets callers corrupt the cache.</p>
+</blockquote>
+<h2 id="immutability" data-topics="py.functional.immutability">Immutability</h2>
+<!-- topics: immutability -->
+
+<p>Python has no <code>const</code>, but offers tools with different depth. The key is that most guarantees are <strong>shallow</strong>: the
+container is frozen, the objects inside may not be.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it freezes</th>
+<th>Depth</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tuple</code></td>
+<td>which objects it holds</td>
+<td>shallow</td>
+</tr>
+<tr>
+<td><code>frozenset</code></td>
+<td>membership</td>
+<td>shallow (elements must be hashable)</td>
+</tr>
+<tr>
+<td><code>@dataclass(frozen=True)</code></td>
+<td>attribute assignment</td>
+<td>shallow</td>
+</tr>
+<tr>
+<td><code>NamedTuple</code></td>
+<td>fields</td>
+<td>shallow</td>
+</tr>
+<tr>
+<td><code>types.MappingProxyType(d)</code></td>
+<td>read-only <strong>view</strong> of a dict</td>
+<td>view only; the underlying <code>d</code> can still change</td>
+</tr>
+<tr>
+<td><code>str</code>, <code>int</code>, <code>bytes</code></td>
+<td>the value</td>
+<td>fully immutable</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">replace</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">MappingProxyType</span>
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Config</span><span class="p">:</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="n">opts</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>       <span class="c1"># a mutable field slips through the freeze</span>
+
+<span class="n">cfg</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"a"</span><span class="p">,))</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">cfg</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="s2">"m2"</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>        <span class="c1"># prints: FrozenInstanceError</span>
+<span class="n">cfg2</span> <span class="o">=</span> <span class="n">replace</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">"m2"</span><span class="p">)</span>    <span class="c1"># "modify" by building a new object</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">cfg2</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>       <span class="c1"># prints: m1 m2</span>
+
+<span class="n">leaky</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span><span class="s2">"m1"</span><span class="p">,</span> <span class="n">opts</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="n">leaky</span><span class="o">.</span><span class="n">opts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>               <span class="c1"># allowed: the freeze is shallow</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">leaky</span><span class="o">.</span><span class="n">opts</span><span class="p">)</span>                  <span class="c1"># prints: [1, 2]</span>
+</code></pre></div>
+
+<p>Read-only views and frozen sets:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">MappingProxyType</span>
+
+<span class="n">base</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"model"</span><span class="p">:</span> <span class="s2">"m1"</span><span class="p">}</span>
+<span class="n">view</span> <span class="o">=</span> <span class="n">MappingProxyType</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">view</span><span class="p">[</span><span class="s2">"model"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"m2"</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                       <span class="c1"># prints: 'mappingproxy' object does not support item assignment</span>
+<span class="n">base</span><span class="p">[</span><span class="s2">"model"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"m3"</span>               <span class="c1"># the view is live: it reflects changes to the original</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="p">[</span><span class="s2">"model"</span><span class="p">])</span>               <span class="c1"># prints: m3</span>
+
+<span class="n">fs</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">({</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fs</span> <span class="o">|</span> <span class="p">{</span><span class="mi">3</span><span class="p">},</span> <span class="nb">hash</span><span class="p">(</span><span class="n">fs</span><span class="p">)</span> <span class="o">==</span> <span class="nb">hash</span><span class="p">(</span><span class="nb">frozenset</span><span class="p">({</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">})))</span>   <span class="c1"># prints: frozenset({1, 2, 3}) True</span>
+</code></pre></div>
+
+<p>To get <em>deep</em> immutability you must convert nested data as well (lists to tuples, dicts to <code>MappingProxyType</code>
+or frozen dataclasses) or <code>copy.deepcopy</code> on the way in and out of a function boundary. The pragmatic habit:</p>
+<ul>
+<li>Treat function arguments as read-only; return new objects (<code>{**d, "k": v}</code>, <code>[*xs, x]</code>, <code>replace(obj, f=1)</code>).</li>
+<li>Freeze shared configuration (<code>frozen=True</code> dataclass, <code>tuple</code> instead of <code>list</code>) so one request cannot change settings
+  for the next.</li>
+<li>Frozen/hashable values can be cache keys and set members; they are also safe to share across threads.</li>
+</ul>
+<p>Cost: building new objects instead of mutating costs time and memory (copying a 1M-element list per step is O(n) each).
+Mutate locally inside a function if the data never escapes; be immutable at the boundaries.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>frozen=True</code> stops <code>obj.attr = x</code>, not <code>obj.attr.append(x)</code>. Immutability is only as deep as the types you chose.</p>
+<p><strong>AI use</strong> Freeze the model/system-prompt config object at startup. A request handler that mutates a shared config
+dict ("just for this call") causes bugs that appear only under concurrent traffic.</p>
+</blockquote>
+<details>
+<summary>Check yourself: is a tuple containing a list immutable?</summary>
+<p>The tuple cannot change <em>which</em> objects it holds, but the list inside can still be mutated. It is also unhashable, because
+hashing a tuple hashes its items. Immutability is shallow.</p>
+</details>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li><code>lambda</code> is a one-expression anonymous function; prefer <code>def</code> for anything named, long or reused; loop lambdas bind late (fix with <code>i=i</code>).</li>
+<li><code>map</code> and <code>filter</code> return lazy iterators; <code>reduce</code> folds to one value and needs an initial value for empty input.</li>
+<li>Comprehensions are usually clearer than <code>map</code>/<code>filter</code>; avoid <code>reduce(add, lists)</code> and <code>sum(lists, [])</code>, which are O(n^2); use <code>chain.from_iterable</code>.</li>
+<li>Lazy iterators do work only when consumed, defer errors to consumption, and are single-use: a second pass is silently empty.</li>
+<li>Materialise with <code>list()</code>, rebuild the pipeline, or <code>tee</code> when you need more than one pass.</li>
+<li>Pure: output depends only on arguments, no side effects. Pass time, randomness and config in as arguments.</li>
+<li>Side effects: mutation of arguments or globals, I/O, logging, clock, randomness.</li>
+<li>Functional core, imperative shell: decisions in pure functions, I/O at the edges; easy to test with plain data.</li>
+<li>Immutability tools (<code>tuple</code>, <code>frozenset</code>, frozen dataclass, <code>NamedTuple</code>, <code>MappingProxyType</code>) are shallow; return new objects instead of mutating inputs.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-functions.html">&larr; Python Functions</a><a class="pn next" href="revise-py-closures.html">Closures and Scope &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

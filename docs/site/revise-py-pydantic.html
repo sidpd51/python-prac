@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pydantic notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.pydantic">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Pydantic</p><div class="note-head"><div id="note-progress" data-module="py.pydantic"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#models-and-basemodel" data-target="models-and-basemodel">Models and BaseModel</a></li><li><a href="#validation-lax-versus-strict" data-target="validation-lax-versus-strict">Validation: lax versus strict</a></li><li><a href="#required-optional-and-nullable" data-target="required-optional-and-nullable">Required, optional and nullable</a></li><li><a href="#field-and-constraints" data-target="field-and-constraints">Field and constraints</a></li><li><a href="#custom-field-validators" data-target="custom-field-validators">Custom field validators</a></li><li><a href="#model_validator-cross-field-rules" data-target="model_validator-cross-field-rules">model_validator: cross-field rules</a></li><li><a href="#nested-models" data-target="nested-models">Nested models</a></li><li><a href="#parsing-model_validate-and-model_validate_json" data-target="parsing-model_validate-and-model_validate_json">Parsing: model_validate and model_validate_json</a></li><li><a href="#serialization-model_dump-and-aliases" data-target="serialization-model_dump-and-aliases">Serialization: model_dump and aliases</a></li><li><a href="#json-schema-and-llm-tool-definitions" data-target="json-schema-and-llm-tool-definitions">JSON Schema and LLM tool definitions</a></li><li><a href="#settings-from-the-environment" data-target="settings-from-the-environment">Settings from the environment</a></li><li><a href="#validating-api-and-llm-output" data-target="validating-api-and-llm-output">Validating API and LLM output</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="pydantic-v2">Pydantic (v2)</h1>
+<p>Pydantic turns untrusted data (JSON from an HTTP request, text from an LLM, environment variables) into
+typed Python objects, or tells you precisely why it cannot. In AI engineering almost every boundary is
+untrusted: model output is a string that merely <em>looks</em> like JSON, tool arguments come from the model,
+config comes from the environment. Pydantic is the standard answer, and the same models double as the
+JSON schemas you send to function-calling APIs. Interviews probe whether you know validation versus
+coercion, the optional/nullable distinction, validator ordering, and how to survive messy LLM output.</p>
+<h2 id="models-and-basemodel" data-topics="py.pydantic.models,py.pydantic.basemodel">Models and BaseModel</h2>
+<!-- topics: models, basemodel -->
+
+<p>A model is a class that inherits <code>BaseModel</code>; its annotated attributes are <strong>fields</strong>. Calling the class
+runs validation (the core is written in Rust, pydantic-core), so you get either a fully valid instance or
+a <code>ValidationError</code>. There is no half-valid object.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Chunk</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">Chunk</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="s2">"a"</span><span class="p">),</span> <span class="n">Chunk</span><span class="p">(</span><span class="n">text</span><span class="o">=</span><span class="s2">"b"</span><span class="p">)</span>
+<span class="n">a</span><span class="o">.</span><span class="n">tags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"pii"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">tags</span><span class="p">)</span>          <span class="c1"># prints: []   (mutable defaults are copied per instance)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>               <span class="c1"># prints: text='a' tags=['pii']</span>
+<span class="n">a</span><span class="o">.</span><span class="n">text</span> <span class="o">=</span> <span class="mi">123</span>           <span class="c1"># assignment is NOT validated by default</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">text</span><span class="p">))</span>    <span class="c1"># prints: 123</span>
+</code></pre></div>
+
+<p>Where it sits among the alternatives:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>runtime checks</th>
+<th>coercion</th>
+<th>JSON + schema</th>
+<th>use for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TypedDict</code></td>
+<td>none</td>
+<td>no</td>
+<td>via TypeAdapter</td>
+<td>typing a dict that is already trusted</td>
+</tr>
+<tr>
+<td><code>dataclass</code></td>
+<td>none</td>
+<td>no</td>
+<td>no</td>
+<td>internal value objects</td>
+</tr>
+<tr>
+<td><code>BaseModel</code></td>
+<td>full</td>
+<td>yes</td>
+<td>yes</td>
+<td><strong>boundaries</strong>: HTTP, LLM output, config</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Validate at the edge, then pass trusted objects inward. Re-validating on every internal call is
+wasted work.</p>
+<p><strong>Gotcha</strong> Unknown input keys are <strong>ignored</strong> by default (<code>extra="ignore"</code>), so a typo like <code>temprature</code>
+silently vanishes. Use <code>ConfigDict(extra="forbid")</code> for request models. Assignment is also unchecked unless
+<code>validate_assignment=True</code>; <code>frozen=True</code> forbids mutation and makes the model hashable.</p>
+</blockquote>
+<h2 id="validation-lax-versus-strict" data-topics="py.pydantic.validation">Validation: lax versus strict</h2>
+<!-- topics: validation -->
+
+<p>Pydantic v2 <strong>validates and, by default, coerces</strong> ("lax mode"): input that is not the right type but
+<em>unambiguously convertible</em> is converted. Strict mode refuses all conversion.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">M</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">n</span><span class="p">:</span> <span class="nb">int</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">M</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="s2">"3"</span><span class="p">)</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">M</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">M</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mf">4.0</span><span class="p">)</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>    <span class="c1"># prints: 3 1 4</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">M</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mf">3.7</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">[</span><span class="s2">"type"</span><span class="p">],</span> <span class="n">err</span><span class="p">[</span><span class="s2">"loc"</span><span class="p">])</span>            <span class="c1"># prints: int_from_float ('n',)</span>
+</code></pre></div>
+
+<p>Lax mode accepts numeric strings, <code>True</code> as 1, and floats with no fractional part; it <strong>never silently
+truncates</strong> (v1 turned 3.7 into 3). Turn on strictness per type (<code>StrictInt</code>), per field (<code>Field(strict=True)</code>) or per model (<code>ConfigDict(strict=True)</code>):</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">StrictInt</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Usage</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">prompt_tokens</span><span class="p">:</span> <span class="n">StrictInt</span>
+    <span class="n">completion_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">bad</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"100"</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">Usage</span><span class="p">(</span><span class="n">prompt_tokens</span><span class="o">=</span><span class="n">bad</span><span class="p">,</span> <span class="n">completion_tokens</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">bad</span><span class="p">),</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"type"</span><span class="p">])</span>
+<span class="c1"># prints: '100' int_type</span>
+<span class="c1"># prints: True int_type</span>
+<span class="c1"># prints: 100.0 int_type</span>
+</code></pre></div>
+
+<p>Errors are structured: <code>e.errors()</code> gives a list of dicts with <code>loc</code> (path), <code>type</code> (stable code),
+<code>msg</code>, and <code>input</code>. Use <code>type</code>/<code>loc</code> in code and tests, never the message text. Strictness also depends
+on the <em>input source</em>: JSON has no datetime or enum type, so even in strict mode <code>model_validate_json</code> accepts
+a string for those, while Python-object input must already be a real <code>datetime</code>/enum.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Is pydantic coercion a bug or a feature?" Feature at the edge (env vars and query strings are
+strings, LLMs return <code>"3"</code> for 3). Dangerous where the type carries meaning: use strict for token counts,
+money, IDs. Say you pick per field.</p>
+</blockquote>
+<h2 id="required-optional-and-nullable" data-topics="py.pydantic.required_optional">Required, optional and nullable</h2>
+<!-- topics: required_optional -->
+
+<p>Two independent questions: <em>may the key be missing?</em> (has a default) and <em>may the value be <code>None</code>?</em>
+(type includes <code>None</code>). v2 keeps them apart, v1 did not.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Doc</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">a</span><span class="p">:</span> <span class="nb">int</span>                      <span class="c1"># required, not nullable</span>
+    <span class="n">b</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>                  <span class="c1"># optional (default), not nullable</span>
+    <span class="n">c</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span>               <span class="c1"># REQUIRED but may be None</span>
+    <span class="n">d</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>        <span class="c1"># optional and nullable</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Doc</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="kc">None</span><span class="p">))</span>         <span class="c1"># prints: a=1 b=0 c=None d=None</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Doc</span><span class="p">(</span><span class="n">a</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">([(</span><span class="n">x</span><span class="p">[</span><span class="s2">"loc"</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="s2">"type"</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()])</span>   <span class="c1"># prints: [(('c',), 'missing')]</span>
+</code></pre></div>
+
+<p><code>Optional[X]</code> is only an alias for <code>X | None</code>; it does <strong>not</strong> add a default (v1 did, a classic migration bug).
+To tell "absent" from "explicitly null" (PATCH semantics) use <code>model_fields_set</code> or <code>model_dump(exclude_unset=True)</code>:
+<code>Patch(title=None).model_fields_set</code> is <code>{'title'}</code>, while <code>Patch().model_fields_set</code> is <code>set()</code>.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> LLM structured output: mark fields the model might legitimately not know as <code>str | None</code> and
+<em>require</em> them. That forces the model to say <code>null</code> explicitly instead of omitting or hallucinating.</p>
+</blockquote>
+<h2 id="field-and-constraints" data-topics="py.pydantic.field,py.pydantic.constraints">Field and constraints</h2>
+<!-- topics: field, constraints -->
+
+<p><code>Field(...)</code> attaches defaults, constraints, aliases and documentation to a field.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ChatRequest</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Model id"</span><span class="p">)</span>
+    <span class="n">temperature</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">max_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+    <span class="n">stop</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">user</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="sa">r</span><span class="s2">"^[a-z0-9_]+$"</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">ChatRequest</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">max_tokens</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">stop</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="s2">"abcde"</span><span class="p">),</span> <span class="n">user</span><span class="o">=</span><span class="s2">"Bad Name"</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">err</span> <span class="ow">in</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">[</span><span class="s2">"loc"</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">err</span><span class="p">[</span><span class="s2">"type"</span><span class="p">])</span>
+<span class="c1"># prints: model string_too_short</span>
+<span class="c1"># prints: temperature less_than_equal</span>
+<span class="c1"># prints: max_tokens greater_than</span>
+<span class="c1"># prints: stop too_long</span>
+<span class="c1"># prints: user string_pattern_mismatch</span>
+</code></pre></div>
+
+<p>All errors are collected in one pass, not just the first. The constraint families:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Applies to</th>
+<th>Constraints</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>numbers</td>
+<td><code>gt</code>, <code>ge</code>, <code>lt</code>, <code>le</code>, <code>multiple_of</code></td>
+</tr>
+<tr>
+<td>str, list, set, dict</td>
+<td><code>min_length</code>, <code>max_length</code></td>
+</tr>
+<tr>
+<td>str</td>
+<td><code>pattern</code>, plus <code>strip_whitespace</code> via <code>StringConstraints</code></td>
+</tr>
+<tr>
+<td>any</td>
+<td><code>strict</code>, <code>default</code>, <code>default_factory</code>, <code>alias</code>, <code>description</code>, <code>examples</code>, <code>exclude</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Reusable constrained types: <code>Temperature = Annotated[float, Field(ge=0, le=2)]</code>, then use <code>temperature: Temperature = 1.0</code>
+in any model. <code>StringConstraints(strip_whitespace=True, min_length=1)</code> strips then checks length.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>default_factory</code> is for values created per instance (<code>list</code>, <code>uuid4</code>, <code>datetime.now</code>). A plain
+<code>default=[]</code> happens to be safe in pydantic (it copies), but <code>default_factory=list</code> states intent and works
+the same for <code>datetime.now</code>, where a plain default would be frozen at import time.</p>
+<p><strong>AI use</strong> <code>description=</code> ends up in the JSON schema the model reads when calling a tool. It is prompt
+engineering: a vague description gives bad tool arguments.</p>
+</blockquote>
+<h2 id="custom-field-validators" data-topics="py.pydantic.custom_validators">Custom field validators</h2>
+<!-- topics: custom_validators -->
+
+<p>When constraints are not enough, write a <code>@field_validator</code>. It is a classmethod that receives the value
+and returns the (possibly changed) value, or raises <code>ValueError</code>/<code>AssertionError</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Tags</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"tags"</span><span class="p">)</span>                  <span class="c1"># mode="after" is the default</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clean</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">({</span><span class="n">t</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">v</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">strip</span><span class="p">()})</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">out</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"need at least one tag"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Tags</span><span class="p">(</span><span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">" B"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">""</span><span class="p">])</span><span class="o">.</span><span class="n">tags</span><span class="p">)</span>    <span class="c1"># prints: ['a', 'b']</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Tags</span><span class="p">(</span><span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">" "</span><span class="p">])</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"msg"</span><span class="p">])</span>                <span class="c1"># prints: Value error, need at least one tag</span>
+</code></pre></div>
+
+<p>The <strong>mode</strong> decides when it runs relative to pydantic's own type check:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>mode</th>
+<th>runs</th>
+<th>value you receive</th>
+<th>use to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"after"</code> (default)</td>
+<td>after type validation</td>
+<td>already the right type</td>
+<td>extra rules, normalising</td>
+</tr>
+<tr>
+<td><code>"before"</code></td>
+<td>before</td>
+<td>raw input, any type</td>
+<td>coerce messy input first</td>
+</tr>
+<tr>
+<td><code>"wrap"</code></td>
+<td>around</td>
+<td>raw input + a <code>handler</code></td>
+<td>try/fallback around validation</td>
+</tr>
+</tbody>
+</table></div>
+<p>Use <code>mode="before"</code> to repair raw input, e.g. an LLM sends <code>"doc-1"</code> where <code>["doc-1"]</code> is expected: check
+<code>isinstance(v, str)</code> and return <code>[v]</code>.</p>
+<p>Raise <code>ValueError</code> (not <code>TypeError</code>) inside validators: pydantic converts <code>ValueError</code>/<code>AssertionError</code> into a
+<code>ValidationError</code>, while other exceptions escape as raw crashes. Forgetting <code>@classmethod</code>, or returning
+nothing from an after validator (the field becomes <code>None</code>), are the usual bugs.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "before vs after validator?" Before sees raw, untyped input and repairs it; after sees a typed
+value and applies business rules. Mention <code>Annotated[str, AfterValidator(fn)]</code> as the reusable form.</p>
+</blockquote>
+<h2 id="model_validator-cross-field-rules" data-topics="py.pydantic.model_validator">model_validator: cross-field rules</h2>
+<!-- topics: model_validator -->
+
+<p>A field validator sees one field. When a rule involves several fields, use <code>@model_validator</code>.</p>
+<ul>
+<li><code>mode="after"</code>: an instance method, runs after all fields are valid, receives <code>self</code>, <strong>must return <code>self</code></strong>.</li>
+<li><code>mode="before"</code>: a classmethod receiving the raw input (usually a dict), returns the dict to validate. Use it
+  to reshape input.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">model_validator</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Range</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">lo</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">hi</span><span class="p">:</span> <span class="nb">int</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ordered</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">lo</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">hi</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lo must be &lt;= hi"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Range</span><span class="p">(</span><span class="n">lo</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">hi</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"loc"</span><span class="p">],</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"msg"</span><span class="p">])</span>
+<span class="c1"># prints: () Value error, lo must be &lt;= hi</span>
+</code></pre></div>
+
+<p>The error <code>loc</code> is <code>()</code>: it belongs to the model, not a field. A <code>before</code> model validator is how you accept
+OpenAI-style nesting (<code>{"function": {"name": ...}}</code>) by flattening it first; the input may not be a dict at all
+(an instance, or garbage), so check <code>isinstance</code> first.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Assigning fields inside an <code>after</code> validator with <code>validate_assignment=True</code> recurses. If a field already
+failed, the after validator does not run.</p>
+</blockquote>
+<h2 id="nested-models" data-topics="py.pydantic.nested">Nested models</h2>
+<!-- topics: nested -->
+
+<p>A field typed as another model is validated recursively, from dicts, and errors carry the full path.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">role</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">content</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Conversation</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">messages</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Message</span><span class="p">]</span>
+    <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="s2">"c1"</span><span class="p">,</span> <span class="s2">"messages"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">"hi"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"bot"</span><span class="p">}]}</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Conversation</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"loc"</span><span class="p">],</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"type"</span><span class="p">])</span>
+    <span class="c1"># prints: ('messages', 1, 'content') missing</span>
+</code></pre></div>
+
+<p>Dicts became <code>Message</code> instances automatically. Instances you pass in are <strong>not</strong> copied by default (same
+object, <code>revalidate_instances="never"</code>), so mutating it afterwards changes the model's data.</p>
+<p>Self-referencing models (<code>children: list["Node"]</code>) work via string annotations; their schemas contain <code>$ref</code>.</p>
+<h2 id="parsing-model_validate-and-model_validate_json" data-topics="py.pydantic.model_validate">Parsing: model_validate and model_validate_json</h2>
+<!-- topics: model_validate -->
+
+<p><code>Model(**data)</code> and <code>Model.model_validate(data)</code> both validate a Python object. Prefer <code>model_validate</code>: it
+takes a non-dict directly and does not need string keys to be valid keyword names.
+<code>model_validate_json(text)</code> parses <strong>and</strong> validates in one Rust pass.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">TypeAdapter</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">P</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">x</span><span class="p">:</span> <span class="nb">int</span>
+
+<span class="n">raw</span> <span class="o">=</span> <span class="s1">'{"x": "7"}'</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">P</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span>               <span class="c1"># prints: x=7</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">TypeAdapter</span><span class="p">(</span><span class="nb">list</span><span class="p">[</span><span class="n">P</span><span class="p">])</span><span class="o">.</span><span class="n">validate_json</span><span class="p">(</span><span class="s1">'[{"x": 1}, {"x": 2}]'</span><span class="p">))</span>
+<span class="c1"># prints: [P(x=1), P(x=2)]</span>
+</code></pre></div>
+
+<p><code>model_validate_json</code> also turns JSON syntax errors into a <code>ValidationError</code> (<code>json_invalid</code>); <code>from_attributes=True</code>
+reads ORM-like objects; <code>TypeAdapter(T)</code> validates <code>list[Model]</code>, unions and <code>TypedDict</code>s without a model class.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>json.loads</code> then <code>model_validate</code> is slower and, for strictness, behaves differently from
+<code>model_validate_json</code>. Use the JSON entry point when your input is a JSON string. Also,
+<code>parse_obj</code>/<code>parse_raw</code> are v1 names, deprecated.</p>
+</blockquote>
+<h2 id="serialization-model_dump-and-aliases" data-topics="py.pydantic.serialization,py.pydantic.model_dump">Serialization: model_dump and aliases</h2>
+<!-- topics: serialization, model_dump -->
+
+<p>Serialization goes model to dict or JSON. <code>model_dump()</code> gives Python objects; <code>model_dump_json()</code> gives a JSON
+string (and knows how to render datetimes, UUIDs, enums). The options are what interviews ask about:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">User</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">"sk-secret"</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">nick</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"n"</span>
+
+<span class="n">u</span> <span class="o">=</span> <span class="n">User</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">"Ada"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">model_dump</span><span class="p">())</span>                         <span class="c1"># prints: {'name': 'Ada', 'email': None, 'nick': 'n'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>        <span class="c1"># prints: {'name': 'Ada', 'nick': 'n'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_unset</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>       <span class="c1"># prints: {'name': 'Ada'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_defaults</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>    <span class="c1"># prints: {'name': 'Ada'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">include</span><span class="o">=</span><span class="p">{</span><span class="s2">"name"</span><span class="p">}))</span>         <span class="c1"># prints: {'name': 'Ada'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">())</span>                    <span class="c1"># prints: {"name":"Ada","email":null,"nick":"n"}</span>
+</code></pre></div>
+
+<ul>
+<li><code>exclude_unset</code>: drop fields the caller never provided (PATCH payloads).</li>
+<li><code>exclude_defaults</code>: drop fields equal to their default.</li>
+<li><code>exclude_none</code>: drop <code>None</code> values (many APIs reject explicit nulls).</li>
+<li><code>Field(exclude=True)</code>: never serialize (secrets).</li>
+</ul>
+<p><strong>Aliases</strong> let the external name differ from the Python name. Three flavours: <code>alias</code> (both directions),
+<code>validation_alias</code> (input only, can be <code>AliasChoices</code>), <code>serialization_alias</code> (output only).</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">AliasChoices</span><span class="p">,</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Req</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">populate_by_name</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">max_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">validation_alias</span><span class="o">=</span><span class="n">AliasChoices</span><span class="p">(</span><span class="s2">"maxTokens"</span><span class="p">,</span> <span class="s2">"max_completion_tokens"</span><span class="p">,</span> <span class="s2">"max_tokens"</span><span class="p">),</span>
+        <span class="n">serialization_alias</span><span class="o">=</span><span class="s2">"maxTokens"</span><span class="p">,</span>
+    <span class="p">)</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="n">Req</span><span class="o">.</span><span class="n">model_validate</span><span class="p">({</span><span class="s2">"max_completion_tokens"</span><span class="p">:</span> <span class="mi">10</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">max_tokens</span><span class="p">)</span>                          <span class="c1"># prints: 10</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">by_alias</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>           <span class="c1"># prints: {'maxTokens': 10}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">model_dump</span><span class="p">())</span>                        <span class="c1"># prints: {'max_tokens': 10}</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>model_dump()</code> ignores aliases unless <code>by_alias=True</code>. For OpenAI-style payloads you usually want
+<code>model_dump(exclude_none=True, by_alias=True)</code>.</p>
+</blockquote>
+<p><code>@computed_field</code> adds derived output, <code>@field_serializer</code> customises a format, and <code>model_dump(mode="json")</code> returns only
+JSON-safe types.</p>
+<h2 id="json-schema-and-llm-tool-definitions" data-topics="py.pydantic.json_schema">JSON Schema and LLM tool definitions</h2>
+<!-- topics: json_schema -->
+
+<p><code>Model.model_json_schema()</code> returns the JSON Schema describing the model: field types, constraints, required
+keys, descriptions. That is exactly what function-calling APIs want as a tool's <code>parameters</code>, so <strong>one model is
+both the contract sent to the LLM and the validator for what comes back</strong>. No drift between docs and code.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">GetWeather</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Get current weather for a city."""</span>
+    <span class="n">city</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"City name, e.g. Paris"</span><span class="p">)</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">pattern</span><span class="o">=</span><span class="s2">"^(c|f)$"</span><span class="p">)</span>
+
+<span class="n">schema</span> <span class="o">=</span> <span class="n">GetWeather</span><span class="o">.</span><span class="n">model_json_schema</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">schema</span><span class="p">[</span><span class="s2">"required"</span><span class="p">],</span> <span class="n">schema</span><span class="p">[</span><span class="s2">"description"</span><span class="p">])</span>   <span class="c1"># prints: ['city'] Get current weather for a city.</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">schema</span><span class="p">[</span><span class="s2">"properties"</span><span class="p">][</span><span class="s2">"unit"</span><span class="p">])</span>
+<span class="c1"># prints: {'default': 'c', 'pattern': '^(c|f)$', 'title': 'Unit', 'type': 'string'}</span>
+</code></pre></div>
+
+<p>A tool definition wraps it: <code>{"type": "function", "function": {"name": ..., "description": ..., "parameters": schema}}</code>.
+The loop is: send schema, receive <code>arguments</code> as a JSON string, <code>model_validate_json</code> it, execute, and on
+<code>ValidationError</code> feed the error text back to the model.</p>
+<p>Providers are pickier than the standard:</p>
+<ul>
+<li>Nested models produce <code>$defs</code> and <code>$ref</code>; many providers want them inlined.</li>
+<li>Strict/structured-output modes want <code>additionalProperties: false</code> on every object and every field required.</li>
+<li><code>title</code> keywords are noise; a <em>property</em> literally called <code>title</code> must be kept.</li>
+</ul>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Same trick everywhere: structured output (<code>response_format</code>), tool calling, and MCP tool schemas
+are all "a JSON Schema from a model".</p>
+</blockquote>
+<h2 id="settings-from-the-environment" data-topics="py.pydantic.settings">Settings from the environment</h2>
+<!-- topics: settings -->
+
+<p><code>pydantic-settings</code> provides <code>BaseSettings</code>: a model whose fields are read from environment variables (and
+optionally a <code>.env</code> file), then validated and coerced like any model. This is the twelve-factor way: config in
+the environment, typed in code, failing loudly at start-up if wrong.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span><span class="p">,</span> <span class="n">SecretStr</span><span class="p">,</span> <span class="n">ValidationError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic_settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseSettings</span><span class="p">,</span> <span class="n">SettingsConfigDict</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Settings</span><span class="p">(</span><span class="n">BaseSettings</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">SettingsConfigDict</span><span class="p">(</span><span class="n">env_prefix</span><span class="o">=</span><span class="s2">"APP_"</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">)</span>
+    <span class="n">openai_api_key</span><span class="p">:</span> <span class="n">SecretStr</span>
+    <span class="n">timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">30.0</span>
+    <span class="n">max_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">debug</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"APP_OPENAI_API_KEY"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"sk-123"</span>
+<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"APP_DEBUG"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"yes"</span>
+<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"APP_MAX_RETRIES"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"5"</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">Settings</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">timeout_s</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">max_retries</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">debug</span><span class="p">)</span>    <span class="c1"># prints: 30.0 5 True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">openai_api_key</span><span class="p">)</span>                       <span class="c1"># prints: **********</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">openai_api_key</span><span class="o">.</span><span class="n">get_secret_value</span><span class="p">())</span>    <span class="c1"># prints: sk-123</span>
+
+<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"APP_MAX_RETRIES"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"-1"</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Settings</span><span class="p">()</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"loc"</span><span class="p">])</span>               <span class="c1"># prints: ('max_retries',)</span>
+</code></pre></div>
+
+<ul>
+<li>Env strings are coerced (<code>"yes"</code> becomes <code>True</code>, <code>"5"</code> becomes 5); names are case-insensitive; <code>env_prefix</code> namespaces.</li>
+<li><strong>Priority</strong> (highest first): init kwargs, env vars, <code>.env</code> file, secrets dir, defaults. <code>Settings(timeout_s=1)</code> in tests.</li>
+<li><code>SecretStr</code> hides the value in <code>repr</code>, logs and tracebacks. Nested: <code>env_nested_delimiter="__"</code>.</li>
+</ul>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Build settings once (module level or <code>functools.lru_cache</code>) and inject it; constructing
+<code>Settings()</code> all over the codebase re-reads the environment each time, and a missing variable then crashes
+far from start-up.</p>
+</blockquote>
+<h2 id="validating-api-and-llm-output" data-topics="py.pydantic.api_validation">Validating API and LLM output</h2>
+<!-- topics: api_validation -->
+
+<p>LLMs return strings. Even "JSON only" prompts produce fences, prose, trailing commas, wrong types. A solid
+pipeline has four steps: <strong>extract</strong> the JSON text, <strong>parse+validate</strong> with the model, <strong>classify</strong> failure,
+and <strong>repair</strong> by re-prompting with the error.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Triage</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">category</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">priority</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_json</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">dec</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecoder</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ch</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">ch</span> <span class="ow">in</span> <span class="s2">"{["</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">_</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">raw_decode</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">end</span><span class="p">]</span>
+            <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+                <span class="k">continue</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"no JSON found"</span><span class="p">)</span>
+
+<span class="n">fence</span> <span class="o">=</span> <span class="s2">"`"</span> <span class="o">*</span> <span class="mi">3</span>
+<span class="n">reply</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'Sure! Use </span><span class="se">{{</span><span class="s1">name</span><span class="se">}}</span><span class="s1"> as a placeholder.</span><span class="se">\n</span><span class="si">{</span><span class="n">fence</span><span class="si">}</span><span class="s1">json</span><span class="se">\n{{</span><span class="s1">"category": "bug", "priority": "2"</span><span class="se">}}\n</span><span class="si">{</span><span class="n">fence</span><span class="si">}</span><span class="se">\n</span><span class="s1">Bye'</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Triage</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">extract_json</span><span class="p">(</span><span class="n">reply</span><span class="p">)))</span>
+<span class="c1"># prints: category='bug' priority=2</span>
+</code></pre></div>
+
+<p><code>raw_decode</code> finds one complete value starting at an index, which is more robust than regexes for nested braces
+and braces inside strings. (It would skip <code>{name}</code> because that is not valid JSON.) The repair loop feeds
+<code>str(e)</code> or <code>e.errors()</code> back as the next user message and caps attempts.</p>
+<p><strong>Discriminated unions</strong> handle "one of several shapes" (agent actions, tool calls). Plain unions try each
+member in turn and report errors for all of them; a discriminator reads one tag field and picks the right
+member directly: faster, and errors point at the right variant.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">Literal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">TypeAdapter</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Search</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"search"</span><span class="p">]</span>
+    <span class="n">query</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Final</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"final_answer"</span><span class="p">]</span>
+    <span class="n">answer</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="n">Action</span> <span class="o">=</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">Search</span> <span class="o">|</span> <span class="n">Final</span><span class="p">,</span> <span class="n">Field</span><span class="p">(</span><span class="n">discriminator</span><span class="o">=</span><span class="s2">"type"</span><span class="p">)]</span>
+<span class="n">adapter</span> <span class="o">=</span> <span class="n">TypeAdapter</span><span class="p">(</span><span class="n">Action</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">adapter</span><span class="o">.</span><span class="n">validate_python</span><span class="p">({</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"final_answer"</span><span class="p">,</span> <span class="s2">"answer"</span><span class="p">:</span> <span class="s2">"42"</span><span class="p">}))</span>
+<span class="c1"># prints: type='final_answer' answer='42'</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">adapter</span><span class="o">.</span><span class="n">validate_python</span><span class="p">({</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"search"</span><span class="p">,</span> <span class="s2">"query"</span><span class="p">:</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"top_k"</span><span class="p">:</span> <span class="mi">99</span><span class="p">})</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()),</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"loc"</span><span class="p">])</span>   <span class="c1"># prints: 1 ('search', 'top_k')</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">adapter</span><span class="o">.</span><span class="n">validate_python</span><span class="p">({</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"delete"</span><span class="p">})</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"type"</span><span class="p">])</span>                   <span class="c1"># prints: union_tag_invalid</span>
+</code></pre></div>
+
+<p>Every member needs a <code>Literal</code> tag. With parallel tool calls, validate each item independently so one bad
+action does not discard the others.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "How do you make an LLM reliably return structured data?" Layers: schema-constrained decoding
+or tool calling where the provider supports it; a pydantic model as the single source of truth; tolerant
+extraction; <code>model_validate_json</code>; a bounded repair loop sending the validation errors back; finally a
+fallback or a typed failure. Never <code>eval</code>, never trust unparsed text.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>BaseModel validates on construction; no half-valid instances. Assignment is unchecked unless <code>validate_assignment</code>.</li>
+<li>Default lax mode coerces (<code>"3"</code>, <code>True</code>, <code>4.0</code> to int) but never truncates 3.7; use strict for meaningful types.</li>
+<li>Required vs nullable are independent: <code>int | None</code> has no default. <code>model_fields_set</code> shows what was provided.</li>
+<li><code>Field</code> carries defaults, constraints (<code>ge/le/gt/lt</code>, <code>min_length</code>, <code>pattern</code>), aliases, description.</li>
+<li><code>field_validator</code> modes: before (raw input), after (typed, default), wrap. Raise <code>ValueError</code>, return the value.</li>
+<li><code>model_validator(mode="after")</code> for cross-field rules and returns <code>self</code>; <code>mode="before"</code> reshapes raw input.</li>
+<li>Nested models validate recursively; error <code>loc</code> shows the full path.</li>
+<li><code>model_validate_json</code> for JSON strings; <code>TypeAdapter</code> for non-model types.</li>
+<li><code>model_dump</code>: <code>exclude_unset/defaults/none</code>, <code>by_alias</code>, <code>mode="json"</code>; <code>Field(exclude=True)</code> hides secrets.</li>
+<li><code>model_json_schema()</code> makes tool/structured-output schemas from the same model that validates the reply.</li>
+<li><code>BaseSettings</code> reads typed config from env; init kwargs beat env beat <code>.env</code> beat defaults; <code>SecretStr</code>.</li>
+<li>Parse LLM output as extract, validate, repair; use discriminated unions for multi-shape actions.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-type_hints.html">&larr; Python Type Hints</a><a class="pn next" href="revise-py-async.html">Asynchronous Programming &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

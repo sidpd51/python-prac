@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exception Handling notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.exceptions">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Exception Handling</p><div class="note-head"><div id="note-progress" data-module="py.exceptions"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#syntax-errors-versus-runtime-errors" data-target="syntax-errors-versus-runtime-errors">Syntax errors versus runtime errors</a></li><li><a href="#try-except-else-finally" data-target="try-except-else-finally">try, except, else, finally</a></li><li><a href="#handling-multiple-exceptions" data-target="handling-multiple-exceptions">Handling multiple exceptions</a></li><li><a href="#the-exception-hierarchy" data-target="the-exception-hierarchy">The exception hierarchy</a></li><li><a href="#raising-exceptions" data-target="raising-exceptions">Raising exceptions</a></li><li><a href="#custom-exceptions" data-target="custom-exceptions">Custom exceptions</a></li><li><a href="#exception-chaining" data-target="exception-chaining">Exception chaining</a></li><li><a href="#assert" data-target="assert">assert</a></li><li><a href="#contextual-error-handling" data-target="contextual-error-handling">Contextual error handling</a></li><li><a href="#logging-exceptions" data-target="logging-exceptions">Logging exceptions</a></li><li><a href="#best-practices" data-target="best-practices">Best practices</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="exceptions">Exceptions</h1>
+<p>An exception is Python's way of saying "this line cannot continue", and it travels up the call stack until
+something handles it. Good exception handling is what separates a script that dies on the first flaky API
+response from a service that retries rate limits, fails fast on bad input and leaves a readable traceback when
+something truly unexpected happens. In AI engineering you spend your life around failing calls (timeouts,
+429s, malformed JSON from an LLM), so interviewers probe hierarchy, chaining, <code>finally</code> semantics and what
+you log.</p>
+<h2 id="syntax-errors-versus-runtime-errors" data-topics="py.exceptions.syntax_vs_runtime">Syntax errors versus runtime errors</h2>
+<!-- topics: syntax_vs_runtime -->
+
+<p>A <strong>syntax error</strong> is found while the source is being compiled, before any line runs. A <strong>runtime error</strong>
+(an exception) happens while executing valid code.</p>
+<div class="hl"><pre><span></span><code><span class="k">try</span><span class="p">:</span>
+    <span class="nb">compile</span><span class="p">(</span><span class="s2">"x = (1 +"</span><span class="p">,</span> <span class="s2">"&lt;demo&gt;"</span><span class="p">,</span> <span class="s2">"exec"</span><span class="p">)</span>      <span class="c1"># the parser refuses this</span>
+<span class="k">except</span> <span class="ne">SyntaxError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"-"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">msg</span><span class="p">)</span>
+<span class="c1"># prints: SyntaxError - '(' was never closed</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="mi">1</span> <span class="o">/</span> <span class="mi">0</span>                                       <span class="c1"># valid syntax, fails when run</span>
+<span class="k">except</span> <span class="ne">ZeroDivisionError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                                    <span class="c1"># prints: division by zero</span>
+</code></pre></div>
+
+<p>Consequence: a file with a syntax error on its last line runs <em>nothing</em>, not even the first line. And you
+normally cannot catch a <code>SyntaxError</code> in the same file that contains it (it happens at import or <code>compile</code>
+time, so you can catch it around <code>import</code>, <code>eval</code>, <code>exec</code>). <code>IndentationError</code> and <code>TabError</code> are subclasses.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>NameError</code> and <code>TypeError</code> are runtime errors, not syntax errors. A misspelled variable inside
+a function that is never called never fails. That is the gap type checkers (see the type hints module) fill.</p>
+</blockquote>
+<h2 id="try-except-else-finally" data-topics="py.exceptions.try_except">try, except, else, finally</h2>
+<!-- topics: try_except -->
+
+<div class="hl"><pre><span></span><code>try:      risky code
+except:   runs only if the try raised a matching exception
+else:     runs only if the try raised NOTHING (and did not return/break out)
+finally:  ALWAYS runs, last, on every exit path
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"bad int"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"parsed"</span><span class="p">)</span>          <span class="c1"># only on success</span>
+        <span class="k">return</span> <span class="n">n</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"cleanup"</span><span class="p">)</span>         <span class="c1"># even though return already happened</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">parse</span><span class="p">(</span><span class="s2">"7"</span><span class="p">))</span>    <span class="c1"># prints: parsed, cleanup, then 7</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">parse</span><span class="p">(</span><span class="s2">"x"</span><span class="p">))</span>    <span class="c1"># prints: bad int, cleanup, then None</span>
+</code></pre></div>
+
+<p>Why <code>else</code>? It keeps the <code>try</code> body as small as possible. Code in <code>else</code> that raises is <strong>not</strong> caught by the
+sibling <code>except</code>, so you do not accidentally swallow a bug in the success path.</p>
+<p><strong><code>finally</code> and <code>return</code>.</strong> <code>finally</code> runs before the function actually returns, and a <code>return</code> inside
+<code>finally</code> <em>overrides</em> everything, including a pending exception:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"try"</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"finally runs first"</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="p">())</span>          <span class="c1"># prints: finally runs first, then try</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">g</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"lost"</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"swallowed"</span>      <span class="c1"># the exception vanishes</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">g</span><span class="p">())</span>          <span class="c1"># prints: swallowed</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>return</code>, <code>break</code> or <code>continue</code> inside <code>finally</code> silently discards exceptions. Python 3.14
+(PEP 765) emits a <code>SyntaxWarning</code> for it at compile time; 3.13 stays silent. Never do it.</p>
+<p><strong>Remember</strong> Use <code>finally</code> (or better, <code>with</code>) for cleanup that must happen; use <code>else</code> for code that
+belongs to the success path only.</p>
+</blockquote>
+<details>
+<summary>Check yourself: what does `f()` return if `try` has `return 1` and `finally` has `print("x")`?</summary>
+<p>It prints <code>x</code> and then returns 1. The return value is computed first, <code>finally</code> runs, then the function returns it.</p>
+</details>
+<h2 id="handling-multiple-exceptions" data-topics="py.exceptions.multiple">Handling multiple exceptions</h2>
+<!-- topics: multiple -->
+
+<p>Handlers are tried <strong>top to bottom</strong> and the <strong>first matching one wins</strong>. Match several types in one clause
+with a tuple. Put specific types before general ones.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">classify</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">][</span><span class="n">value</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="k">else</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>       <span class="c1"># one handler, two types</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"input problem: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"index problem"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">classify</span><span class="p">(</span><span class="s2">"x"</span><span class="p">))</span>   <span class="c1"># prints: input problem: ValueError</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">classify</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>     <span class="c1"># prints: index problem</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">classify</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>  <span class="c1"># prints: input problem: TypeError</span>
+</code></pre></div>
+
+<p>Reverse the order (<code>except Exception</code> first) and the specific handlers become dead code. Python does not warn.</p>
+<p><code>except*</code> and <strong>ExceptionGroup</strong> (3.11+) handle <em>several unrelated errors raised at once</em>, which is what
+<code>asyncio.TaskGroup</code> and concurrent fan-out produce:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">():</span>
+    <span class="k">raise</span> <span class="n">ExceptionGroup</span><span class="p">(</span><span class="s2">"batch failed"</span><span class="p">,</span> <span class="p">[</span><span class="ne">ValueError</span><span class="p">(</span><span class="s2">"bad row"</span><span class="p">),</span> <span class="ne">TimeoutError</span><span class="p">(</span><span class="s2">"slow"</span><span class="p">),</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s2">"k"</span><span class="p">)])</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">run</span><span class="p">()</span>
+<span class="k">except</span><span class="o">*</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"values:"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">])</span>   <span class="c1"># prints: values: ['bad row']</span>
+<span class="k">except</span><span class="o">*</span> <span class="p">(</span><span class="ne">TimeoutError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">)</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"others:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">))</span>                <span class="c1"># prints: others: 2</span>
+</code></pre></div>
+
+<p>Every <code>except*</code> clause sees only the matching sub-group, and each runs (unlike plain <code>except</code>, where the first
+match ends the search). Unhandled leftovers are re-raised as a group. You cannot mix <code>except</code> and <code>except*</code>
+in one <code>try</code>.</p>
+<blockquote>
+<p><strong>Python 3.14</strong> PEP 758 allows <code>except A, B:</code> without parentheses when there is no <code>as</code>. Parenthesised
+tuples still work everywhere and are what you should write for 3.12/3.13 code.</p>
+<p><strong>AI use</strong> Firing 20 embedding requests with <code>asyncio.TaskGroup</code> and getting 3 different failures back as one
+<code>ExceptionGroup</code> is routine. <code>except*</code> lets you retry the <code>RateLimitError</code>s and propagate the rest.</p>
+</blockquote>
+<h2 id="the-exception-hierarchy" data-topics="py.exceptions.hierarchy">The exception hierarchy</h2>
+<!-- topics: hierarchy -->
+
+<p>Every exception derives from <code>BaseException</code>. Almost everything you catch derives from <code>Exception</code>.</p>
+<div class="hl"><pre><span></span><code>BaseException
+ +-- SystemExit, KeyboardInterrupt, GeneratorExit, (asyncio.CancelledError)
+ +-- Exception
+      +-- ArithmeticError  (ZeroDivisionError, OverflowError)
+      +-- LookupError      (KeyError, IndexError)
+      +-- OSError          (FileNotFoundError, PermissionError, TimeoutError, ConnectionError)
+      +-- ValueError       (UnicodeError, json.JSONDecodeError)
+      +-- TypeError, AttributeError, NameError, ImportError, RuntimeError, StopIteration ...
+</code></pre></div>
+
+<p>Why it matters: <code>except Exception</code> deliberately does <strong>not</strong> catch Ctrl-C (<code>KeyboardInterrupt</code>), <code>sys.exit()</code>
+(<code>SystemExit</code>) or task cancellation. A bare <code>except:</code> or <code>except BaseException</code> does, making your program
+impossible to stop.</p>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="nb">issubclass</span><span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">LookupError</span><span class="p">))</span>            <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">issubclass</span><span class="p">(</span><span class="ne">KeyboardInterrupt</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">))</span>     <span class="c1"># prints: False</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">issubclass</span><span class="p">(</span><span class="ne">FileNotFoundError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">))</span>       <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">c</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="ne">ConnectionResetError</span><span class="o">.</span><span class="vm">__mro__</span><span class="p">][:</span><span class="mi">4</span><span class="p">])</span>
+<span class="c1"># prints: ['ConnectionResetError', 'ConnectionError', 'OSError', 'Exception']</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">issubclass</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">))</span> <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Catching a parent catches all children: <code>except LookupError</code> handles both <code>KeyError</code> and <code>IndexError</code>;
+<code>except OSError</code> handles missing files, refused connections and timeouts alike.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>asyncio.CancelledError</code> is a <code>BaseException</code> since 3.8. Swallowing it with <code>except Exception</code> is
+fine, but <code>except BaseException</code> that does not re-raise breaks task cancellation and timeouts.</p>
+</blockquote>
+<h2 id="raising-exceptions" data-topics="py.exceptions.raising">Raising exceptions</h2>
+<!-- topics: raising -->
+
+<p><code>raise Cls("message")</code> creates and raises. A bare <code>raise</code> inside an <code>except</code> block <strong>re-raises the current
+exception with its original traceback</strong>, which is what you want after logging or cleanup.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="n">cfg</span><span class="p">):</span>
+    <span class="k">if</span> <span class="s2">"model"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cfg</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s2">"model"</span><span class="p">)</span>           <span class="c1"># raise an instance (or a class: Python instantiates it)</span>
+    <span class="k">return</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">"model"</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="n">cfg</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">load</span><span class="p">(</span><span class="n">cfg</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"logging then re-raising"</span><span class="p">)</span>
+        <span class="k">raise</span>                             <span class="c1"># same exception, same traceback</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">wrapper</span><span class="p">({})</span>
+<span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"caught again:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="c1"># prints: logging then re-raising</span>
+<span class="c1"># prints: caught again: 'model'</span>
+</code></pre></div>
+
+<p>Prefer <code>raise</code> over <code>raise e</code>: the latter adds a redundant traceback frame. Pick the <em>right built-in</em> type:
+<code>ValueError</code> (right type, bad value), <code>TypeError</code> (wrong type), <code>KeyError</code>/<code>IndexError</code> (missing key/position),
+<code>RuntimeError</code> (state is wrong), <code>NotImplementedError</code> (abstract hook). Raising bare <code>Exception("...")</code> forces
+callers to catch everything.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> The name bound by <code>except E as e</code> is <strong>deleted</strong> when the block ends. Use it inside the block or
+copy it out: <code>saved = e</code>.</p>
+</blockquote>
+<h2 id="custom-exceptions" data-topics="py.exceptions.custom">Custom exceptions</h2>
+<!-- topics: custom -->
+
+<p>Define your own when callers need to <em>distinguish</em> failure kinds and react differently. Make one base class per
+library or app, then subclass it, so callers can catch "anything from my package" with one clause.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LLMError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Base for everything our client raises."""</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">RateLimitError</span><span class="p">(</span><span class="n">LLMError</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">retry_after</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="sa">f</span><span class="s2">"rate limited, retry in </span><span class="si">{</span><span class="n">retry_after</span><span class="si">}</span><span class="s2">s"</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">retry_after</span> <span class="o">=</span> <span class="n">retry_after</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidRequestError</span><span class="p">(</span><span class="n">LLMError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Permanent: retrying will not help."""</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="n">status</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="mi">429</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">RateLimitError</span><span class="p">(</span><span class="mf">2.5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="mi">400</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">InvalidRequestError</span><span class="p">(</span><span class="s2">"prompt too long"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"ok"</span>
+
+<span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mi">429</span><span class="p">,</span> <span class="mi">400</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">call</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+    <span class="k">except</span> <span class="n">RateLimitError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"retry after"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">retry_after</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">LLMError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"give up:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="c1"># prints: ok</span>
+<span class="c1"># prints: retry after 2.5</span>
+<span class="c1"># prints: give up: prompt too long</span>
+</code></pre></div>
+
+<p>Rules of thumb: inherit from <code>Exception</code> (never <code>BaseException</code>), name them <code>...Error</code>, keep structured data
+as attributes (status code, retry_after, request id) rather than parsing the message. The OpenAI and Anthropic
+SDKs expose exactly this shape: a base <code>APIError</code>, with <code>RateLimitError</code>, <code>APITimeoutError</code>,
+<code>AuthenticationError</code> beneath it.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Which errors do you retry?" Transient ones (rate limit, timeout, 5xx, connection reset) with
+exponential backoff and jitter. Never 4xx validation or auth errors. A class hierarchy makes that decision a
+one-line <code>except</code>.</p>
+</blockquote>
+<h2 id="exception-chaining" data-topics="py.exceptions.chaining">Exception chaining</h2>
+<!-- topics: chaining -->
+
+<p>When you raise a new exception while handling another, Python links them so the root cause is not lost.</p>
+<ul>
+<li><strong>Implicit</strong> (<code>__context__</code>): raising inside an <code>except</code> block. Traceback says "During handling of the
+  above exception, another exception occurred".</li>
+<li><strong>Explicit</strong> (<code>raise New from old</code>, sets <code>__cause__</code>): "The above exception was the direct cause of...".</li>
+<li><strong>Suppress</strong> (<code>raise New from None</code>): hides the context, sets <code>__suppress_context__</code>.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ConfigError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span> <span class="o">...</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ConfigError</span><span class="p">(</span><span class="s2">"invalid config"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">read</span><span class="p">(</span><span class="s2">"{bad"</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ConfigError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">__cause__</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>      <span class="c1"># prints: JSONDecodeError</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">__context__</span> <span class="ow">is</span> <span class="n">e</span><span class="o">.</span><span class="n">__cause__</span><span class="p">)</span>    <span class="c1"># prints: True</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="mi">1</span> <span class="o">/</span> <span class="mi">0</span>
+    <span class="k">except</span> <span class="ne">ZeroDivisionError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"hidden"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="kc">None</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">__cause__</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">__suppress_context__</span><span class="p">)</span>   <span class="c1"># prints: None True</span>
+</code></pre></div>
+
+<p>Why wrap at all? Layer boundaries: your service should raise <code>ConfigError</code>, not leak <code>JSONDecodeError</code>
+implementation details, yet still keep the original for debugging. Use <code>from None</code> only to drop <em>noise</em>
+(for example a <code>KeyError</code> you converted to a friendlier message), never to hide a real cause.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Inside <code>except</code>, new <code>raise X</code> -&gt; implicit context; <code>raise X from e</code> -&gt; explicit cause. Always
+chain when translating errors.</p>
+</blockquote>
+<h2 id="assert" data-topics="py.exceptions.assert">assert</h2>
+<!-- topics: assert -->
+
+<p><code>assert cond, "message"</code> raises <code>AssertionError</code> if <code>cond</code> is falsy. It is for <strong>bugs and invariants</strong>, not for
+validating input. Running <code>python -O</code> strips every <code>assert</code> statement entirely, so a check that guards real
+data disappears in optimised mode.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mean</span><span class="p">(</span><span class="n">xs</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"mean() of empty list is a programming error"</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">mean</span><span class="p">([])</span>
+<span class="k">except</span> <span class="ne">AssertionError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"assertion:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>     <span class="c1"># prints: assertion: mean() of empty list is a programming error</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Use</th>
+<th><code>assert</code></th>
+<th><code>raise ValueError</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Internal invariant ("cannot happen")</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>User / API / file input</td>
+<td><strong>no</strong></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Survives <code>python -O</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>assert (cond, "msg")</code> asserts a non-empty tuple, which is always true. Python warns with a
+<code>SyntaxWarning</code>. Write <code>assert cond, "msg"</code>. Pytest asserts are a separate, rewritten mechanism.</p>
+</blockquote>
+<h2 id="contextual-error-handling" data-topics="py.exceptions.contextual">Contextual error handling</h2>
+<!-- topics: contextual -->
+
+<p>Handle an error <strong>where you have enough information to do something useful</strong>, and add context as it travels up.
+Low-level code usually cannot decide; the caller that knows the <em>intent</em> can.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">read_line</span><span class="p">(</span><span class="n">raw</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>                      <span class="c1"># no handling: it cannot know what to do</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">load_scores</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+    <span class="n">scores</span><span class="p">,</span> <span class="n">bad</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">raw</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_line</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">bad</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">i</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)))</span>      <span class="c1"># this layer knows "skip and report"</span>
+    <span class="k">return</span> <span class="n">scores</span><span class="p">,</span> <span class="n">bad</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">load_scores</span><span class="p">([</span><span class="s2">"1"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"3"</span><span class="p">]))</span>
+<span class="c1"># prints: ([1, 3], [(2, "invalid literal for int() with base 10: 'x'")])</span>
+</code></pre></div>
+
+<p>Add context with chaining (<code>raise ... from e</code>) or, in 3.11+, <code>e.add_note()</code>, which appears in the traceback
+without changing the type:</p>
+<div class="hl"><pre><span></span><code><span class="k">try</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="nb">int</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">e</span><span class="o">.</span><span class="n">add_note</span><span class="p">(</span><span class="s2">"while parsing doc_id=42"</span><span class="p">)</span>
+        <span class="k">raise</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">__notes__</span><span class="p">)</span>     <span class="c1"># prints: ['while parsing doc_id=42']</span>
+</code></pre></div>
+
+<p>Also: <strong>EAFP</strong> ("ask forgiveness") is idiomatic Python: try the operation and handle the exception, instead of
+pre-checking (LBYL), which can race (the file can vanish between <code>exists()</code> and <code>open()</code>).</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> In a batch job, catch per-record failures, record <code>(doc_id, error)</code> in a dead-letter list and
+continue. One poisoned PDF should not kill a 10 000-document run.</p>
+</blockquote>
+<h2 id="logging-exceptions" data-topics="py.exceptions.logging">Logging exceptions</h2>
+<!-- topics: logging -->
+
+<p><code>print</code> loses the traceback and goes nowhere in production. Use <code>logging</code>. Inside an <code>except</code>,
+<code>logger.exception("msg")</code> logs at ERROR level <strong>with the full traceback</strong>. <code>logger.error("msg", exc_info=True)</code>
+is equivalent.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span><span class="o">,</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">stream</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">"</span><span class="si">%(levelname)s</span><span class="s2"> </span><span class="si">%(message)s</span><span class="s2">"</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"ingest"</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">int</span><span class="p">(</span><span class="s2">"x"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">"failed to parse"</span><span class="p">)</span>
+<span class="c1"># prints: ERROR failed to parse</span>
+<span class="c1"># prints: Traceback (most recent call last): ... (the full traceback follows)</span>
+</code></pre></div>
+
+<p>Do not do <code>log.error(str(e))</code> (no traceback) and do not log-and-raise at every layer (you get the same error
+logged five times). <strong>Log once, at the boundary that handles it</strong>, or re-raise without logging. Use
+lazy formatting: <code>log.warning("retry %d for %s", n, url)</code>, not f-strings.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Logging then swallowing hides failures. If you log and continue, be sure continuing is
+actually correct.</p>
+</blockquote>
+<h2 id="best-practices" data-topics="py.exceptions.best_practices">Best practices</h2>
+<!-- topics: best_practices -->
+
+<ul>
+<li><strong>Catch narrow, try small.</strong> <code>except Exception: pass</code> hides typos and real bugs. Wrap only the line that can
+  fail.</li>
+<li><strong>Never bare <code>except:</code></strong> (catches <code>KeyboardInterrupt</code>). At a true top-level boundary (worker loop, request
+  handler) <code>except Exception</code> plus logging is acceptable.</li>
+<li><strong>Fail fast on programmer errors</strong>, recover only from <em>expected, recoverable</em> conditions.</li>
+<li><strong>Do not use exceptions for ordinary control flow</strong> when a plain check is clearer, but note that
+  <code>StopIteration</code>, <code>KeyError</code> fallbacks and EAFP are normal Python.</li>
+<li><strong>Clean up with <code>with</code>/<code>finally</code></strong>, not by hoping the happy path runs.</li>
+<li><strong>Chain</strong> when translating; <strong>preserve</strong> types callers rely on.</li>
+<li><strong>Retry with a bounded loop</strong>, backoff and jitter, only on transient errors:</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Transient</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span> <span class="o">...</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">with_retry</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">base</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">attempts</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">fn</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">Transient</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="n">attempts</span><span class="p">:</span>
+                <span class="k">raise</span>                     <span class="c1"># out of budget: let the caller see it</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">base</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">**</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+<span class="n">calls</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">flaky</span><span class="p">():</span>
+    <span class="n">calls</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">calls</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">Transient</span>
+    <span class="k">return</span> <span class="s2">"ok"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">with_retry</span><span class="p">(</span><span class="n">flaky</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">calls</span><span class="p">))</span>   <span class="c1"># prints: ok 3</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Is <code>except Exception: pass</code> ever OK?" Almost never; a strong answer names the one place
+(best-effort cleanup such as closing a socket in <code>finally</code>) and says it should still log at debug level.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Syntax errors stop the file before it runs; runtime errors are exceptions raised during execution.</li>
+<li><code>else</code> = success-only code; <code>finally</code> = always runs; <code>return</code> in <code>finally</code> swallows exceptions (3.14 warns).</li>
+<li>First matching <code>except</code> wins; order specific before general. <code>except*</code> handles groups from concurrent work.</li>
+<li><code>Exception</code> is the app-level base; <code>BaseException</code> adds <code>KeyboardInterrupt</code>, <code>SystemExit</code>, cancellation.</li>
+<li>Bare <code>raise</code> re-raises with the original traceback; the <code>as e</code> name vanishes after the block.</li>
+<li>One app base class + specific subclasses with structured attributes makes retry policies trivial.</li>
+<li><code>raise X from e</code> sets <code>__cause__</code>; implicit chaining sets <code>__context__</code>; <code>from None</code> suppresses.</li>
+<li><code>assert</code> is for invariants and disappears under <code>-O</code>; validate real input with exceptions.</li>
+<li><code>logger.exception</code> in an <code>except</code> block logs the traceback; log once, at the handling boundary.</li>
+<li>Catch narrow, keep <code>try</code> small, retry only transient errors with bounded backoff.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-oop.html">&larr; Object-Oriented Programming</a><a class="pn next" href="revise-py-files.html">File Handling &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

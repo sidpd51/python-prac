@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Internals and Performance notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.internals">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Internals and Performance</p><div class="note-head"><div id="note-progress" data-module="py.internals"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#cpython-fundamentals" data-target="cpython-fundamentals">CPython fundamentals</a></li><li><a href="#bytecode" data-target="bytecode">Bytecode</a></li><li><a href="#the-dis-module" data-target="the-dis-module">The dis module</a></li><li><a href="#the-gil" data-target="the-gil">The GIL</a></li><li><a href="#threading" data-target="threading">Threading</a></li><li><a href="#concurrentfutures-and-threadpoolexecutor" data-target="concurrentfutures-and-threadpoolexecutor">concurrent.futures and ThreadPoolExecutor</a></li><li><a href="#multiprocessing-and-processpoolexecutor" data-target="multiprocessing-and-processpoolexecutor">Multiprocessing and ProcessPoolExecutor</a></li><li><a href="#cpu-bound-vs-io-bound-and-choosing-a-model" data-target="cpu-bound-vs-io-bound-and-choosing-a-model">CPU-bound vs I/O-bound, and choosing a model</a></li><li><a href="#profiling-measure-dont-guess" data-target="profiling-measure-dont-guess">Profiling: measure, don&#x27;t guess</a></li><li><a href="#timeit-micro-benchmarks-done-right" data-target="timeit-micro-benchmarks-done-right">timeit: micro-benchmarks done right</a></li><li><a href="#optimization-techniques" data-target="optimization-techniques">Optimization techniques</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="internals-concurrency-and-performance">Internals, concurrency and performance</h1>
+<p>"Python is slow" and "Python has a GIL" are the two statements you must be able to unpack at 3-4 years of
+experience. This note covers what CPython actually does with your code (bytecode on a stack machine), why
+only one thread runs Python at a time, and which tool to reach for: threads, processes or asyncio. It ends
+with the part interviewers care most about: how to find the real bottleneck with <code>cProfile</code> and <code>timeit</code>
+and fix it honestly. In AI engineering this decides how you fan out LLM calls, tokenise or parse in
+parallel, and why a "faster" rewrite sometimes changes nothing.</p>
+<h2 id="cpython-fundamentals" data-topics="py.internals.cpython">CPython fundamentals</h2>
+<!-- topics: cpython -->
+
+<p><strong>Python</strong> is a language; <strong>CPython</strong> is the reference implementation written in C that you run when you type
+<code>python</code>. Others exist (PyPy has a JIT, Jython/IronPython target the JVM/.NET), but behaviour such as refcounting
+and the GIL is CPython-specific.</p>
+<div class="hl"><pre><span></span><code>source .py --&gt; parser --&gt; AST --&gt; compiler --&gt; bytecode (code object)
+                                                   |
+                                      cached in __pycache__/*.pyc (skips compile next import)
+                                                   v
+                                   evaluation loop (a C `switch` over opcodes)
+                                   executes on a stack machine, objects are C structs
+</code></pre></div>
+
+<p>Key facts:</p>
+<ul>
+<li>Python is <strong>compiled to bytecode, then interpreted</strong>. "Interpreted vs compiled" is a false dichotomy.</li>
+<li>Every operation on a Python object goes through dynamic dispatch: <code>a + b</code> must look at the types of <code>a</code> and
+  <code>b</code> at runtime. That, plus boxing every int/float as a heap object with a refcount, is the main cost.</li>
+<li>A <code>.pyc</code> file is just cached bytecode for imports; the main script is compiled in memory each run.</li>
+<li>Since 3.11 the "specializing adaptive interpreter" rewrites hot opcodes in place for the types it keeps seeing
+  (e.g. <code>BINARY_OP</code> on two ints). 3.13 ships an experimental copy-and-patch JIT (off by default, build flag); 3.14
+  keeps it experimental. Don't promise users it makes anything faster.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">implementation</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>   <span class="c1"># prints: cpython</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">version_info</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">12</span><span class="p">))</span>   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Is Python interpreted or compiled?" Both: compiled to bytecode, interpreted by a VM. Follow with
+"which is why the speed fix is usually fewer bytecodes executed (vectorise, use C-implemented builtins), not
+micro-tuning syntax."</p>
+</blockquote>
+<h2 id="bytecode" data-topics="py.internals.bytecode">Bytecode</h2>
+<!-- topics: bytecode -->
+
+<p>A function's compiled form lives in <code>func.__code__</code>. Bytecode is a sequence of tiny instructions that push and
+pop values on a per-frame <strong>evaluation stack</strong>. Local variables live in numbered slots (<code>LOAD_FAST</code>), constants in a
+table (<code>LOAD_CONST</code>).</p>
+<div class="hl"><pre><span></span><code>c = a + b           LOAD_FAST a ; LOAD_FAST b ; BINARY_OP + ; STORE_FAST c
+                     stack: [a]      [a, b]       [a+b]        []
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span>
+    <span class="k">return</span> <span class="n">c</span> <span class="o">*</span> <span class="mi">2</span>
+
+<span class="n">code</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="vm">__code__</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">co_varnames</span><span class="p">)</span>   <span class="c1"># prints: ('a', 'b', 'c')</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">co_argcount</span><span class="p">)</span>   <span class="c1"># prints: 2</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">co_code</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>  <span class="c1"># prints: bytes</span>
+</code></pre></div>
+
+<p>Why you care: more instructions executed means more time; local lookups (<code>LOAD_FAST</code>) are cheaper than
+global/attribute lookups (<code>LOAD_GLOBAL</code>, <code>LOAD_ATTR</code>); a comprehension runs its loop in one tight bytecode
+loop (<code>LIST_APPEND</code>) instead of calling <code>.append</code> for every item.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Bytecode is an implementation detail and <strong>changes between minor versions</strong>. The same function
+disassembles with <code>LOAD_FAST_LOAD_FAST</code> on 3.13 and <code>LOAD_FAST_BORROW_LOAD_FAST_BORROW</code> plus <code>LOAD_SMALL_INT</code> on 3.14.
+Never write code or tests that depend on exact opcode sequences; check for the <em>presence</em> of an opcode family.</p>
+</blockquote>
+<h2 id="the-dis-module" data-topics="py.internals.dis">The dis module</h2>
+<!-- topics: dis -->
+
+<p><code>dis.dis(func)</code> prints a human-readable listing; <code>dis.get_instructions(func)</code> yields <code>Instruction</code> objects you can
+analyse (<code>opname</code>, <code>argrepr</code>, <code>starts_line</code>).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">dis</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">uses_global</span><span class="p">():</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>      <span class="c1"># LOAD_GLOBAL for the builtin `len`</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">uses_local</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">n</span> <span class="o">*</span> <span class="mi">2</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">opnames</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">ins</span><span class="o">.</span><span class="n">opname</span> <span class="k">for</span> <span class="n">ins</span> <span class="ow">in</span> <span class="n">dis</span><span class="o">.</span><span class="n">get_instructions</span><span class="p">(</span><span class="n">fn</span><span class="p">)}</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"LOAD_GLOBAL"</span> <span class="ow">in</span> <span class="n">opnames</span><span class="p">(</span><span class="n">uses_global</span><span class="p">))</span>   <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"LOAD_GLOBAL"</span> <span class="ow">in</span> <span class="n">opnames</span><span class="p">(</span><span class="n">uses_local</span><span class="p">))</span>    <span class="c1"># prints: False</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"RETURN_VALUE"</span> <span class="ow">in</span> <span class="n">opnames</span><span class="p">(</span><span class="n">uses_local</span><span class="p">))</span>   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Typical uses: confirm a constant was folded (<code>2 * 3</code> is computed at compile time, so no multiply is left in the bytecode), see why a closure variable
+is slower (<code>LOAD_DEREF</code>), see where a <code>with</code> or <code>try</code> adds work, and compare two implementations of the same
+thing. For ordinary performance questions prefer measuring (profiling sections below) over reading bytecode.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">dis</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">folded</span><span class="p">():</span>
+    <span class="k">return</span> <span class="mi">2</span> <span class="o">*</span> <span class="mi">3</span> <span class="o">*</span> <span class="mi">700</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="mi">4200</span> <span class="ow">in</span> <span class="n">folded</span><span class="o">.</span><span class="vm">__code__</span><span class="o">.</span><span class="n">co_consts</span><span class="p">)</span>   <span class="c1"># prints: True  (computed at compile time)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"BINARY_OP"</span> <span class="ow">in</span> <span class="p">{</span><span class="n">i</span><span class="o">.</span><span class="n">opname</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">dis</span><span class="o">.</span><span class="n">get_instructions</span><span class="p">(</span><span class="n">folded</span><span class="p">)})</span>   <span class="c1"># prints: False</span>
+</code></pre></div>
+
+<details>
+<summary>Check yourself: why is a `for` loop calling `lst.append(x)` slower than a list comprehension?</summary>
+<p>The loop does a global/attribute lookup (<code>lst.append</code>) and a real method call for every item through generic
+bytecode. The comprehension uses the dedicated <code>LIST_APPEND</code> opcode inside one loop, so far fewer instructions run.</p>
+</details>
+<h2 id="the-gil" data-topics="py.internals.gil">The GIL</h2>
+<!-- topics: gil -->
+
+<p>The <strong>Global Interpreter Lock</strong> is a mutex in CPython: <strong>only one thread executes Python bytecode at a time</strong> per
+process. Why does it exist? Reference counts (<code>ob_refcnt += 1</code>) are updated constantly and are not atomic. Rather
+than lock every object, CPython uses one lock around the interpreter. That makes single-threaded code fast and C
+extensions simple, at the cost of CPU parallelism across threads.</p>
+<div class="hl"><pre><span></span><code>Thread A: |run----|        |run----|
+Thread B:          |run----|        |run---|     only one holds the GIL at any instant
+                   ^ switch (every ~5 ms, or when a thread blocks on I/O)
+</code></pre></div>
+
+<p>What the GIL does and does not do:</p>
+<ul>
+<li><strong>CPU-bound Python in 2 threads takes about as long as running sequentially</strong> (measured: two 3M-iteration
+  loops, 0.15 s sequential vs 0.15 s in two threads).</li>
+<li><strong>I/O-bound threads overlap well</strong>: a thread waiting on a socket, <code>time.sleep</code>, or file read <strong>releases</strong> the GIL.</li>
+<li>C extensions can release it for long computations; <strong>NumPy, hashing, compression, many tokenizers</strong> do, so
+  threads <em>can</em> speed up those.</li>
+<li>The GIL does <strong>not</strong> make your code thread-safe: <code>counter += 1</code> is several bytecodes (load, add, store), and a
+  thread switch can happen between them. Compound operations need a <code>threading.Lock</code>.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">_is_gil_enabled</span><span class="p">())</span>   <span class="c1"># prints: True   (a normal build, 3.13 and 3.14)</span>
+</code></pre></div>
+
+<p><strong>Free-threaded builds.</strong> PEP 703 made the GIL optional. In 3.13 an experimental separate build (<code>python3.13t</code>) can
+run with it off; in 3.14 free-threading is officially supported (PEP 779) but still a separate build and not the
+default. There, threads really run Python in parallel, refcounts use atomic/biased counting, and single-thread code is
+somewhat slower. <code>sysconfig.get_config_var("Py_GIL_DISABLED")</code> is <code>1</code> on such a build (here: <code>0</code>). Your code
+must still use locks for shared mutable state, and some C extensions re-enable the GIL on import until updated.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "How do you parallelise CPU-bound Python?" Processes (<code>multiprocessing</code> /
+<code>ProcessPoolExecutor</code>), or move the loop into C-backed code (NumPy, Rust, Cython), or (new) a free-threaded build.
+"Threads" is the wrong answer for pure-Python CPU work, the right one for blocking I/O.</p>
+</blockquote>
+<h2 id="threading" data-topics="py.internals.threading">Threading</h2>
+<!-- topics: threading -->
+
+<p><code>threading.Thread</code> runs a function concurrently in the same process, sharing memory. Sharing is the benefit
+(cheap, no serialisation) and the danger (races).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+
+<span class="n">counter</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">work</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">counter</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">100_000</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">lock</span><span class="p">:</span>            <span class="c1"># without the lock, updates can be lost</span>
+            <span class="n">counter</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="n">threads</span> <span class="o">=</span> <span class="p">[</span><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">work</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)]</span>
+<span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">threads</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">threads</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">counter</span><span class="p">)</span>   <span class="c1"># prints: 400000</span>
+</code></pre></div>
+
+<p>Tools: <code>Lock</code>, <code>RLock</code> (re-entrant), <code>Semaphore</code> (limit concurrency, e.g. max 5 in-flight API calls), <code>Event</code>
+(signal), <code>Queue</code> (thread-safe producer/consumer, the preferred way to share work), <code>threading.local</code> (per-thread
+state). <code>daemon=True</code> threads die when the main thread exits without cleanup.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A race without a lock <em>sometimes</em> gives the right answer, so tests pass and production corrupts.
+Prefer message passing (<code>queue.Queue</code>) or immutable data over shared mutable state. Always <code>join()</code> or use an
+executor so exceptions and shutdown are handled; an exception in a bare thread just prints and the thread dies.</p>
+</blockquote>
+<h2 id="concurrentfutures-and-threadpoolexecutor" data-topics="py.internals.futures,py.internals.threadpool">concurrent.futures and ThreadPoolExecutor</h2>
+<!-- topics: futures, threadpool -->
+
+<p><code>concurrent.futures</code> is the high-level API: submit callables to a pool, get back <strong><code>Future</code></strong> objects (a promise of a
+result). <code>ThreadPoolExecutor</code> and <code>ProcessPoolExecutor</code> share the same interface, so switching is a one-line change.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span><span class="p">,</span> <span class="n">as_completed</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">fetch</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span> <span class="o">*</span> <span class="p">(</span><span class="mi">3</span> <span class="o">-</span> <span class="n">i</span><span class="p">))</span>          <span class="c1"># stand-in for a blocking HTTP call</span>
+    <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"bad 1"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">10</span>
+
+<span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+    <span class="n">futures</span> <span class="o">=</span> <span class="p">{</span><span class="n">ex</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">fetch</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)}</span>
+    <span class="k">for</span> <span class="n">fut</span> <span class="ow">in</span> <span class="n">as_completed</span><span class="p">(</span><span class="n">futures</span><span class="p">):</span>       <span class="c1"># yields in completion order</span>
+        <span class="n">i</span> <span class="o">=</span> <span class="n">futures</span><span class="p">[</span><span class="n">fut</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">fut</span><span class="o">.</span><span class="n">result</span><span class="p">())</span>          <span class="c1"># .result() re-raises the worker's exception</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"failed:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="c1"># prints: 2 20</span>
+<span class="c1"># prints: 1 failed: bad 1</span>
+<span class="c1"># prints: 0 0</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>API</th>
+<th>Order</th>
+<th>Errors</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ex.submit(fn, *a)</code> -&gt; <code>Future</code></td>
+<td>you decide</td>
+<td><code>future.result()</code> / <code>.exception()</code></td>
+</tr>
+<tr>
+<td><code>ex.map(fn, items)</code></td>
+<td><strong>input order</strong></td>
+<td>raised when you iterate to that item</td>
+</tr>
+<tr>
+<td><code>as_completed(futs)</code></td>
+<td><strong>completion order</strong></td>
+<td>per future</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
+
+<span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">ex</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="n">n</span> <span class="o">*</span> <span class="n">n</span><span class="p">,</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">))))</span>   <span class="c1"># prints: [0, 1, 4, 9, 16]</span>
+</code></pre></div>
+
+<p>The <code>with</code> block waits for all tasks and shuts the pool down. <code>max_workers</code> is your concurrency cap, the
+natural place to respect an API rate limit. <code>future.result(timeout=...)</code> bounds waiting, but you <strong>cannot kill a
+running thread</strong>; <code>cancel()</code> only works on tasks not yet started.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>ex.map</code> hides a failure until you reach that element in the iteration, and stops yielding there.
+If you want "collect every success and every failure", use <code>submit</code> + <code>as_completed</code> and catch per future.</p>
+<p><strong>AI use</strong> Calling a sync LLM or embedding SDK for 500 prompts: a pool of 8-16 threads cuts wall time roughly
+by the pool size until you hit the provider's rate limit. Keep result ordering by index, retry per task.</p>
+</blockquote>
+<h2 id="multiprocessing-and-processpoolexecutor" data-topics="py.internals.multiprocessing,py.internals.processpool">Multiprocessing and ProcessPoolExecutor</h2>
+<!-- topics: multiprocessing, processpool -->
+
+<p>A separate <strong>process</strong> has its own interpreter, own GIL and own memory, so CPU-bound Python runs truly parallel
+on multiple cores. The price: everything crossing the boundary is <strong>pickled</strong> (serialised) and copied, and
+starting processes costs tens of milliseconds.</p>
+<div class="hl"><pre><span></span><code>parent  --pickle(args)--&gt;  worker 1 (own GIL)  --pickle(result)--&gt;  parent
+        --pickle(args)--&gt;  worker 2 (own GIL)  --pickle(result)--&gt;
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="c1"># run as a script file; guard is mandatory</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProcessPoolExecutor</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">cpu</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">))</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">ProcessPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="k">as</span> <span class="n">ex</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">ex</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">cpu</span><span class="p">,</span> <span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">2000</span><span class="p">],</span> <span class="n">chunksize</span><span class="o">=</span><span class="mi">1</span><span class="p">)))</span>
+<span class="c1"># prints: [332833500, 2664667000]</span>
+</code></pre></div>
+
+<p>(Verified on 3.13 and 3.14; the example is <code>norun</code> because pool start-up depends on how the checker launches code.)</p>
+<p>Rules that bite:</p>
+<ul>
+<li><strong><code>if __name__ == "__main__":</code> is required</strong> wherever the start method is <code>spawn</code> or <code>forkserver</code> (workers re-import
+  your module; without the guard they spawn more workers).</li>
+<li>The function and its arguments must be <strong>picklable</strong>: top-level functions yes; lambdas, nested functions, open
+  files, locks, DB connections no (<code>PicklingError</code>).</li>
+<li>Start methods: <code>fork</code> (copy of the parent, fast, unsafe with threads), <code>spawn</code> (fresh interpreter, default on
+  macOS/Windows), <code>forkserver</code>. Linux default is <code>fork</code> on 3.13 and <strong><code>forkserver</code> from 3.14</strong>: code that
+  silently relied on inherited globals via fork can break on 3.14.</li>
+<li>Use <code>chunksize</code> with <code>map</code> for many small tasks to amortise pickling and IPC; a task that takes less time than
+  being sent through the pipe makes the pool slower than a loop.</li>
+<li>Pass <strong>data in, data out</strong>; mutating a global in a worker changes only that worker's copy.</li>
+</ul>
+<p><code>multiprocessing</code> offers lower-level pieces (<code>Process</code>, <code>Queue</code>, <code>Pipe</code>, <code>Pool</code>, shared memory via
+<code>multiprocessing.shared_memory</code>) but for most work <code>ProcessPoolExecutor</code> is enough.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why is my multiprocessing code slower than the loop?" Tasks too small (overhead dominates),
+large arguments pickled per call, or the work was I/O or NumPy-bound (already releasing the GIL).</p>
+</blockquote>
+<h2 id="cpu-bound-vs-io-bound-and-choosing-a-model" data-topics="py.internals.cpu_vs_io,py.internals.concurrency_models">CPU-bound vs I/O-bound, and choosing a model</h2>
+<!-- topics: cpu_vs_io, concurrency_models -->
+
+<p>First ask: <strong>where does the time go?</strong> If the program is mostly <em>waiting</em> (network, disk, a model API), it is
+I/O-bound; if it is mostly <em>computing in Python</em>, it is CPU-bound. Waiting can overlap, computing needs more cores.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Workload</th>
+<th>Best tool</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Many blocking calls, sync libraries (requests, DB driver)</td>
+<td><code>ThreadPoolExecutor</code></td>
+<td>waits release the GIL; easy</td>
+</tr>
+<tr>
+<td>Thousands of concurrent connections, async libraries (httpx async, aiohttp)</td>
+<td><code>asyncio</code></td>
+<td>one thread, tiny per-task cost, cancellation and timeouts</td>
+</tr>
+<tr>
+<td>Pure-Python CPU work (parsing, scoring, feature loops)</td>
+<td><code>ProcessPoolExecutor</code></td>
+<td>separate GILs; pays pickling</td>
+</tr>
+<tr>
+<td>Numeric work on arrays</td>
+<td>NumPy/BLAS, maybe threads</td>
+<td>C code releases the GIL; no Python loop</td>
+</tr>
+<tr>
+<td>Mixed: async app calling CPU work</td>
+<td><code>loop.run_in_executor(process_pool)</code></td>
+<td>keep the event loop responsive</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code>asyncio:  1 thread, tasks voluntarily yield at `await`      cheap, thousands of tasks, needs async libs
+threads:  N threads, OS switches them (preemptive)          simple with blocking code, races possible
+processes: N interpreters, isolated memory                  true CPU parallelism, serialisation cost
+</code></pre></div>
+
+<p>A rule of thumb for LLM systems: calling hosted models is I/O-bound (use asyncio or threads, cap with a
+semaphore, respect rate limits); local embedding/inference is compute-bound but runs in native code (batch it, let
+the library use cores/GPU); pure-Python post-processing at scale is where processes pay off.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> Give the decision table, then add the caveat: "I'd measure first. Async only helps if the
+libraries are async; threads are the quick win for legacy sync SDKs; processes only when profiling shows
+Python-level CPU time."</p>
+</blockquote>
+<details>
+<summary>Check yourself: you must hit an API 1000 times with a sync client. Threads or processes?</summary>
+<p>Threads. The time is spent waiting on the network, which releases the GIL. Processes would add pickling and
+start-up cost for no gain.</p>
+</details>
+<h2 id="profiling-measure-dont-guess" data-topics="py.internals.profiling,py.internals.cprofile">Profiling: measure, don't guess</h2>
+<!-- topics: profiling, cprofile -->
+
+<p><strong>Profiling</strong> finds where time (or memory) goes so you optimise the 5% that matters. The workflow: make it
+correct, <strong>measure</strong> with realistic input, find the hot spot, change one thing, measure again.</p>
+<p><code>cProfile</code> is a deterministic profiler (C implementation, low overhead) that records every function call:
+how many times, time inside the function itself (<code>tottime</code>) and including callees (<code>cumtime</code>).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">cProfile</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pstats</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">slow</span><span class="p">():</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">))</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">50</span><span class="p">):</span>
+        <span class="n">slow</span><span class="p">()</span>
+
+<span class="n">prof</span> <span class="o">=</span> <span class="n">cProfile</span><span class="o">.</span><span class="n">Profile</span><span class="p">()</span>
+<span class="n">prof</span><span class="o">.</span><span class="n">enable</span><span class="p">()</span>
+<span class="n">main</span><span class="p">()</span>
+<span class="n">prof</span><span class="o">.</span><span class="n">disable</span><span class="p">()</span>
+<span class="n">stats</span> <span class="o">=</span> <span class="n">pstats</span><span class="o">.</span><span class="n">Stats</span><span class="p">(</span><span class="n">prof</span><span class="p">)</span>
+<span class="n">calls</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">name</span><span class="p">),</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">stats</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"main"</span><span class="p">,</span> <span class="s2">"slow"</span><span class="p">)}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">calls</span><span class="p">)</span>   <span class="c1"># prints: {'main': 1, 'slow': 50}</span>
+<span class="n">stats</span><span class="o">.</span><span class="n">sort_stats</span><span class="p">(</span><span class="s2">"cumulative"</span><span class="p">)</span>   <span class="c1"># then stats.print_stats(5) prints the table below (timings vary)</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.007    0.007 script.py:32(main)
+       50    0.000    0.000    0.007    0.000 script.py:31(slow)
+       50    0.004    0.000    0.007    0.000 {built-in method builtins.sum}
+    50050    0.003    0.000    0.003    0.000 script.py:31(&lt;genexpr&gt;)
+</code></pre></div>
+
+<p>Reading it: sort by <code>cumulative</code> to find the slow <em>path</em>, by <code>tottime</code> to find the slow <em>function</em>. High <code>ncalls</code>
+with tiny per-call time means call overhead (inline or vectorise); high <code>tottime</code> in one function means that code is the
+hot spot. From a shell: <code>python -m cProfile -s cumtime script.py</code>. Visualise with <code>snakeviz</code>.</p>
+<p>Limits: profiling adds overhead and distorts tiny functions; it shows Python-level calls, not time inside a C
+extension's internals; for production, a <strong>sampling</strong> profiler (<code>py-spy</code>) attaches to a live process without
+code changes. For line-level detail use <code>line_profiler</code>. Memory is <code>tracemalloc</code> (see the memory note).</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> A RAG request takes 3 s. Profile or just time each stage (embed, search, rerank, LLM call, parse).
+Almost always the model call dominates and "optimising" your Python loop is wasted effort.</p>
+</blockquote>
+<h2 id="timeit-micro-benchmarks-done-right" data-topics="py.internals.timeit">timeit: micro-benchmarks done right</h2>
+<!-- topics: timeit -->
+
+<p><code>timeit</code> times a small snippet many times, disables the garbage collector during timing, and uses a high-resolution clock.
+One measurement is noise; take <strong>the minimum of several repeats</strong>, because other processes only ever make a run slower.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">timeit</span>
+
+<span class="n">setup</span> <span class="o">=</span> <span class="s2">"data = list(range(1000))"</span>
+<span class="n">t_list</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">timeit</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="s2">"999 in data"</span><span class="p">,</span> <span class="n">setup</span><span class="p">,</span> <span class="n">number</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="mi">5</span><span class="p">))</span>
+<span class="n">t_set</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">timeit</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="s2">"999 in s"</span><span class="p">,</span> <span class="n">setup</span> <span class="o">+</span> <span class="s2">"; s = set(data)"</span><span class="p">,</span> <span class="n">number</span><span class="o">=</span><span class="mi">2000</span><span class="p">,</span> <span class="n">repeat</span><span class="o">=</span><span class="mi">5</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t_set</span> <span class="o">&lt;</span> <span class="n">t_list</span><span class="p">)</span>   <span class="c1"># prints: True   (hash lookup vs linear scan)</span>
+</code></pre></div>
+
+<p>CLI form: <code>python -m timeit -s "setup" "stmt"</code> picks the loop count automatically. In notebooks use <code>%timeit</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Benchmarking pitfalls: timing the setup together with the statement, measuring once, tiny inputs that
+hide the O(n) vs O(1) difference, and results the optimiser caches (constant folding turns <code>2*3</code> into a constant, so it
+measures nothing). Use realistic sizes and compare more than one.</p>
+</blockquote>
+<p>Use <code>time.perf_counter()</code> for a one-off stopwatch around real code; use <code>timeit</code> for comparing snippets.</p>
+<h2 id="optimization-techniques" data-topics="py.internals.optimization">Optimization techniques</h2>
+<!-- topics: optimization -->
+
+<p>Honest optimisation order: (1) is it correct and is there a test? (2) measure and find the hot spot; (3) fix the
+<strong>algorithm / data structure</strong> first; (4) then reduce Python-level work; (5) then change the execution model; (6) re-measure and keep
+only changes that win on realistic data.</p>
+<p><strong>1. Complexity beats micro-tuning.</strong> <code>x in list</code> is O(n); <code>x in set</code> is O(1). A nested loop that compares
+every pair is O(n^2); a dict index makes it O(n).</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">dedupe_slow</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out</span><span class="p">:</span>         <span class="c1"># O(n) scan inside an O(n) loop: O(n^2)</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">dedupe_fast</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">items</span><span class="p">))</span>   <span class="c1"># O(n), keeps first-seen order</span>
+
+<span class="n">xs</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">dedupe_slow</span><span class="p">(</span><span class="n">xs</span><span class="p">),</span> <span class="n">dedupe_fast</span><span class="p">(</span><span class="n">xs</span><span class="p">))</span>   <span class="c1"># prints: [3, 1, 2] [3, 1, 2]</span>
+</code></pre></div>
+
+<p><strong>2. Use the built-ins and the right structure.</strong> <code>sum</code>, <code>sorted</code>, <code>max(key=...)</code>, <code>str.join</code>, <code>collections.Counter</code>,
+<code>heapq.nlargest</code>, <code>bisect</code> are C-speed. Build strings with <code>"".join(parts)</code>, not <code>s += part</code> in a loop. Use a
+<code>deque</code> for queues (<code>list.pop(0)</code> is O(n)).</p>
+<p><strong>3. Do work once.</strong> Hoist invariants out of loops, cache pure results (<code>functools.lru_cache</code>), compile a regex
+once, avoid repeated attribute lookups in a hot loop (<code>append = out.append</code>), read each file once.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">lru_cache</span>
+
+<span class="n">calls</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="nd">@lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">calls</span>
+    <span class="n">calls</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>       <span class="c1"># stand-in for an expensive embedding call</span>
+
+<span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"bb"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"bb"</span><span class="p">]:</span>
+    <span class="n">embed</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">calls</span><span class="p">,</span> <span class="n">embed</span><span class="o">.</span><span class="n">cache_info</span><span class="p">()</span><span class="o">.</span><span class="n">hits</span><span class="p">)</span>   <span class="c1"># prints: 2 3</span>
+</code></pre></div>
+
+<p><strong>4. Leave the Python loop.</strong> Vectorise with NumPy/pandas (the loop runs in C), or use generators to avoid
+materialising. <strong>5. Change the model:</strong> threads/asyncio for I/O, processes for CPU. <strong>6. Last resort:</strong> Cython, Numba, Rust
+(PyO3), or just a faster algorithm elsewhere.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Premature optimisation is guessing. A 10x faster function that is 2% of the runtime gives a
+2% win. Profile first, and keep a correctness test next to every optimisation.</p>
+<p><strong>Interview</strong> "How would you speed up slow Python?" Profile, then algorithm/data structure, then
+vectorisation or built-ins, then the right concurrency model, then compiled extensions. Mention that you re-measure.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>CPython compiles source to bytecode and interprets it on a stack VM; <code>.pyc</code> caches imports; 3.11+ specializes hot opcodes.</li>
+<li><code>__code__</code> and <code>dis</code> expose bytecode; opcodes change between versions, so test for presence, not exact sequences.</li>
+<li>The GIL lets one thread run bytecode at a time because refcounting is not atomic; I/O and many C extensions release it.</li>
+<li>The GIL does not make compound operations atomic: use locks or queues. Free-threaded builds (3.13 experimental, 3.14 supported, not default) remove it.</li>
+<li>Threads: shared memory, races, great for blocking I/O. Processes: own GIL, pickling, great for CPU.</li>
+<li><code>concurrent.futures</code>: <code>submit</code> + <code>as_completed</code> (per-task errors) vs <code>map</code> (input order, error on iteration); <code>result()</code> re-raises.</li>
+<li>Process pools need the <code>__main__</code> guard, picklable callables, chunking; Linux default start method is fork on 3.13 and forkserver on 3.14.</li>
+<li>Decision: blocking I/O -&gt; threads, many async connections -&gt; asyncio, Python CPU -&gt; processes, array math -&gt; NumPy.</li>
+<li><code>cProfile</code>: <code>ncalls</code>, <code>tottime</code>, <code>cumtime</code>; sort by cumulative for paths, tottime for hot functions; <code>py-spy</code> for live processes.</li>
+<li><code>timeit</code>: repeat, take the minimum, use realistic sizes. Fix complexity first, then built-ins, caching, vectorising; always re-measure.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-memory.html">&larr; Python Memory Management</a><a class="pn next" href="revise-py-numpy.html">Data Processing with NumPy &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

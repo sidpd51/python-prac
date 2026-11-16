@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Modules and Packages notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.packaging">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Modules and Packages</p><div class="note-head"><div id="note-progress" data-module="py.packaging"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#modules" data-target="modules">Modules</a></li><li><a href="#packages" data-target="packages">Packages</a></li><li><a href="#the-import-system" data-target="the-import-system">The import system</a></li><li><a href="#absolute-versus-relative-imports" data-target="absolute-versus-relative-imports">Absolute versus relative imports</a></li><li><a href="#initpy" data-target="initpy">__init__.py</a></li><li><a href="#the-main-guard" data-target="the-main-guard">The main guard</a></li><li><a href="#module-search-path" data-target="module-search-path">Module search path</a></li><li><a href="#virtual-environments" data-target="virtual-environments">Virtual environments</a></li><li><a href="#pip-and-installing" data-target="pip-and-installing">pip and installing</a></li><li><a href="#dependency-management" data-target="dependency-management">Dependency management</a></li><li><a href="#pyprojecttoml" data-target="pyprojecttoml">pyproject.toml</a></li><li><a href="#requirementstxt" data-target="requirementstxt">requirements.txt</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="modules-and-packages">Modules and packages</h1>
+<p>A module is a <code>.py</code> file; a package is a directory of modules. Python's import system is the machinery that finds
+them, runs them once, and caches the result. Understanding it explains the classic failures: <code>ModuleNotFoundError</code>
+when it works on your laptop, circular imports, "why did my script run twice", and "which Python and which
+<code>pip</code> am I using". For AI engineering it also covers how you ship a project: <code>pyproject.toml</code>, virtual
+environments and pinned dependencies so that a model service builds the same way on CI and in the container.</p>
+<p>The runnable examples build tiny packages in a temp directory and run them in a subprocess, so they are
+self-contained.</p>
+<h2 id="modules" data-topics="py.packaging.modules">Modules</h2>
+<!-- topics: modules -->
+
+<p>A <strong>module</strong> is a single file of Python. <code>import foo</code> finds <code>foo.py</code>, executes it top to bottom <strong>once</strong>, and binds
+the resulting module object to the name <code>foo</code>. Its top-level names (functions, classes, variables) become the
+module's attributes.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">math</span><span class="o">,</span><span class="w"> </span><span class="nn">types</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">math</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>                    <span class="c1"># prints: module</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>                                <span class="c1"># prints: 3.141592653589793</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">types</span><span class="o">.</span><span class="n">ModuleType</span><span class="p">(</span><span class="s2">"scratch"</span><span class="p">)</span>               <span class="c1"># a module is just an object with a namespace</span>
+<span class="n">m</span><span class="o">.</span><span class="n">answer</span> <span class="o">=</span> <span class="mi">42</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">answer</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>                   <span class="c1"># prints: 42 scratch</span>
+</code></pre></div>
+
+<p>Key facts:
+* The module body runs at import time. Side effects at the top level (network calls, model loading) run on
+  <em>import</em>, which slows startup and surprises users.
+* <code>import x</code> binds the module; <code>from x import y</code> copies a reference to <code>y</code> into your namespace (rebinding <code>x.y</code>
+  later is not seen by your copy).
+* <code>import a.b.c as d</code> gives an alias. Avoid <code>from x import *</code>: it pollutes the namespace and hides where names
+  come from (unless <code>__all__</code> limits it).</p>
+<h2 id="packages" data-topics="py.packaging.packages">Packages</h2>
+<!-- topics: packages -->
+
+<p>A <strong>package</strong> is a module that contains other modules: a directory, importable by its name, with submodules as
+attributes.</p>
+<div class="hl"><pre><span></span><code>myapp/
+  __init__.py
+  config.py
+  llm/
+    __init__.py
+    client.py
+</code></pre></div>
+
+<p><code>import myapp.llm.client</code> imports <code>myapp</code>, then <code>myapp.llm</code>, then <code>myapp.llm.client</code>, running each <code>__init__.py</code>
+on the way. Directories without <code>__init__.py</code> still work as <strong>namespace packages</strong> (PEP 420), which can span
+several directories, but regular packages with <code>__init__.py</code> are clearer for your own code and are what most
+tools expect.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">pathlib</span><span class="o">,</span><span class="w"> </span><span class="nn">subprocess</span><span class="o">,</span><span class="w"> </span><span class="nn">sys</span><span class="o">,</span><span class="w"> </span><span class="nn">textwrap</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"myapp"</span> <span class="o">/</span> <span class="s2">"llm"</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"myapp"</span> <span class="o">/</span> <span class="s2">"__init__.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"print('init myapp')</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"myapp"</span> <span class="o">/</span> <span class="s2">"llm"</span> <span class="o">/</span> <span class="s2">"__init__.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"print('init llm')</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"myapp"</span> <span class="o">/</span> <span class="s2">"llm"</span> <span class="o">/</span> <span class="s2">"client.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"NAME = 'client'</span><span class="se">\n</span><span class="s2">print('init client')</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">code</span> <span class="o">=</span> <span class="s2">"import myapp.llm.client as c; print(c.NAME)"</span>
+<span class="n">out</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">"-c"</span><span class="p">,</span> <span class="n">code</span><span class="p">],</span> <span class="n">cwd</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">stdout</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+<span class="c1"># prints: init myapp</span>
+<span class="c1"># prints: init llm</span>
+<span class="c1"># prints: init client</span>
+<span class="c1"># prints: client</span>
+</code></pre></div>
+
+<h2 id="the-import-system" data-topics="py.packaging.imports">The import system</h2>
+<!-- topics: imports -->
+
+<p>What <code>import foo</code> does:</p>
+<div class="hl"><pre><span></span><code>1. look in sys.modules["foo"]        -&gt; hit: return it (no re-execution!)
+2. miss: ask each finder on sys.meta_path to locate "foo" (searches sys.path)
+3. loader creates the module object, **puts it in sys.modules first**, then executes the file
+4. bind the name `foo` in the importing namespace
+</code></pre></div>
+
+<p><code>sys.modules</code> is the cache dict. That is why a module's top-level code runs <strong>once per process</strong>, however many files
+import it, and why importing is cheap the second time.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"colorsys"</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">)</span>       <span class="c1"># prints: False  (nobody imported it yet)</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">colorsys</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"colorsys"</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">)</span>       <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">[</span><span class="s2">"colorsys"</span><span class="p">]</span> <span class="ow">is</span> <span class="n">colorsys</span><span class="p">)</span>    <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>You can force a re-execution with <code>importlib.reload(mod)</code>, mostly for notebooks. Dynamic import by string, used for
+plugin systems and "model: provider.Class" configs:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">importlib</span>
+
+<span class="n">mod</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">import_module</span><span class="p">(</span><span class="s2">"collections"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mod</span><span class="o">.</span><span class="n">OrderedDict</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>       <span class="c1"># prints: OrderedDict</span>
+</code></pre></div>
+
+<p><strong>Circular imports.</strong> <code>a</code> imports <code>b</code> and <code>b</code> imports <code>a</code>. Because step 3 registers the half-built module in
+<code>sys.modules</code> <em>before</em> executing it, the second import returns a partially initialised module, and the failure shows
+up as <code>ImportError: cannot import name ...</code> (the exact wording of the hint after it varies by version):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">pathlib</span><span class="o">,</span><span class="w"> </span><span class="nn">subprocess</span><span class="o">,</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"a.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"from b import B</span><span class="se">\n</span><span class="s2">class A: pass</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"b.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"from a import A</span><span class="se">\n</span><span class="s2">class B: pass</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="n">r</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">"-c"</span><span class="p">,</span> <span class="s2">"import a"</span><span class="p">],</span> <span class="n">cwd</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">][:</span><span class="mi">40</span><span class="p">])</span>
+<span class="c1"># prints: ImportError: cannot import name 'A' from</span>
+</code></pre></div>
+
+<p>Fixes, best first: restructure (move shared code into a third module), import the <em>module</em> (<code>import a</code>) and use
+<code>a.A</code> later at call time, or do the import inside the function that needs it. For type-only imports use
+<code>from __future__ import annotations</code> plus <code>if TYPE_CHECKING:</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Naming your file <code>json.py</code>, <code>random.py</code> or <code>typing.py</code> shadows the stdlib module for everything
+run from that directory. A top cause of "weird" import errors.</p>
+<p><strong>Interview</strong> "Why does a module run once?" <code>sys.modules</code> caches it. "Why do circular imports fail?" The
+second importer receives a module that is still executing, so names defined after the import line do not exist yet.</p>
+</blockquote>
+<h2 id="absolute-versus-relative-imports" data-topics="py.packaging.abs_vs_rel">Absolute versus relative imports</h2>
+<!-- topics: abs_vs_rel -->
+
+<ul>
+<li><strong>Absolute</strong>: full path from a top-level package on <code>sys.path</code>: <code>from myapp.llm.client import Client</code>.</li>
+<li><strong>Relative</strong>: relative to the <em>current package</em>: <code>from .client import Client</code> (same package),
+  <code>from ..config import settings</code> (parent). Leading dots only work inside a package.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">pathlib</span><span class="o">,</span><span class="w"> </span><span class="nn">subprocess</span><span class="o">,</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="n">pkg</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"shop"</span>
+<span class="n">pkg</span><span class="o">.</span><span class="n">mkdir</span><span class="p">()</span>
+<span class="p">(</span><span class="n">pkg</span> <span class="o">/</span> <span class="s2">"__init__.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">""</span><span class="p">)</span>
+<span class="p">(</span><span class="n">pkg</span> <span class="o">/</span> <span class="s2">"prices.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"TAX = 0.2</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">pkg</span> <span class="o">/</span> <span class="s2">"cart.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"from .prices import TAX</span><span class="se">\n</span><span class="s2">from shop import prices</span><span class="se">\n</span><span class="s2">print(TAX, prices.TAX)</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">"-m"</span><span class="p">,</span> <span class="s2">"shop.cart"</span><span class="p">],</span> <span class="n">cwd</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>                    <span class="c1"># prints: 0.2 0.2</span>
+<span class="n">r</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">pkg</span> <span class="o">/</span> <span class="s2">"cart.py"</span><span class="p">)],</span> <span class="n">cwd</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<span class="c1"># prints: ImportError: attempted relative import with no known parent package</span>
+</code></pre></div>
+
+<p>The second run fails because running the file directly makes it <code>__main__</code> with no package, so <code>.prices</code> has no
+anchor. Run modules with <code>python -m package.module</code> from the project root.</p>
+<p>PEP 8 prefers absolute imports (clear, work when run as scripts if the package is installed); relative imports are
+fine inside a package you may rename or vendor. <strong>Implicit relative imports</strong> (Python 2) no longer exist.</p>
+<h2 id="initpy" data-topics="py.packaging.init_py"><strong>init</strong>.py</h2>
+<!-- topics: init_py -->
+
+<p><code>__init__.py</code> runs when the package is first imported and its namespace <em>is</em> the package's namespace. Use it for:</p>
+<ul>
+<li>marking a regular package (even an empty file),</li>
+<li>re-exporting a public API so users write <code>from myapp import Client</code> instead of <code>from myapp.llm.client import Client</code>,</li>
+<li><code>__all__</code> (what <code>import *</code> exports), <code>__version__</code>, light setup.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">pathlib</span><span class="o">,</span><span class="w"> </span><span class="nn">subprocess</span><span class="o">,</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"kit"</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">()</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"kit"</span> <span class="o">/</span> <span class="s2">"__init__.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span>
+    <span class="s2">"from .core import run</span><span class="se">\n</span><span class="s2">__all__ = ['run']</span><span class="se">\n</span><span class="s2">__version__ = '1.2'</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"kit"</span> <span class="o">/</span> <span class="s2">"core.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"def run():</span><span class="se">\n</span><span class="s2">    return 'ran'</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">code</span> <span class="o">=</span> <span class="s2">"import kit; print(kit.run(), kit.__version__)"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="s2">"-c"</span><span class="p">,</span> <span class="n">code</span><span class="p">],</span> <span class="n">cwd</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+<span class="c1"># prints: ran 1.2</span>
+</code></pre></div>
+
+<p>Keep it light: heavy imports there (torch, big models) make <code>import myapp</code> slow and increase circular-import
+risk. Lazy imports inside functions are a legitimate fix for optional heavy dependencies.</p>
+<h2 id="the-main-guard" data-topics="py.packaging.main_guard">The main guard</h2>
+<!-- topics: main_guard -->
+
+<p>When Python runs a file directly, that module's <code>__name__</code> is <code>"__main__"</code>; when it is imported, <code>__name__</code> is the
+module's import path. The guard lets one file be both a library and a script.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span><span class="o">,</span><span class="w"> </span><span class="nn">pathlib</span><span class="o">,</span><span class="w"> </span><span class="nn">subprocess</span><span class="o">,</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span>
+<span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"tool.py"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span>
+    <span class="s2">"def main():</span><span class="se">\n</span><span class="s2">    print('main ran')</span><span class="se">\n\n</span><span class="s2">"</span>
+    <span class="s2">"print('name is', __name__)</span><span class="se">\n</span><span class="s2">"</span>
+    <span class="s2">"if __name__ == '__main__':</span><span class="se">\n</span><span class="s2">    main()</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">run</span> <span class="o">=</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">a</span><span class="p">:</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">],</span> <span class="n">cwd</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">stdout</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">run</span><span class="p">(</span><span class="s2">"tool.py"</span><span class="p">))</span>
+<span class="c1"># prints: name is __main__</span>
+<span class="c1"># prints: main ran</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">run</span><span class="p">(</span><span class="s2">"-c"</span><span class="p">,</span> <span class="s2">"import tool"</span><span class="p">))</span>
+<span class="c1"># prints: name is tool</span>
+</code></pre></div>
+
+<p>Without the guard, importing the module (for tests, or by <code>multiprocessing</code> on spawn platforms) runs the script's
+work as a side effect. A package can be runnable via <code>__main__.py</code> (<code>python -m mypkg</code>).</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>multiprocessing</code> with the <code>spawn</code> start method (Windows, macOS default) re-imports your main
+module in each worker. Without the guard you get an infinite process fork-bomb.</p>
+</blockquote>
+<h2 id="module-search-path" data-topics="py.packaging.search_path">Module search path</h2>
+<!-- topics: search_path -->
+
+<p>When a module is not in <code>sys.modules</code>, Python searches the entries of <strong><code>sys.path</code></strong> in order, first match wins:</p>
+<ol>
+<li>the script's directory (or <code>""</code>/cwd for <code>-c</code> and the REPL),</li>
+<li>directories in the <code>PYTHONPATH</code> environment variable,</li>
+<li>the standard library,</li>
+<li><code>site-packages</code> of the active environment (where <code>pip</code> installs),</li>
+<li>entries added by <code>.pth</code> files and editable installs.</li>
+</ol>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="nb">list</span><span class="p">))</span>                       <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">any</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"site-packages"</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">))</span>  <span class="c1"># prints: True  (inside a venv or system python)</span>
+</code></pre></div>
+
+<p>Because earlier entries win, a local file can <strong>shadow</strong> an installed or stdlib module. Debug with
+<code>python -c "import x; print(x.__file__)"</code> and <code>python -m site</code>. Changing <code>sys.path</code> at runtime
+(<code>sys.path.insert(0, ...)</code>) is a hack; prefer installing your project (<code>pip install -e .</code>) so it is importable
+everywhere.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> "It works in my IDE but <code>ModuleNotFoundError</code> in the terminal" is nearly always a different
+<code>sys.path</code> or a different interpreter. <code>python -c "import sys; print(sys.executable)"</code> tells you which one runs.</p>
+</blockquote>
+<h2 id="virtual-environments" data-topics="py.packaging.venv">Virtual environments</h2>
+<!-- topics: venv -->
+
+<p>A <strong>virtual environment</strong> is a directory with its own Python executable link and its own <code>site-packages</code>, so each
+project's dependencies are isolated from the system and from each other.</p>
+<div class="hl"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv<span class="w">                  </span><span class="c1"># create</span>
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">             </span><span class="c1"># activate (Windows: .venv\Scripts\activate)</span>
+which<span class="w"> </span>python<span class="w">                          </span><span class="c1"># -&gt; .../project/.venv/bin/python</span>
+deactivate
+<span class="c1"># without activating, call the env's interpreter directly:</span>
+.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>httpx
+</code></pre></div>
+
+<p>Activation merely puts <code>.venv/bin</code> first on <code>PATH</code>. Inside, <code>sys.prefix</code> differs from <code>sys.base_prefix</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">in_venv</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">prefix</span> <span class="o">!=</span> <span class="n">sys</span><span class="o">.</span><span class="n">base_prefix</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">in_venv</span><span class="p">,</span> <span class="nb">bool</span><span class="p">))</span>      <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Tools: <code>venv</code> (stdlib), <code>virtualenv</code>, <strong><code>uv</code></strong> (fast, handles Python versions, lockfiles), <code>poetry</code>, <code>conda</code> (also
+non-Python binaries such as CUDA libs). Never <code>pip install</code> into the system Python, never commit <code>.venv/</code>, and
+always <code>python -m pip</code> so the pip matches the interpreter.</p>
+<h2 id="pip-and-installing" data-topics="py.packaging.pip">pip and installing</h2>
+<!-- topics: pip -->
+
+<p><code>pip</code> installs distributions from PyPI (or git, or a local path) into the active environment.</p>
+<div class="hl"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>httpx<span class="w">                </span><span class="c1"># latest</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"httpx&gt;=0.27,&lt;1"</span><span class="w">      </span><span class="c1"># version range</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt<span class="w">   </span><span class="c1"># from a file</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.<span class="w">                  </span><span class="c1"># editable: source changes apply without reinstall</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>list<span class="w">                          </span><span class="c1"># what is installed</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>freeze<span class="w">                        </span><span class="c1"># exact pins, requirements format</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>show<span class="w"> </span>httpx<span class="w">                    </span><span class="c1"># version, location, who requires it</span>
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>uninstall<span class="w"> </span>httpx
+</code></pre></div>
+
+<p>Under the hood pip resolves versions, downloads a <strong>wheel</strong> (prebuilt, fast) or builds an <strong>sdist</strong>, and unpacks
+into <code>site-packages</code>. Version specifiers: <code>==1.2.3</code> exact, <code>&gt;=1.2</code>, <code>~=1.2</code> (compatible release: <code>&gt;=1.2,&lt;2.0</code>),
+<code>!=</code>. Extras install optional dependency groups: <code>pip install "mylib[openai]"</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>pip install foo</code> into the wrong environment is the #1 packaging confusion. Check with
+<code>python -m pip --version</code>, which prints the path of the environment it will modify.</p>
+</blockquote>
+<h2 id="dependency-management" data-topics="py.packaging.dependencies">Dependency management</h2>
+<!-- topics: dependencies -->
+
+<p>Two kinds of dependency lists, with different jobs:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Library (published)</th>
+<th>Application (deployed)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Goal</td>
+<td>work with many versions</td>
+<td>reproduce one exact environment</td>
+</tr>
+<tr>
+<td>Pins</td>
+<td><strong>loose ranges</strong> (<code>httpx&gt;=0.27</code>)</td>
+<td><strong>exact</strong> versions, ideally with hashes</td>
+</tr>
+<tr>
+<td>Lives in</td>
+<td><code>pyproject.toml</code> <code>dependencies</code></td>
+<td>lock file / <code>requirements.txt</code> from a resolver</td>
+</tr>
+</tbody>
+</table></div>
+<p>Direct dependencies are what you import; <strong>transitive</strong> dependencies come along with them. A lock file records the
+whole resolved tree so builds are repeatable (<code>uv lock</code>, <code>pip-compile</code>, <code>poetry.lock</code>). Without pins, a new
+release of a transitive package can break a model service on the next deploy for no code change.</p>
+<p>Practices: separate runtime from dev dependencies (<code>pytest</code>, <code>ruff</code>, <code>mypy</code> go in an optional group), update
+deliberately (Dependabot/Renovate plus tests), audit (<code>pip-audit</code>), and keep GPU-specific wheels (torch)
+documented because they need a special index URL. Dependency conflicts ("A needs x&lt;2, B needs x&gt;=2") are
+resolved by the resolver or by changing a version; they cannot both be satisfied in one environment.</p>
+<h2 id="pyprojecttoml" data-topics="py.packaging.pyproject">pyproject.toml</h2>
+<!-- topics: pyproject -->
+
+<p><code>pyproject.toml</code> is the single standard config file (PEP 517/518/621). It declares <strong>how to build</strong> the project and
+its <strong>metadata and dependencies</strong>, and holds tool config (ruff, pytest, mypy).</p>
+<div class="hl"><pre><span></span><code><span class="k">[build-system]</span>
+<span class="n">requires</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"hatchling"</span><span class="p">]</span>
+<span class="n">build-backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"hatchling.build"</span>
+
+<span class="k">[project]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ragkit"</span>
+<span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"0.1.0"</span>
+<span class="n">requires-python</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&gt;=3.11"</span>
+<span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"httpx&gt;=0.27"</span><span class="p">,</span><span class="w"> </span><span class="s2">"pydantic&gt;=2"</span><span class="p">]</span>
+
+<span class="k">[project.optional-dependencies]</span>
+<span class="n">dev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"pytest"</span><span class="p">,</span><span class="w"> </span><span class="s2">"ruff"</span><span class="p">,</span><span class="w"> </span><span class="s2">"mypy"</span><span class="p">]</span>
+
+<span class="k">[project.scripts]</span>
+<span class="n">ragkit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ragkit.cli:main"</span><span class="w">          </span><span class="c1"># installs a `ragkit` command</span>
+
+<span class="k">[tool.pytest.ini_options]</span>
+<span class="n">testpaths</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"tests"</span><span class="p">]</span>
+</code></pre></div>
+
+<p><code>[build-system]</code> tells pip which backend builds the wheel; <code>[project]</code> is the standard metadata; <code>[project.scripts]</code>
+creates console commands; <code>[tool.*]</code> tables configure tools. It is plain TOML, which Python 3.11+ reads with
+<code>tomllib</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tomllib</span>
+
+<span class="n">text</span> <span class="o">=</span> <span class="s2">"""</span>
+<span class="s2">[project]</span>
+<span class="s2">name = "ragkit"</span>
+<span class="s2">dependencies = ["httpx&gt;=0.27"]</span>
+<span class="s2">[project.optional-dependencies]</span>
+<span class="s2">dev = ["pytest"]</span>
+<span class="s2">"""</span>
+<span class="n">cfg</span> <span class="o">=</span> <span class="n">tomllib</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="p">[</span><span class="s2">"project"</span><span class="p">][</span><span class="s2">"name"</span><span class="p">],</span> <span class="n">cfg</span><span class="p">[</span><span class="s2">"project"</span><span class="p">][</span><span class="s2">"dependencies"</span><span class="p">])</span>   <span class="c1"># prints: ragkit ['httpx&gt;=0.27']</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cfg</span><span class="p">[</span><span class="s2">"project"</span><span class="p">][</span><span class="s2">"optional-dependencies"</span><span class="p">][</span><span class="s2">"dev"</span><span class="p">])</span>            <span class="c1"># prints: ['pytest']</span>
+</code></pre></div>
+
+<p>It replaces <code>setup.py</code>/<code>setup.cfg</code> for most projects. A <strong>src layout</strong> (<code>src/ragkit/...</code>) prevents accidentally
+importing the uninstalled working copy; install with <code>pip install -e .</code> during development.</p>
+<h2 id="requirementstxt" data-topics="py.packaging.requirements">requirements.txt</h2>
+<!-- topics: requirements -->
+
+<p>A plain list of requirement specifiers, one per line, consumed by <code>pip install -r</code>. It is the older, simpler,
+still ubiquitous way to pin an application's environment.</p>
+<div class="hl"><pre><span></span><code>httpx==0.27.2
+pydantic&gt;=2,&lt;3
+-r base.txt                  # include another file
+--index-url https://...      # custom index (private or CUDA wheels)
+</code></pre></div>
+
+<p>Typical flow: keep loose top-level requirements in <code>pyproject.toml</code> (or <code>requirements.in</code>), compile them to a fully
+pinned <code>requirements.txt</code> with <code>uv pip compile</code> or <code>pip-compile</code>, and install that in Docker/CI. <code>pip freeze &gt;
+requirements.txt</code> works but captures <em>everything</em>, including tools you installed by hand, and does not distinguish
+direct from transitive packages.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th><code>pyproject.toml</code></th>
+<th><code>requirements.txt</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>metadata, build config, abstract deps</td>
+<td>concrete install list</td>
+</tr>
+<tr>
+<td>needed to publish or <code>pip install -e .</code></td>
+<td>enough to deploy an app</td>
+</tr>
+<tr>
+<td>standard, tool-readable</td>
+<td>simple, line-based, no metadata</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> A Dockerfile for an inference service does <code>pip install --no-cache-dir -r requirements.txt</code> from a
+compiled, hash-pinned file so every build gets the same transformers and torch versions.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>A module is a file run once on first import and cached in <code>sys.modules</code>; a package is a directory of modules.</li>
+<li>Import steps: check <code>sys.modules</code>, find via <code>sys.path</code>, register then execute, bind the name.</li>
+<li>Circular imports fail because the partially executed module is already in <code>sys.modules</code>; restructure or import lazily.</li>
+<li>Absolute imports are the default; relative imports need a package context, so run with <code>python -m pkg.mod</code>.</li>
+<li><code>__init__.py</code> defines the package namespace: re-export the public API, keep it light.</li>
+<li><code>if __name__ == "__main__":</code> separates script behaviour from import behaviour (and protects <code>multiprocessing</code>).</li>
+<li><code>sys.path</code> order: script dir, <code>PYTHONPATH</code>, stdlib, site-packages; local files can shadow stdlib modules.</li>
+<li>One venv per project; use <code>python -m pip</code> so pip matches the interpreter; never install into system Python.</li>
+<li>Libraries declare loose ranges; applications pin exact versions through a lock file.</li>
+<li><code>pyproject.toml</code> holds build backend, metadata, dependencies, scripts and tool config; <code>requirements.txt</code> is a pinned install list.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-context_managers.html">&larr; Context Managers</a><a class="pn next" href="revise-py-type_hints.html">Python Type Hints &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

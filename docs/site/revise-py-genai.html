@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python for Generative AI Applications notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.genai">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python for Generative AI Applications</p><div class="note-head"><div id="note-progress" data-module="py.genai"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#json-and-structured-data" data-target="json-and-structured-data">JSON and structured data</a></li><li><a href="#text-normalisation-and-cleaning" data-target="text-normalisation-and-cleaning">Text normalisation and cleaning</a></li><li><a href="#regular-expressions-for-extraction" data-target="regular-expressions-for-extraction">Regular expressions for extraction</a></li><li><a href="#tokenization-fundamentals" data-target="tokenization-fundamentals">Tokenization fundamentals</a></li><li><a href="#document-processing-and-chunking" data-target="document-processing-and-chunking">Document processing and chunking</a></li><li><a href="#batching" data-target="batching">Batching</a></li><li><a href="#async-llm-calls-and-concurrent-embeddings" data-target="async-llm-calls-and-concurrent-embeddings">Async LLM calls and concurrent embeddings</a></li><li><a href="#rate-limits-and-retry-with-backoff" data-target="rate-limits-and-retry-with-backoff">Rate limits and retry with backoff</a></li><li><a href="#structured-output-validation-and-repair" data-target="structured-output-validation-and-repair">Structured output validation and repair</a></li><li><a href="#streaming-responses-and-sse" data-target="streaming-responses-and-sse">Streaming responses and SSE</a></li><li><a href="#environment-variables-secrets-and-configuration" data-target="environment-variables-secrets-and-configuration">Environment variables, secrets and configuration</a></li><li><a href="#memory-efficient-pipelines-and-reusable-packages" data-target="memory-efficient-pipelines-and-reusable-packages">Logging and error tracking in pipelines</a></li><li><a href="#quick-recap" data-target="quick-recap">Memory-efficient pipelines and reusable packages</a></li></ol></nav><article class="prose notedoc"><h1 id="python-for-generative-ai-applications">Python for Generative AI Applications</h1>
+<p>Most GenAI engineering is ordinary Python applied to awkward inputs and unreliable services: messy
+text, JSON that is almost JSON, models limited by tokens rather than characters, APIs that rate-limit
+and time out, and secrets that must never leak. This note collects the building blocks of an LLM/RAG
+pipeline in the order data flows through it: clean, extract, tokenise, chunk, batch, call concurrently,
+retry, validate, stream, configure, observe. Interviews test whether you can build these <em>robustly</em>,
+so every section ends on the failure modes.</p>
+<h2 id="json-and-structured-data" data-topics="py.genai.structured_data">JSON and structured data</h2>
+<!-- topics: structured_data -->
+
+<p>JSON is the wire format of every LLM API, tool call and JSONL dataset. <code>json.loads</code> parses a string
+into dicts/lists/str/int/float/bool/None; <code>json.dumps</code> goes back.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="s2">"é"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="kc">None</span><span class="p">}))</span>                     <span class="c1"># prints: {"a": "\u00e9", "b": null}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="s2">"é"</span><span class="p">},</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>            <span class="c1"># prints: {"a": "é"}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"s"</span><span class="p">:</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">}},</span> <span class="n">default</span><span class="o">=</span><span class="nb">sorted</span><span class="p">))</span>             <span class="c1"># prints: {"s": [1, 2]}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="s1">'{"a": 1, "a": 2}'</span><span class="p">))</span>                        <span class="c1"># prints: {'a': 2}  (last duplicate wins)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="s2">"{'a': 1}"</span><span class="p">)</span>                                   <span class="c1"># single quotes are not JSON</span>
+<span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>   <span class="c1"># prints: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)</span>
+</code></pre></div>
+
+<ul>
+<li><code>dumps</code> fails on <code>set</code>, <code>datetime</code>, <code>Decimal</code>, dataclasses (pass <code>default=</code>); JSON has no tuples or int keys.</li>
+<li><strong>JSONL</strong> (one object per line) is the standard for big datasets: stream it line by line, and one bad line
+  (<code>json.JSONDecodeError</code>, with <code>.msg</code>) does not kill the file. Skip blank lines, count and log failures.</li>
+</ul>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>json.loads</code> returns plain dicts: wrong types surface far from the cause. Validate at the boundary (see structured output).</p>
+</blockquote>
+<h2 id="text-normalisation-and-cleaning" data-topics="py.genai.text_processing,py.genai.normalization">Text normalisation and cleaning</h2>
+<!-- topics: text_processing, normalization -->
+
+<p>The same visible text can have different code points, so equality, hashing, dedup and search silently
+fail. <code>é</code> can be one code point (U+00E9) or <code>e</code> plus a combining accent (U+0301).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">unicodedata</span>
+
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="s2">"caf</span><span class="se">\u00e9</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"cafe</span><span class="se">\u0301</span><span class="s2">"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">b</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">))</span>                                  <span class="c1"># prints: False 4 5</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">"NFC"</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span> <span class="o">==</span> <span class="n">a</span><span class="p">)</span>                    <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">unicodedata</span><span class="o">.</span><span class="n">normalize</span><span class="p">(</span><span class="s2">"NFKC"</span><span class="p">,</span> <span class="s2">"</span><span class="se">\ufb01</span><span class="s2">ne </span><span class="se">\u2460</span><span class="s2"> </span><span class="se">\uff21\uff11\u00a0</span><span class="s2">x"</span><span class="p">))</span>      <span class="c1"># prints: fine 1 A1 x</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>form</th>
+<th>does</th>
+<th>use for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NFC</td>
+<td>compose (canonical)</td>
+<td>storing text, comparing</td>
+</tr>
+<tr>
+<td>NFD</td>
+<td>decompose</td>
+<td>stripping accents</td>
+</tr>
+<tr>
+<td>NFKC</td>
+<td>compose + replace <em>compatibility</em> characters (ligatures, full-width, circled digits, nbsp)</td>
+<td>search keys, dedup, preprocessing before embedding</td>
+</tr>
+</tbody>
+</table></div>
+<p>NFKC is lossy (<code>①</code> becomes <code>1</code>), so keep the original text and normalise a copy for keys and matching.</p>
+<p>Other tools: <code>casefold()</code> (not <code>lower()</code>: <code>"Straße".casefold()</code> is <code>"strasse"</code>) for case-insensitive matching;
+NFD plus dropping <code>unicodedata.combining</code> characters strips accents (<code>café</code> becomes <code>cafe</code>).</p>
+<p>A typical clean-up order: decode bytes as UTF-8 (<code>errors="replace"</code> for dirty data), NFKC, remove
+zero-width/control characters, map curly quotes and dashes, collapse whitespace, then strip.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Cleaning shifts offsets: keep the original text (or a mapping) if you need citations or highlights.</p>
+</blockquote>
+<h2 id="regular-expressions-for-extraction" data-topics="py.genai.regex">Regular expressions for extraction</h2>
+<!-- topics: regex -->
+
+<p>Regex is the fast, deterministic tool for patterns with structure: ids, emails, dates, citations,
+code fences, PII. Know the few features that matter.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="n">text</span> <span class="o">=</span> <span class="s2">"Mail ada@example.com or bob.smith@corp.io; see [1] and [12]. Paid $1,299.50 on 2024-03-05."</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">"[\w.+-]+@[\w-]+\.[\w.]+"</span><span class="p">,</span> <span class="n">text</span><span class="p">))</span>   <span class="c1"># prints: ['ada@example.com', 'bob.smith@corp.io']</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\[(\d+)\]"</span><span class="p">,</span> <span class="n">text</span><span class="p">))</span>                  <span class="c1"># prints: ['1', '12']   (findall returns the group)</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">"(?P&lt;y&gt;\d</span><span class="si">{4}</span><span class="s2">)-(?P&lt;m&gt;\d</span><span class="si">{2}</span><span class="s2">)-(?P&lt;d&gt;\d</span><span class="si">{2}</span><span class="s2">)"</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">groupdict</span><span class="p">())</span>                                   <span class="c1"># prints: {'y': '2024', 'm': '03', 'd': '05'}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">"&lt;.+&gt;"</span><span class="p">,</span> <span class="s2">"&lt;a&gt;&lt;b&gt;"</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">())</span>            <span class="c1"># prints: &lt;a&gt;&lt;b&gt;     (greedy)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">"&lt;.+?&gt;"</span><span class="p">,</span> <span class="s2">"&lt;a&gt;&lt;b&gt;"</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">())</span>           <span class="c1"># prints: &lt;a&gt;        (lazy)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="sa">r</span><span class="s2">"\b\d</span><span class="si">{3}</span><span class="s2">-\d</span><span class="si">{4}</span><span class="s2">\b"</span><span class="p">,</span> <span class="s2">"&lt;PHONE&gt;"</span><span class="p">,</span> <span class="s2">"call 555-1234 now"</span><span class="p">))</span>   <span class="c1"># prints: call &lt;PHONE&gt; now</span>
+</code></pre></div>
+
+<ul>
+<li><code>match</code> anchors at the start, <code>search</code> finds anywhere, <code>fullmatch</code> needs the whole string; <code>findall</code> returns
+  the groups if the pattern has any; <code>finditer</code> gives spans. Use raw strings, named groups, <code>re.compile</code>, flags <code>re.I</code>/<code>re.S</code>/<code>re.M</code>.</li>
+<li>Greedy <code>.+</code> takes as much as possible, lazy <code>.+?</code> as little: most "grabbed too much" bugs.</li>
+<li>To pull JSON out of a chatty reply, match a code fence: <code>re.search(r"```(?:json)?\s*(.*?)```", reply, re.S)</code>.</li>
+</ul>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Nested structures (balanced braces, HTML) are not regular: use a real parser. Beware catastrophic backtracking (<code>(a+)+$</code>) on untrusted input.</p>
+</blockquote>
+<h2 id="tokenization-fundamentals" data-topics="py.genai.tokenization">Tokenization fundamentals</h2>
+<!-- topics: tokenization -->
+
+<p>LLMs do not read characters or words; they read <strong>tokens</strong>: integer ids for pieces of text from a
+fixed vocabulary (typically 30k-200k entries). Context windows, prices and rate limits are all in
+tokens. A token is usually a common word, a word fragment, punctuation, or even a single byte for rare
+characters.</p>
+<p><strong>BPE (byte-pair encoding) intuition.</strong> Start with single characters (or bytes). Repeatedly find the most
+frequent adjacent pair in the training corpus and merge it into a new symbol. Frequent words end up as
+one token, rare words split into known pieces, and any text can be encoded because the base is bytes.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
+
+<span class="n">words</span> <span class="o">=</span> <span class="p">{</span><span class="nb">tuple</span><span class="p">(</span><span class="s2">"low"</span><span class="p">):</span> <span class="mi">5</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="s2">"lower"</span><span class="p">):</span> <span class="mi">2</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="s2">"newest"</span><span class="p">):</span> <span class="mi">6</span><span class="p">}</span>   <span class="c1"># word -&gt; frequency, as characters</span>
+<span class="n">pairs</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">w</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">words</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+        <span class="n">pairs</span><span class="p">[</span><span class="n">pair</span><span class="p">]</span> <span class="o">+=</span> <span class="n">c</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pairs</span><span class="o">.</span><span class="n">most_common</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>   <span class="c1"># prints: [(('w', 'e'), 8), (('l', 'o'), 7)]</span>
+</code></pre></div>
+
+<p>Merge the top pair into a new symbol (<code>we</code>), re-count, repeat until the vocabulary is full.</p>
+<p>Real tokenizers (tiktoken, sentencepiece) store the learned merges and are <strong>model-specific</strong>: token counts differ per model.</p>
+<p><strong>Why tokens are not words:</strong></p>
+<ul>
+<li>English averages roughly 4 characters or 0.75 words per token, a rule of thumb only. Code, numbers,
+  non-English text and emoji cost far more tokens per character.</li>
+<li>Bytes matter: <code>"日本語"</code> is 3 characters but 9 UTF-8 bytes, so often several tokens.</li>
+<li>Leading spaces are part of tokens (<code>the</code> differs from <code>the</code>).</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="s2">"héllo"</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="s2">"héllo"</span><span class="o">.</span><span class="n">encode</span><span class="p">()),</span> <span class="nb">len</span><span class="p">(</span><span class="s2">"日本語"</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="s2">"日本語"</span><span class="o">.</span><span class="n">encode</span><span class="p">()))</span>   <span class="c1"># prints: 5 6 3 9</span>
+</code></pre></div>
+
+<p>Practical rules: <strong>count with the target model's tokenizer</strong> before sending, reserve room for the output
+(<code>context = prompt + completion</code>), truncate or summarise history to a token budget, and use a cheap
+estimate (<code>len(text) / 4</code>) only for rough guards, never for hard limits.</p>
+<h2 id="document-processing-and-chunking" data-topics="py.genai.document_processing,py.genai.chunking">Document processing and chunking</h2>
+<!-- topics: document_processing, chunking -->
+
+<p>RAG retrieves <em>chunks</em>, not documents: documents are too large for the context window and one embedding
+per whole document is too blurry. Chunking splits text into pieces small enough to embed and precise
+enough to retrieve. Document processing is everything before that: load (PDF, HTML, Markdown),
+extract text, normalise, keep structure (titles, pages) as metadata.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>strategy</th>
+<th>idea</th>
+<th>trade-off</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fixed-size + overlap</td>
+<td>every N chars/tokens, overlapping</td>
+<td>simplest; cuts sentences, ignores structure</td>
+</tr>
+<tr>
+<td>recursive</td>
+<td>split on <code>\n\n</code>, then <code>\n</code>, then sentences, then words until it fits</td>
+<td>respects structure, the usual default</td>
+</tr>
+<tr>
+<td>structure-aware</td>
+<td>split by headings/sections/code blocks</td>
+<td>best coherence; needs a parser</td>
+</tr>
+<tr>
+<td>semantic</td>
+<td>split where embedding similarity drops</td>
+<td>adapts to meaning; extra cost, less predictable</td>
+</tr>
+</tbody>
+</table></div>
+<p>Small chunks give precise matches but lose context; large chunks keep context but dilute the embedding and burn prompt budget. <strong>Overlap</strong> (10-15%) stops an answer being cut at a boundary, at the cost of duplicate storage.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fixed</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">overlap</span><span class="p">):</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="n">size</span> <span class="o">-</span> <span class="n">overlap</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="n">size</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">-</span> <span class="n">overlap</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">step</span><span class="p">)]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">fixed</span><span class="p">(</span><span class="s2">"Alpha beta gamma. Delta epsilon zeta. Eta theta iota."</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>
+<span class="c1"># prints: ['Alpha beta gamma. De', 'a. Delta epsilon zet', 'n zeta. Eta theta io', 'ta iota.']</span>
+</code></pre></div>
+
+<p>Fixed windows split <code>Delta</code> and <code>zeta</code> mid-word. A <strong>recursive</strong> splitter tries the coarsest separator first
+(<code>"\n\n"</code>), packs pieces up to the size limit, and only falls back to <code>"\n"</code>, <code>". "</code>, then <code>" "</code> for pieces
+still too big, so cuts land on paragraph and sentence boundaries. Always measure size in <strong>tokens</strong> when the
+limit is a token limit, and attach metadata (doc id, source, page, offsets) to each chunk for citations and filters.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "How do you choose a chunking strategy?" Start with recursive 300-800 tokens and ~10%
+overlap, build a golden question set, and compare retrieval recall@k and answer quality across settings.
+Tables, code and PDFs usually need structure-aware handling.</p>
+</blockquote>
+<h2 id="batching" data-topics="py.genai.batching">Batching</h2>
+<!-- topics: batching -->
+
+<p>Embedding and LLM APIs accept many inputs per request, and per-request overhead (latency, rate-limit
+cost) dominates small calls. Batching groups items so you make fewer, fuller requests. Python 3.12+
+has <code>itertools.batched</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">batched</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">batched</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">7</span><span class="p">),</span> <span class="mi">3</span><span class="p">)))</span>      <span class="c1"># prints: [(0, 1, 2), (3, 4, 5), (6,)]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">batch_by_chars</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">max_items</span><span class="p">,</span> <span class="n">max_chars</span><span class="p">):</span>
+    <span class="n">cur</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">cur</span> <span class="ow">and</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cur</span><span class="p">)</span> <span class="o">==</span> <span class="n">max_items</span> <span class="ow">or</span> <span class="n">size</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_chars</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">cur</span>
+            <span class="n">cur</span><span class="p">,</span> <span class="n">size</span> <span class="o">=</span> <span class="p">[],</span> <span class="mi">0</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="n">size</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cur</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">cur</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">batch_by_chars</span><span class="p">([</span><span class="s2">"aaa"</span><span class="p">,</span> <span class="s2">"bb"</span><span class="p">,</span> <span class="s2">"cccc"</span><span class="p">,</span> <span class="s2">"d"</span><span class="p">,</span> <span class="s2">"eeeee"</span><span class="p">],</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">)))</span>
+<span class="c1"># prints: [['aaa', 'bb'], ['cccc', 'd'], ['eeeee']]</span>
+</code></pre></div>
+
+<p>Batch on <strong>both</strong> limits (items and total tokens), keep the original index so results map back, flush the
+last partial batch (classic off-by-one), and send one oversized item alone rather than dropping it. <code>batched</code>
+returns tuples and needs <code>n &gt;= 1</code>.</p>
+<h2 id="async-llm-calls-and-concurrent-embeddings" data-topics="py.genai.async_llm_calls,py.genai.concurrent_embeddings">Async LLM calls and concurrent embeddings</h2>
+<!-- topics: async_llm_calls, concurrent_embeddings -->
+
+<p>LLM calls are I/O-bound waits of 1-30 seconds. Sequentially, 100 calls take 100 times as long; with
+<code>asyncio</code> they overlap. But unlimited concurrency triggers 429s and exhausts connections, so you bound it
+with a <strong>semaphore</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fake_embed</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>                    <span class="c1"># stands in for an HTTP call</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">[[</span><span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">))]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">]</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">embed_all</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+    <span class="n">sem</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Semaphore</span><span class="p">(</span><span class="n">limit</span><span class="p">)</span>
+    <span class="n">peak</span> <span class="o">=</span> <span class="n">inflight</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">one</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>
+        <span class="k">nonlocal</span> <span class="n">inflight</span><span class="p">,</span> <span class="n">peak</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">sem</span><span class="p">:</span>                         <span class="c1"># at most `limit` inside at once</span>
+            <span class="n">inflight</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">peak</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">peak</span><span class="p">,</span> <span class="n">inflight</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="k">await</span> <span class="n">fake_embed</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="n">inflight</span> <span class="o">-=</span> <span class="mi">1</span>
+
+    <span class="n">batches</span> <span class="o">=</span> <span class="p">[</span><span class="n">texts</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="n">batch_size</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">texts</span><span class="p">),</span> <span class="n">batch_size</span><span class="p">)]</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">one</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">batches</span><span class="p">))</span>   <span class="c1"># order preserved</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">v</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">r</span><span class="p">],</span> <span class="n">peak</span>
+
+<span class="n">vectors</span><span class="p">,</span> <span class="n">peak</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">embed_all</span><span class="p">([</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"bb"</span><span class="p">,</span> <span class="s2">"ccc"</span><span class="p">,</span> <span class="s2">"dddd"</span><span class="p">,</span> <span class="s2">"eeeee"</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">vectors</span><span class="p">,</span> <span class="n">peak</span><span class="p">)</span>   <span class="c1"># prints: [[1.0], [2.0], [3.0], [4.0], [5.0]] 2</span>
+</code></pre></div>
+
+<p>Key points:</p>
+<ul>
+<li><code>asyncio.gather</code> returns results <strong>in input order</strong>, regardless of completion order, so vectors stay
+  aligned with texts.</li>
+<li>Share one <code>httpx.AsyncClient</code> (connection pooling). <code>gather(..., return_exceptions=True)</code> stops one failure
+  from cancelling the rest; you then inspect each result.</li>
+<li>Blocking calls (<code>requests.get</code>, <code>time.sleep</code>, a CPU-heavy tokenizer) freeze the whole loop: use async
+  clients, <code>asyncio.to_thread</code>, or a process pool.</li>
+<li>A semaphore bounds concurrency, not rate: 10 concurrent calls can still exceed 100 requests/minute.</li>
+</ul>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> 10,000 tasks at once means 10,000 live coroutines and responses: process in windows or use a queue with N workers.</p>
+</blockquote>
+<h2 id="rate-limits-and-retry-with-backoff" data-topics="py.genai.rate_limits,py.genai.retry_backoff">Rate limits and retry with backoff</h2>
+<!-- topics: rate_limits, retry_backoff -->
+
+<p>Providers enforce limits in requests per minute, tokens per minute and concurrent requests. Exceeding
+them returns HTTP <strong>429</strong> (sometimes with a <code>Retry-After</code> header); server trouble returns 500/502/503/529;
+networks time out. Transient errors deserve a retry; permanent ones (400 bad request, 401 auth, 404) never do.</p>
+<p><strong>Exponential backoff with jitter:</strong> wait <code>base * 2**attempt</code>, capped, with randomness, so many clients
+that failed together do not retry in lock-step ("thundering herd").</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">random</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">RateLimit</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">retry_after</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">retry_after</span> <span class="o">=</span> <span class="n">retry_after</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">retry</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">attempts</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">base</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">cap</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">sleep</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">,</span> <span class="n">rng</span><span class="o">=</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">attempts</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="k">await</span> <span class="n">fn</span><span class="p">()</span>
+        <span class="k">except</span> <span class="n">RateLimit</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">attempts</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span>                                   <span class="c1"># out of attempts: surface it</span>
+            <span class="n">delay</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">retry_after</span> <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">retry_after</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">rng</span><span class="p">()</span> <span class="o">*</span> <span class="nb">min</span><span class="p">(</span><span class="n">cap</span><span class="p">,</span> <span class="n">base</span> <span class="o">*</span> <span class="mi">2</span><span class="o">**</span><span class="n">i</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"attempt </span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2"> failed, sleeping </span><span class="si">{</span><span class="n">delay</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">await</span> <span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+
+<span class="n">calls</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">flaky</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">calls</span>
+    <span class="n">calls</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">calls</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">RateLimit</span><span class="p">()</span>
+    <span class="k">return</span> <span class="s2">"ok"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">no_sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">retry</span><span class="p">(</span><span class="n">flaky</span><span class="p">,</span> <span class="n">sleep</span><span class="o">=</span><span class="n">no_sleep</span><span class="p">,</span> <span class="n">rng</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">)))</span>
+<span class="c1"># prints: attempt 1 failed, sleeping 0.50</span>
+<span class="c1"># prints: attempt 2 failed, sleeping 1.00</span>
+<span class="c1"># prints: ok</span>
+</code></pre></div>
+
+<p>Backoff schedule: 0.5, 1, 2, 4, 8, 8 ... seconds (capped), each multiplied by a random factor in real use.</p>
+<p>Rules: retry only retryable errors with a cap on attempts, honour <code>Retry-After</code>, make <code>sleep</code> and <code>rng</code>
+injectable (instant, deterministic tests), retry only idempotent calls, add a client-side token bucket to
+stay <em>under</em> the limit, and do not retry at several layers at once (attempts multiply).</p>
+<h2 id="structured-output-validation-and-repair" data-topics="py.genai.structured_output">Structured output validation and repair</h2>
+<!-- topics: structured_output -->
+
+<p>Prompting for JSON is a request, not a guarantee. Output can be fenced, wrapped in prose, truncated,
+have the wrong types, or invent fields. The robust pattern is <strong>extract, parse, validate, repair or retry</strong>,
+with pydantic (v2) as the validator.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Person</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">age</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Person</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="s1">'{"name":"Ada","age":"36"}'</span><span class="p">))</span>   <span class="c1"># prints: name='Ada' age=36 tags=[]</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Person</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="s1">'{"name":"Ada","age":-1}'</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="n">err</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">error_count</span><span class="p">(),</span> <span class="n">err</span><span class="p">[</span><span class="s2">"loc"</span><span class="p">],</span> <span class="n">err</span><span class="p">[</span><span class="s2">"type"</span><span class="p">])</span>   <span class="c1"># prints: 1 ('age',) greater_than_equal</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">Person</span><span class="o">.</span><span class="n">model_json_schema</span><span class="p">()[</span><span class="s2">"required"</span><span class="p">]))</span>  <span class="c1"># prints: ['age', 'name']</span>
+</code></pre></div>
+
+<p>Notes: pydantic <strong>coerces</strong> in the default (lax) mode (<code>"36"</code> becomes <code>36</code>); use <code>strict=True</code> or
+<code>ConfigDict(strict=True)</code> when you want a type error instead. <code>model_json_schema()</code> gives the JSON Schema you
+can pass to providers that support schema-constrained output or tool/function definitions.</p>
+<p>The <strong>repair loop</strong> feeds the validation error back to the model:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Score</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">score</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">reason</span><span class="p">:</span> <span class="nb">str</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_json</span><span class="p">(</span><span class="n">raw</span><span class="p">):</span>                  <span class="c1"># tolerate fences and chatter around the object</span>
+    <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">"{"</span><span class="p">),</span> <span class="n">raw</span><span class="o">.</span><span class="n">rfind</span><span class="p">(</span><span class="s2">"}"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">raw</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">start</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span> <span class="ow">and</span> <span class="n">end</span> <span class="o">&gt;</span> <span class="n">start</span> <span class="k">else</span> <span class="n">raw</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_structured</span><span class="p">(</span><span class="n">llm</span><span class="p">,</span> <span class="n">prompt</span><span class="p">,</span> <span class="n">max_repairs</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+    <span class="n">messages</span> <span class="o">=</span> <span class="n">prompt</span>
+    <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_repairs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">llm</span><span class="p">(</span><span class="n">messages</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Score</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">extract_json</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">messages</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prompt</span><span class="si">}</span><span class="se">\n</span><span class="s2">Your last answer was invalid: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s1">'msg'</span><span class="p">]</span><span class="si">}</span><span class="s2">. Return only JSON."</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"no valid output after repairs"</span><span class="p">)</span>
+
+<span class="n">replies</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">([</span><span class="s1">'Here: {"score": "high"}'</span><span class="p">,</span> <span class="s1">'```json</span><span class="se">\n</span><span class="s1">{"score": 4, "reason": "clear"}</span><span class="se">\n</span><span class="s1">```'</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get_structured</span><span class="p">(</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="nb">next</span><span class="p">(</span><span class="n">replies</span><span class="p">),</span> <span class="s2">"Rate this."</span><span class="p">))</span>
+<span class="c1"># prints: score=4 reason='clear'</span>
+</code></pre></div>
+
+<p>Cap repairs (they cost tokens and latency), log failure types, prefer provider-native structured output or
+tool calling where available, and raise <code>max_tokens</code> for truncated JSON instead of repairing it.</p>
+<h2 id="streaming-responses-and-sse" data-topics="py.genai.streaming">Streaming responses and SSE</h2>
+<!-- topics: streaming -->
+
+<p>Streaming returns tokens as they are generated, so users see output immediately (lower
+<em>time-to-first-token</em>). Chat APIs use <strong>Server-Sent Events</strong>: a long-lived HTTP response with
+<code>Content-Type: text/event-stream</code> whose body is <code>data: {...}</code> events separated by a blank line (<code>\n\n</code>), ending with <code>data: [DONE]</code> on many APIs.</p>
+<p>The trap: network chunks arrive at <strong>arbitrary boundaries</strong>, in the middle of a line or even an event. You
+must buffer and split on the <code>\n\n</code> terminator, not assume one chunk equals one event.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">sse_events</span><span class="p">(</span><span class="n">chunks</span><span class="p">):</span>
+    <span class="n">buf</span> <span class="o">=</span> <span class="s2">""</span>
+    <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
+        <span class="n">buf</span> <span class="o">+=</span> <span class="n">chunk</span>
+        <span class="k">while</span> <span class="s2">"</span><span class="se">\n\n</span><span class="s2">"</span> <span class="ow">in</span> <span class="n">buf</span><span class="p">:</span>
+            <span class="n">raw</span><span class="p">,</span> <span class="n">buf</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"</span><span class="se">\n\n</span><span class="s2">"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="n">ln</span><span class="p">[</span><span class="mi">5</span><span class="p">:]</span><span class="o">.</span><span class="n">lstrip</span><span class="p">()</span> <span class="k">for</span> <span class="n">ln</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span> <span class="k">if</span> <span class="n">ln</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"data:"</span><span class="p">)]</span>
+            <span class="k">if</span> <span class="n">data</span><span class="p">:</span>                                   <span class="c1"># ignore comments / empty events</span>
+                <span class="k">yield</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>                  <span class="c1"># multi data: lines are joined by newline</span>
+
+<span class="n">stream</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'data: {"t":"He"}</span><span class="se">\n\n</span><span class="s1">da'</span><span class="p">,</span> <span class="s1">'ta: {"t":"llo"}</span><span class="se">\n</span><span class="s1">'</span><span class="p">,</span> <span class="s1">'</span><span class="se">\n</span><span class="s1">data: [DONE]</span><span class="se">\n\n</span><span class="s1">'</span><span class="p">]</span>   <span class="c1"># split mid-event</span>
+<span class="n">out</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">sse_events</span><span class="p">(</span><span class="n">stream</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">d</span> <span class="o">==</span> <span class="s2">"[DONE]"</span><span class="p">:</span>
+        <span class="k">break</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">d</span><span class="p">)[</span><span class="s2">"t"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>   <span class="c1"># prints: Hello</span>
+</code></pre></div>
+
+<p>With <code>httpx</code> you iterate lines from a streaming response without loading it all. <code>MockTransport</code> lets you
+test it offline:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="s1">'data: {"t":"A"}</span><span class="se">\n\n</span><span class="s1">data: [DONE]</span><span class="se">\n\n</span><span class="s1">'</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">"content-type"</span><span class="p">:</span> <span class="s2">"text/event-stream"</span><span class="p">},</span> <span class="n">content</span><span class="o">=</span><span class="n">body</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+
+<span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Client</span><span class="p">(</span><span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">))</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">client</span><span class="o">.</span><span class="n">stream</span><span class="p">(</span><span class="s2">"POST"</span><span class="p">,</span> <span class="s2">"http://llm/v1/chat"</span><span class="p">)</span> <span class="k">as</span> <span class="n">resp</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">([</span><span class="n">ln</span> <span class="k">for</span> <span class="n">ln</span> <span class="ow">in</span> <span class="n">resp</span><span class="o">.</span><span class="n">iter_lines</span><span class="p">()</span> <span class="k">if</span> <span class="n">ln</span><span class="p">])</span>   <span class="c1"># prints: ['data: {"t":"A"}', 'data: [DONE]']</span>
+</code></pre></div>
+
+<p>(<code>httpx.AsyncClient</code> with <code>aiter_lines()</code> is the async twin.) Production: stream with generators, keep partial
+text if the connection drops, set read timeouts, stop on the terminal event (usage often arrives last).</p>
+<h2 id="environment-variables-secrets-and-configuration" data-topics="py.genai.env_vars,py.genai.secrets,py.genai.config">Environment variables, secrets and configuration</h2>
+<!-- topics: env_vars, secrets, config -->
+
+<p><strong>Twelve-factor config</strong>: settings that differ between environments (keys, URLs, model names, timeouts)
+come from environment variables, not from code. Read them with <code>os.environ</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"MODEL"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"small"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"NOPE"</span><span class="p">,</span> <span class="s2">"dflt"</span><span class="p">),</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">"NOPE"</span><span class="p">))</span>   <span class="c1"># prints: dflt None</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"NOPE"</span><span class="p">]</span>
+<span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"KeyError"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>                                   <span class="c1"># prints: KeyError 'NOPE'</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>Env vars are always **strings**: parse numbers and booleans explicitly (`bool("0")` is `True`). Locally, a `.env` file (never
+committed; listed in `.gitignore`) loaded by `python-dotenv` or pydantic-settings fills the environment.
+In production the platform injects them from a secret store (cloud secret manager, Kubernetes secrets).
+
+**pydantic-settings** gives typed, validated config that **fails at startup** if something is missing,
+instead of at the first request:
+
+```python
+import os
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="APP_")
+    api_key: SecretStr
+    timeout_s: float = 30.0
+    debug: bool = False
+
+os.environ.update(APP_API_KEY="sk-secret-123", APP_TIMEOUT_S="5", APP_DEBUG="true")
+st = Settings()
+print(st)                                  # prints: api_key=SecretStr('**********') timeout_s=5.0 debug=True
+print(st.api_key.get_secret_value()[:3])   # prints: sk-
+</code></pre></div>
+
+<p>Without <code>APP_API_KEY</code> set, <code>Settings()</code> raises a <code>ValidationError</code> (type <code>missing</code>) at startup.</p>
+<div class="hl"><pre><span></span><code>**Secrets rules** (a favourite interview topic):
+
+* Never hard-code or commit keys; if one leaks into git history, **rotate it**.
+* Wrap in `SecretStr` so `print`/`repr`/logs show `**********`; call `get_secret_value()` only at the point of use.
+* Never put keys in URLs or error messages; send them in headers. One least-privilege key per service and environment.
+* Load settings once and inject them (cache with `functools.lru_cache`) so tests can override them.
+
+## Logging and error tracking in pipelines
+&lt;!-- topics: logging_tracking --&gt;
+
+A pipeline that processes 100,000 documents needs to tell you *which* ones failed and *why*, without
+stopping and without leaking data. Use the `logging` module (levels, `getLogger(__name__)`), plus structure.
+
+* Log **per item context** (doc id, stage, attempt, latency, tokens, model) and end-of-run counters
+  (`processed=99872 failed=8`). Catch per item, record, continue; fail the run above a threshold.
+* `logger.exception(...)` keeps the traceback; error trackers (Sentry) group them; add a request id.
+* **Redact** secrets and PII with a logging `Filter`: the cheapest leak is a debug log of a request.
+
+```python
+import logging, re
+
+class Redact(logging.Filter):
+    def filter(self, record):
+        record.msg = re.sub(r"sk-[A-Za-z0-9]+", "sk-***", str(record.msg))
+        return True
+
+rec = logging.LogRecord("p", 30, "f", 1, "key sk-abc123 failed", None, None)
+Redact().filter(rec)
+print(rec.msg)   # prints: key sk-*** failed
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> The filter is a safety net; the real fix is never putting the secret in the message.</p>
+</blockquote>
+<h2 id="memory-efficient-pipelines-and-reusable-packages" data-topics="py.genai.logging_tracking">Memory-efficient pipelines and reusable packages</h2>
+<!-- topics: pipelines, packages -->
+
+<p>A corpus rarely fits in memory, so build the pipeline from generators: each stage pulls one record from the
+previous, so memory stays flat (O(batch), not O(corpus)) and you can stop early.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span><span class="o">,</span><span class="w"> </span><span class="nn">pathlib</span><span class="o">,</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">batched</span>
+
+<span class="n">path</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">())</span> <span class="o">/</span> <span class="s2">"a.jsonl"</span>
+<span class="n">path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">i</span><span class="p">,</span> <span class="s2">"text"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"doc </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> "</span> <span class="o">*</span> <span class="mi">3</span><span class="p">})</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>                                    <span class="c1"># stage 1: stream lines, never read_text()</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                <span class="k">yield</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">batches</span><span class="p">):</span>                             <span class="c1"># stage 2: one (fake) API call per batch</span>
+    <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">batches</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="p">[(</span><span class="n">r</span><span class="p">[</span><span class="s2">"id"</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">"text"</span><span class="p">]))</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">b</span><span class="p">]</span>
+
+<span class="k">for</span> <span class="n">out</span> <span class="ow">in</span> <span class="n">embed</span><span class="p">(</span><span class="n">batched</span><span class="p">(</span><span class="n">read</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="mi">2</span><span class="p">)):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+<span class="c1"># prints: [(0, 18), (1, 18)]</span>
+<span class="c1"># prints: [(2, 18), (3, 18)]</span>
+<span class="c1"># prints: [(4, 18)]</span>
+</code></pre></div>
+
+<p>Habits: iterate files line by line, write results incrementally so a crash loses little, make jobs
+<strong>resumable</strong> (skip done ids), and never build a list just to count.</p>
+<p><strong>Reusable packages.</strong> Once code is shared between notebooks, services and teammates, make it a package:</p>
+<ul>
+<li><strong>src layout</strong> (<code>src/mylib/</code>, <code>pyproject.toml</code>, <code>tests/</code>, <code>py.typed</code>) makes tests run against the installed
+  package; develop with <code>pip install -e .</code>. <code>__init__.py</code>/<code>__all__</code> define the public API.</li>
+<li>Libraries take collaborators (client, settings) as arguments and never configure logging or read env at import time.</li>
+<li>Semver, version <em>ranges</em> for libraries, heavy vendor SDKs behind extras (<code>pip install mylib[openai]</code>).</li>
+</ul>
+<h2 id="quick-recap" data-topics="py.genai.pipelines,py.genai.packages">Quick recap</h2>
+<ul>
+<li>JSON: <code>loads/dumps</code>, <code>ensure_ascii=False</code>, <code>default=</code> for custom types; JSONL streams line by line with per-line error handling.</li>
+<li>Normalise text (NFKC for keys, <code>casefold</code>, strip zero-width chars) but keep the original for offsets and citations.</li>
+<li>Regex: greedy vs lazy, <code>findall</code> with groups, named groups, <code>re.S</code> for fences; use a parser for nested structures.</li>
+<li>LLMs see tokens (BPE merges over bytes), not words; counts are model-specific; count with the real tokenizer and budget the output.</li>
+<li>Chunking: recursive by structure, sized in tokens, ~10% overlap, with metadata; tune on a golden set.</li>
+<li>Batch by item count and token budget; flush the last batch; keep indices.</li>
+<li>Async: <code>gather</code> + <code>Semaphore</code> bound concurrency, shared client, never block the loop; semaphore is not a rate limiter.</li>
+<li>Retry only transient errors, exponential backoff with jitter, honour <code>Retry-After</code>, cap attempts, inject <code>sleep</code>.</li>
+<li>Structured output: extract, parse, validate with pydantic, feed the error back for a capped repair loop; never trust or <code>eval</code> output.</li>
+<li>SSE: buffer across chunk boundaries, split on blank lines, handle <code>[DONE]</code>, mid-stream failures and timeouts.</li>
+<li>Config from env (strings!), validated at startup with pydantic-settings; <code>SecretStr</code>; never log or commit secrets; rotate leaks.</li>
+<li>Log per-item context and counters, redact secrets, continue past item failures.</li>
+<li>Pipelines are chains of generators with incremental, resumable writes; packages use src layout, a public <code>__init__</code>, extras.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-testing.html">&larr; Testing and Code Quality</a><span></span></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

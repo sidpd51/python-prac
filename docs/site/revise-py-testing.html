@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testing and Code Quality notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.testing">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Testing and Code Quality</p><div class="note-head"><div id="note-progress" data-module="py.testing"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#the-test-pyramid-unit-versus-integration" data-target="the-test-pyramid-unit-versus-integration">The test pyramid, unit versus integration</a></li><li><a href="#pytest-mechanics" data-target="pytest-mechanics">pytest mechanics</a></li><li><a href="#fixtures-setup-teardown-scope" data-target="fixtures-setup-teardown-scope">Fixtures: setup, teardown, scope</a></li><li><a href="#parametrized-tests" data-target="parametrized-tests">Parametrized tests</a></li><li><a href="#mocking-doubles-fakes-stubs" data-target="mocking-doubles-fakes-stubs">Mocking: doubles, fakes, stubs</a></li><li><a href="#unittestmock-mock-patch-autospec" data-target="unittestmock-mock-patch-autospec">unittest.mock: Mock, patch, autospec</a></li><li><a href="#async-testing-and-asyncmock" data-target="async-testing-and-asyncmock">Async testing and AsyncMock</a></li><li><a href="#coverage-and-its-limits" data-target="coverage-and-its-limits">Coverage and its limits</a></li><li><a href="#debugging-with-pdb" data-target="debugging-with-pdb">Debugging with pdb</a></li><li><a href="#the-logging-module" data-target="the-logging-module">The logging module</a></li><li><a href="#formatting-linting-type-checking-and-pep-8" data-target="formatting-linting-type-checking-and-pep-8">Formatting, linting, type checking and PEP 8</a></li><li><a href="#dependency-management" data-target="dependency-management">Dependency management</a></li><li><a href="#testing-non-deterministic-llm-apps" data-target="testing-non-deterministic-llm-apps">Testing non-deterministic LLM apps</a></li><li><a href="#quick-recap" data-target="quick-recap">quick-recap</a></li></ol></nav><article class="prose notedoc"><h1 id="testing-and-code-quality">Testing and Code Quality</h1>
+<p>Tests are how you change code without fear, and in AI engineering they matter more than usual:
+your code wraps slow, paid, non-deterministic model calls, so you must be able to test everything
+<em>around</em> the model without calling it. Interviewers probe four things: do you know what to test at
+which level, do you understand mocking (especially where to patch), can you test async code, and do you
+have a credible answer to "how do you test an LLM app?". This note also covers logging, debugging and
+the tooling (ruff, mypy, PEP 8) that keeps a codebase healthy.</p>
+<h2 id="the-test-pyramid-unit-versus-integration" data-topics="py.testing.unit,py.testing.integration">The test pyramid, unit versus integration</h2>
+<!-- topics: unit, integration -->
+
+<div class="hl"><pre><span></span><code> few   end-to-end: whole system, slow, flaky
+ some  integration: real collaborators (files, DB, HTTP stack)
+ many  unit: one function/class, no I/O, milliseconds
+</code></pre></div>
+
+<p>The shape is cost versus feedback: cheap tests run on every save, expensive ones on CI or nightly.</p>
+<ul>
+<li><strong>Unit test</strong>: one unit of logic in isolation. Collaborators that do I/O (network, clock, disk, model)
+  are replaced by test doubles. It tells you <em>which function</em> broke.</li>
+<li><strong>Integration test</strong>: several real parts together (your code plus a real temp file, a real SQLite DB,
+  an <code>httpx</code> client talking to a <code>MockTransport</code>). It catches what mocks hide: wrong encoding, wrong
+  JSON shape, a bad SQL query, wiring mistakes.</li>
+<li>An LLM app adds an <strong>eval layer</strong> beside the pyramid (see the last section): real-model runs on a
+  golden set, on demand or nightly, never on every commit.</li>
+</ul>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Tests pass, production breaks." Usually a mock encoded a wrong assumption. Add an
+integration test against the real thing.</p>
+</blockquote>
+<h2 id="pytest-mechanics" data-topics="py.testing.pytest">pytest mechanics</h2>
+<!-- topics: pytest -->
+
+<p>pytest finds tests by convention: files named <code>test_*.py</code> or <code>*_test.py</code>, functions named <code>test_*</code>,
+and methods <code>test_*</code> in classes named <code>Test*</code> (no <code>__init__</code>). A test is a plain function; a test
+<strong>passes if it does not raise</strong>. You write bare <code>assert</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_add</span><span class="p">():</span>
+    <span class="k">assert</span> <span class="mi">1</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">3</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_raises</span><span class="p">():</span>
+    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="ne">ZeroDivisionError</span><span class="p">,</span> <span class="n">match</span><span class="o">=</span><span class="s2">"division"</span><span class="p">):</span>
+        <span class="mi">1</span> <span class="o">/</span> <span class="mi">0</span>
+    <span class="k">assert</span> <span class="mf">0.1</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">==</span> <span class="n">pytest</span><span class="o">.</span><span class="n">approx</span><span class="p">(</span><span class="mf">0.3</span><span class="p">)</span>
+</code></pre></div>
+
+<p><strong>Assert rewriting.</strong> Normally <code>assert a == b</code> only says <code>AssertionError</code>. When pytest imports your
+test modules, it rewrites the assert statements in the AST so a failure shows both sides, the
+operator and a diff of lists/dicts. This only works for test modules and <code>conftest.py</code>, not for helper
+modules (register them with <code>pytest.register_assert_rewrite</code>).</p>
+<p>Handy flags: <code>-x</code> (stop at first failure), <code>-k "chunk and not slow"</code> (select by name), <code>--lf</code> (rerun
+failures), <code>-s</code> (show prints), <code>--pdb</code> (debugger on failure), <code>file.py::test_name</code> (one test).</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Never compare floats with <code>==</code> (use <code>pytest.approx</code> or <code>math.isclose</code>), and never
+<code>assert (cond, "message")</code>: a non-empty tuple is always true. Write <code>assert cond, "message"</code>.</p>
+</blockquote>
+<h2 id="fixtures-setup-teardown-scope" data-topics="py.testing.fixtures">Fixtures: setup, teardown, scope</h2>
+<!-- topics: fixtures -->
+
+<p>A <strong>fixture</strong> is a function that provides a dependency to a test. The test asks for it by putting
+its name in the parameters; pytest builds it, passes it in, and (for <code>yield</code> fixtures) runs the code
+after the <code>yield</code> as teardown, even if the test failed.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">():</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="p">{}</span>              <span class="c1"># setup</span>
+    <span class="k">yield</span> <span class="n">s</span>             <span class="c1"># value given to the test</span>
+    <span class="n">s</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>           <span class="c1"># teardown, always runs</span>
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s2">"session"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">embedder</span><span class="p">():</span>         <span class="c1"># built once for the whole run (expensive things)</span>
+    <span class="k">return</span> <span class="n">FakeEmbedder</span><span class="p">()</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_put</span><span class="p">(</span><span class="n">store</span><span class="p">):</span>
+    <span class="n">store</span><span class="p">[</span><span class="s2">"a"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">assert</span> <span class="n">store</span> <span class="o">==</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+</code></pre></div>
+
+<p>Scopes: <code>function</code> (default, per test: use for anything mutable), <code>class</code>/<code>module</code>, and <code>session</code>
+(once per run: model loading, a DB container).</p>
+<p>Fixtures can depend on other fixtures; shared ones live in <code>conftest.py</code> (auto-discovered). Built-ins:</p>
+<ul>
+<li><code>tmp_path</code>: a fresh <code>pathlib.Path</code> directory per test. Use it for every file test.</li>
+<li><code>monkeypatch</code>: set/delete env vars (<code>setenv</code>, <code>delenv</code>), attributes (<code>setattr</code>), dict items; <strong>undone
+  automatically</strong> after the test. This is the safe way to fake <code>os.environ</code>.</li>
+<li><code>caplog</code> (captured log records), <code>capsys</code> (captured stdout/stderr).</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">test_reads_key</span><span class="p">(</span><span class="n">monkeypatch</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">,</span> <span class="n">caplog</span><span class="p">):</span>
+    <span class="n">monkeypatch</span><span class="o">.</span><span class="n">setenv</span><span class="p">(</span><span class="s2">"API_KEY"</span><span class="p">,</span> <span class="s2">"k-123"</span><span class="p">)</span>       <span class="c1"># undone after the test</span>
+    <span class="p">(</span><span class="n">tmp_path</span> <span class="o">/</span> <span class="s2">"doc.txt"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="s2">"héllo"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span>
+    <span class="n">run</span><span class="p">(</span><span class="n">tmp_path</span> <span class="o">/</span> <span class="s2">"doc.txt"</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="s2">"loaded 1 doc"</span> <span class="ow">in</span> <span class="n">caplog</span><span class="o">.</span><span class="n">text</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A wide-scoped fixture returning a mutable object leaks state between tests ("passes alone,
+fails in the suite"). Keep mutable fixtures function-scoped or return a factory.</p>
+</blockquote>
+<h2 id="parametrized-tests" data-topics="py.testing.parametrize">Parametrized tests</h2>
+<!-- topics: parametrize -->
+
+<p><code>@pytest.mark.parametrize</code> runs one test body over a table of inputs. Each row becomes its own test
+(own pass/fail, own id), so one bad case does not hide the others. That is "table-driven testing".</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span>
+    <span class="s2">"text, expected"</span><span class="p">,</span>
+    <span class="p">[</span>
+        <span class="p">(</span><span class="s2">"score: 7"</span><span class="p">,</span> <span class="mi">7</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">"SCORE=10/10"</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+        <span class="n">pytest</span><span class="o">.</span><span class="n">param</span><span class="p">(</span><span class="s2">"no number"</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s2">"missing"</span><span class="p">),</span>
+    <span class="p">],</span>
+<span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_extract_score</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">extract_score</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">==</span> <span class="n">expected</span>
+</code></pre></div>
+
+<p>Good habits: include edge cases (empty, unicode, boundaries), give odd rows an <code>id</code>, stack decorators for a
+cross product, and parametrize inputs, not logic. Without pytest it is just <code>for text, want in cases: assert f(text) == want</code>.</p>
+<h2 id="mocking-doubles-fakes-stubs" data-topics="py.testing.mocking,py.testing.clean_code">Mocking: doubles, fakes, stubs</h2>
+<!-- topics: mocking, clean_code -->
+
+<p>A <strong>test double</strong> replaces a real collaborator. Vocabulary:
+* <strong>stub</strong>: returns canned answers. <strong>fake</strong>: a simplified but working implementation (in-memory store,
+  scripted LLM). <strong>mock</strong>: records calls so you can assert on interactions. <strong>spy</strong>: real object plus recording.</p>
+<p>Prefer <strong>state-based</strong> tests (check the result) with stubs and fakes over <strong>interaction-based</strong> tests
+(check which methods were called): the latter pin down implementation details, so every refactor
+breaks them. Use a mock when the interaction <em>is</em> the behaviour ("the email was sent once", "we did not
+call the paid API on a cache hit").</p>
+<p>The enabler is <strong>dependency injection</strong>: pass collaborators in instead of creating them inside.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">FakeLLM</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Scripted fake: returns replies in order and records prompts."""</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">replies</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">replies</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">replies</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prompts</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prompts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">replies</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">summarize</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">llm</span><span class="p">):</span>                 <span class="c1"># llm injected, not constructed inside</span>
+    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">llm</span><span class="o">.</span><span class="n">complete</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Summarize as JSON: </span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">"</span><span class="p">))[</span><span class="s2">"summary"</span><span class="p">]</span>
+
+<span class="n">fake</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="p">([</span><span class="s1">'{"summary": "short"}'</span><span class="p">])</span>
+<span class="k">assert</span> <span class="n">summarize</span><span class="p">(</span><span class="s2">"long text"</span><span class="p">,</span> <span class="n">fake</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"short"</span>
+<span class="k">assert</span> <span class="s2">"long text"</span> <span class="ow">in</span> <span class="n">fake</span><span class="o">.</span><span class="n">prompts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"ok"</span><span class="p">)</span>   <span class="c1"># prints: ok</span>
+</code></pre></div>
+
+<p>Code that calls <code>datetime.now()</code>, reads <code>os.environ</code> or builds <code>OpenAI()</code> inline is hard to test; take the
+clock, the settings or the client as parameters (with a sensible default) and a test hands in a fake.
+This is also the clean-code payoff: small functions, one responsibility, explicit inputs and outputs, no
+hidden globals. Testable code and clean code are nearly the same thing.</p>
+<h2 id="unittestmock-mock-patch-autospec" data-topics="py.testing.unittest_mock">unittest.mock: Mock, patch, autospec</h2>
+<!-- topics: unittest_mock -->
+
+<p><code>Mock</code> accepts any attribute or call and records it; <code>MagicMock</code> also supports magic methods
+(<code>len</code>, <code>in</code>, <code>with</code>, iteration). Configure with <code>return_value</code> and <code>side_effect</code> (a list returns items
+in order, an exception instance is raised, a function computes the result).</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mock</span><span class="p">,</span> <span class="n">MagicMock</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Mock</span><span class="p">()</span>
+<span class="n">m</span><span class="o">.</span><span class="n">complete</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="s2">"hi"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">complete</span><span class="p">(</span><span class="s2">"x"</span><span class="p">))</span>             <span class="c1"># prints: hi</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">complete</span><span class="o">.</span><span class="n">call_args</span><span class="p">)</span>        <span class="c1"># prints: call('x')</span>
+<span class="n">m</span><span class="o">.</span><span class="n">complete</span><span class="o">.</span><span class="n">assert_called_once_with</span><span class="p">(</span><span class="s2">"x"</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">complet</span><span class="o">.</span><span class="n">called</span><span class="p">)</span>            <span class="c1"># prints: False   (typo silently accepted!)</span>
+
+<span class="n">flaky</span> <span class="o">=</span> <span class="n">Mock</span><span class="p">(</span><span class="n">side_effect</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"boom"</span><span class="p">)])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">flaky</span><span class="p">())</span>                     <span class="c1"># prints: 1</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">flaky</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                       <span class="c1"># prints: boom</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">MagicMock</span><span class="p">()))</span>            <span class="c1"># prints: 0 (MagicMock supports magic methods; Mock does not)</span>
+</code></pre></div>
+
+<p><strong>autospec</strong> makes the mock copy the real object's signature, so wrong attribute names or wrong
+arguments fail like they would in production:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_autospec</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Client</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">temperature</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">create_autospec</span><span class="p">(</span><span class="n">Client</span><span class="p">,</span> <span class="n">instance</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">s</span><span class="o">.</span><span class="n">complete</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>          <span class="c1"># fine</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">s</span><span class="o">.</span><span class="n">complete</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                            <span class="c1"># prints: missing a required argument: 'prompt'</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">s</span><span class="o">.</span><span class="n">compleet</span>
+<span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                            <span class="c1"># prints: Mock object has no attribute 'compleet'</span>
+</code></pre></div>
+
+<h3 id="patch-and-the-where-to-patch-rule">patch and the where-to-patch rule</h3>
+<p><code>patch("target")</code> temporarily replaces a name and restores it on exit (context manager or decorator).
+The rule: <strong>patch the name where it is looked up, not where it is defined.</strong></p>
+<div class="hl"><pre><span></span><code>app/llm.py        defines   call_model
+app/service.py    does      from app.llm import call_model   -&gt; service.call_model is its OWN reference
+</code></pre></div>
+
+<p>Patch <code>app.service.call_model</code> (where it is looked up). Patching <code>app.llm.call_model</code> changes only the
+original. If <code>service</code> does <code>import app.llm</code> and calls <code>app.llm.call_model(...)</code>, patching <code>app.llm</code> works.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">patch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+<span class="k">with</span> <span class="n">patch</span><span class="p">(</span><span class="s2">"os.getenv"</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="s2">"k"</span><span class="p">)</span> <span class="k">as</span> <span class="n">g</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">"X"</span><span class="p">))</span>     <span class="c1"># prints: k</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">g</span><span class="o">.</span><span class="n">call_args</span><span class="p">)</span>        <span class="c1"># prints: call('X')</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">"X_NOPE"</span><span class="p">))</span>    <span class="c1"># prints: None   (restored)</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Use <code>autospec=True</code> with <code>patch</code>, and <code>monkeypatch</code>/<code>patch.dict</code> for <code>os.environ</code>.</p>
+</blockquote>
+<details>
+<summary>Check yourself: `service.py` has `from llm import call`. Why does `patch("llm.call")` not affect it?</summary>
+<p><code>from llm import call</code> copies the reference into <code>service</code>'s namespace at import time. Patching
+<code>llm.call</code> rebinds the name in <code>llm</code> only. Patch <code>service.call</code> (the place it is used).</p>
+</details>
+<h2 id="async-testing-and-asyncmock" data-topics="py.testing.async_testing,py.testing.testing_async_functions">Async testing and AsyncMock</h2>
+<!-- topics: async_testing, testing_async_functions -->
+
+<p>An <code>async def</code> test needs an event loop to run it. With <code>pytest-asyncio</code> you mark the test (or set
+<code>asyncio_mode = "auto"</code> in config) and pytest awaits it for you:</p>
+<div class="hl"><pre><span></span><code><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">asyncio</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_embed_all</span><span class="p">():</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="k">await</span> <span class="n">embed_all</span><span class="p">([</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">],</span> <span class="n">client</span><span class="o">=</span><span class="n">fake_client</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+</code></pre></div>
+
+<p>Under the hood that is <code>asyncio.run(test())</code>, which also lets you demo async logic without pytest.</p>
+<p><code>AsyncMock</code> is a mock whose call returns an awaitable. <code>await mock(...)</code> yields <code>return_value</code>, or
+raises/steps through <code>side_effect</code>; it also records <code>await_count</code> and <code>assert_awaited_once_with</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">AsyncMock</span>
+
+<span class="n">embed</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span><span class="n">return_value</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">embed</span><span class="p">(</span><span class="s2">"q"</span><span class="p">)))</span>     <span class="c1"># prints: [1]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">embed</span><span class="o">.</span><span class="n">await_count</span><span class="p">)</span>           <span class="c1"># prints: 1</span>
+
+<span class="c1"># simulate "rate limited once, then success" - essential for retry tests</span>
+<span class="n">api</span> <span class="o">=</span> <span class="n">AsyncMock</span><span class="p">(</span><span class="n">side_effect</span><span class="o">=</span><span class="p">[</span><span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"429"</span><span class="p">),</span> <span class="s2">"ok"</span><span class="p">])</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">with_retry</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="k">await</span> <span class="n">api</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"retrying after"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">with_retry</span><span class="p">()))</span>
+<span class="c1"># prints: retrying after 429</span>
+<span class="c1"># prints: ok</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">api</span><span class="o">.</span><span class="n">await_count</span><span class="p">)</span>             <span class="c1"># prints: 2</span>
+</code></pre></div>
+
+<p><code>patch</code> on an <code>async def</code> target auto-creates an <code>AsyncMock</code>. Inject the sleep function
+(<code>sleep=AsyncMock()</code>) so retry tests are instant, and assert the back-off values it received.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Calling an <code>async def</code> without <code>await</code> gives a truthy coroutine, so <code>assert fn()</code> tests nothing.</p>
+</blockquote>
+<h2 id="coverage-and-its-limits" data-topics="py.testing.coverage">Coverage and its limits</h2>
+<!-- topics: coverage -->
+
+<p>Coverage measures <strong>which lines (and optionally branches) ran</strong> during the tests. With <code>pytest-cov</code>:</p>
+<div class="hl"><pre><span></span><code>pytest<span class="w"> </span>--cov<span class="o">=</span>mypkg<span class="w"> </span>--cov-branch<span class="w"> </span>--cov-report<span class="o">=</span>term-missing
+pytest<span class="w"> </span>--cov<span class="o">=</span>mypkg<span class="w"> </span>--cov-fail-under<span class="o">=</span><span class="m">85</span><span class="w">     </span><span class="c1"># CI gate</span>
+</code></pre></div>
+
+<p><code>term-missing</code> lists untested line numbers; branch coverage checks both sides of each <code>if</code>.</p>
+<p>The limit: coverage proves code <em>ran</em>, never that the result was <em>checked</em>. A test with no assertions
+gives the same coverage as a perfect one. 100% coverage with weak assertions is worth little, and 70%
+with sharp tests on the risky paths is worth more. A good check is <strong>mutation testing</strong> thinking: if
+you changed <code>&gt;</code> to <code>&gt;=</code>, would some test fail? If not, the test is too weak.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Coverage finds untested code, not missing tests or bad assertions. A floor, not a goal.</p>
+</blockquote>
+<h2 id="debugging-with-pdb" data-topics="py.testing.debugging">Debugging with pdb</h2>
+<!-- topics: debugging -->
+
+<p><code>breakpoint()</code> (Python 3.7+) drops into the debugger at that line; it calls <code>pdb.set_trace()</code> unless
+<code>PYTHONBREAKPOINT</code> says otherwise (<code>PYTHONBREAKPOINT=0</code> disables all of them, handy in CI).</p>
+<p>Commands: <code>n</code> next, <code>s</code> step into, <code>c</code> continue, <code>r</code> run to return, <code>p expr</code> / <code>pp</code> print, <code>l</code> list source,
+<code>w</code> stack, <code>u</code>/<code>d</code> move up/down, <code>q</code> quit.</p>
+<p><code>pytest --pdb</code> opens the debugger at the failing assert; <code>python -m pdb script.py</code> for any script.</p>
+<p>Often cheaper: read the traceback bottom-up, shrink the failing input, write the reproduction as a test first.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A leftover <code>breakpoint()</code> hangs a service or CI job waiting for stdin. Lint rules
+(ruff <code>T100</code>) flag them.</p>
+</blockquote>
+<h2 id="the-logging-module" data-topics="py.testing.logging,py.testing.logging_module">The logging module</h2>
+<!-- topics: logging, logging_module -->
+
+<p><code>print</code> is for scripts; services use <code>logging</code>: levels, destinations, structure and per-module control.
+Moving parts: loggers (named, levelled), handlers (where), formatters (how), propagation.</p>
+<div class="hl"><pre><span></span><code>logger.info("x") -&gt; Logger "app.rag" (level check) -&gt; its Handlers (each with a Formatter)
+                    -&gt; if propagate: parent Logger "app" handlers -&gt; ... -&gt; root
+</code></pre></div>
+
+<p>Loggers form a hierarchy by dotted name: <code>app.rag</code> is a child of <code>app</code>, which is a child of root. A
+logger with no level of its own uses its nearest ancestor's (<strong>effective level</strong>). Levels in order:
+<code>DEBUG(10) &lt; INFO(20) &lt; WARNING(30) &lt; ERROR(40) &lt; CRITICAL(50)</code>; the root default is WARNING.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"app.rag"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">log</span><span class="o">.</span><span class="n">getEffectiveLevel</span><span class="p">(),</span> <span class="n">log</span><span class="o">.</span><span class="n">propagate</span><span class="p">)</span>   <span class="c1"># prints: 30 True</span>
+
+<span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">()</span>
+<span class="n">handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">StreamHandler</span><span class="p">(</span><span class="n">buf</span><span class="p">)</span>
+<span class="n">handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="s2">"</span><span class="si">%(levelname)s</span><span class="s2"> </span><span class="si">%(name)s</span><span class="s2">: </span><span class="si">%(message)s</span><span class="s2">"</span><span class="p">))</span>
+<span class="n">parent</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"app"</span><span class="p">)</span>
+<span class="n">parent</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
+<span class="n">parent</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">"hidden"</span><span class="p">)</span>                <span class="c1"># below INFO</span>
+<span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"loaded </span><span class="si">%d</span><span class="s2"> docs"</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>      <span class="c1"># handled by the parent's handler (propagation)</span>
+<span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">"slow"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span> <span class="n">end</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<span class="c1"># prints: INFO app.rag: loaded 3 docs</span>
+<span class="c1"># prints: WARNING app.rag: slow</span>
+
+<span class="n">log</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"not delivered"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()))</span>   <span class="c1"># prints: 2</span>
+</code></pre></div>
+
+<p>Rules worth memorising:</p>
+<ul>
+<li><strong><code>logger = logging.getLogger(__name__)</code> in every module.</strong> Never configure handlers in library code;
+  only the application entry point calls <code>logging.basicConfig(...)</code> or <code>dictConfig</code>.</li>
+<li><strong>Lazy formatting</strong>: <code>log.info("got %s", x)</code>, not an f-string, so the string is only built if the
+  level is enabled.</li>
+<li><code>log.exception("failed")</code> inside <code>except</code> logs at ERROR with the traceback.</li>
+<li><strong>Never log secrets</strong> (API keys, tokens, full prompts with PII). Redact or log a prefix/hash.</li>
+</ul>
+<p>Testing logs: use <code>caplog</code> (<code>assert "429" in caplog.text</code>, or check <code>record.levelname</code> and
+<code>record.name</code>). Treat levels and message templates as a contract, since alerts depend on them.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Log per LLM call: model, latency, token counts, retries, request id. Not the key.</p>
+</blockquote>
+<h2 id="formatting-linting-type-checking-and-pep-8" data-topics="py.testing.formatting,py.testing.linting,py.testing.type_checking,py.testing.pep8">Formatting, linting, type checking and PEP 8</h2>
+<!-- topics: formatting, linting, type_checking, pep8 -->
+
+<p>Three different jobs, often confused:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>job</th>
+<th>tool</th>
+<th>question it answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>format</strong></td>
+<td><code>ruff format</code> (or black)</td>
+<td>how should this code look? (automatic, no debate)</td>
+</tr>
+<tr>
+<td><strong>lint</strong></td>
+<td><code>ruff check</code> (flake8, pylint)</td>
+<td>does this code smell? unused imports, bugs, style</td>
+</tr>
+<tr>
+<td><strong>type check</strong></td>
+<td><code>mypy</code> (or pyright)</td>
+<td>do the types line up?</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code>ruff<span class="w"> </span>format<span class="w"> </span>.<span class="w">            </span><span class="c1"># rewrite files to a canonical style</span>
+ruff<span class="w"> </span>check<span class="w"> </span>.<span class="w"> </span>--fix<span class="w">       </span><span class="c1"># report (and auto-fix) lint problems</span>
+mypy<span class="w"> </span>src/<span class="w">                </span><span class="c1"># static type check, no code is run</span>
+</code></pre></div>
+
+<p><strong>PEP 8</strong> is the style guide: 4-space indents, <code>snake_case</code> for functions/variables, <code>PascalCase</code> for
+classes, <code>UPPER_CASE</code> for constants, line length around 79-100 (the formatter decides), two blank lines
+around top-level definitions, imports grouped stdlib / third-party / local, <code>is None</code> not <code>== None</code>,
+no bare <code>except:</code>. Formatters enforce layout; linters enforce the rest. Put the configuration in
+<code>pyproject.toml</code> (<code>[tool.ruff]</code>, <code>[tool.mypy]</code>) and run all three in CI and a pre-commit hook.</p>
+<p>mypy never runs your code, and annotations are not enforced at runtime: <code>total_tokens(["a"])</code> on a
+<code>list[int]</code> function fails only under mypy (<code>List item 0 has incompatible type "str"; expected "int"</code>).</p>
+<p>Add types where they pay off: public functions, data shapes (<code>TypedDict</code>, dataclass, pydantic), <code>Optional</code>.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Linter vs type checker?" The linter looks at syntax patterns and style without
+understanding types; the type checker does flow analysis on annotations. They catch different bugs,
+so you run both.</p>
+</blockquote>
+<h2 id="dependency-management" data-topics="py.testing.dependency_management">Dependency management</h2>
+<!-- topics: dependency_management -->
+
+<p>The goal is a <strong>reproducible environment</strong> on your laptop, CI and production.</p>
+<ul>
+<li>Use a <strong>virtual environment</strong> per project (<code>python -m venv .venv</code>, or <code>uv venv</code>) so projects do not
+  fight over versions.</li>
+<li>Declare <strong>direct dependencies with version ranges</strong> in <code>pyproject.toml</code> (<code>httpx&gt;=0.27,&lt;1</code>).</li>
+<li>Pin the <strong>full resolved tree</strong> in a lock file (<code>uv.lock</code>, <code>poetry.lock</code>, or a <code>pip-compile</code> output).
+  Install from the lock in CI and production. Ranges say what you accept; the lock says what you tested.</li>
+<li>Separate <strong>dev dependencies</strong> (pytest, ruff, mypy) from runtime ones (optional groups or extras).</li>
+<li>Upgrade deliberately (bot PR plus test suite); audit with <code>pip-audit</code>.</li>
+</ul>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> An unpinned <code>openai</code> or <code>langchain</code> will eventually break your build; the lock makes upgrades deliberate.</p>
+</blockquote>
+<h2 id="testing-non-deterministic-llm-apps" data-topics="py.testing.unit,py.testing.integration,py.testing.mocking">Testing non-deterministic LLM apps</h2>
+<!-- topics: unit, integration, mocking -->
+
+<p>A model's output varies run to run, so exact string equality is the wrong assertion, and calling the
+real model in unit tests is slow, costly and flaky. Split the problem in layers:</p>
+<ol>
+<li><strong>Test everything around the model deterministically</strong> with a fake client: prompt construction,
+   parsing, retries, validation, caching, fallbacks. Most of your bugs live here.</li>
+<li><strong>Assert on properties, not text</strong>: output is valid JSON matching a schema, the answer cites a
+   provided source, length is in bounds, no banned phrases, the score is in 1..5.</li>
+<li><strong>Golden set evals</strong>: 30-200 curated inputs with expected facts or labels, scored automatically
+   (exact match on extracted fields, retrieval recall@k, or an LLM judge for open text). Run on demand
+   and in CI nightly, compare against a stored baseline, and fail on regression beyond a threshold.</li>
+<li><strong>Pin what you can</strong> (temperature 0, fixed model version, seed) and <strong>record/replay</strong> real responses as fixtures.</li>
+</ol>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">FakeLLM</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">replies</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">replies</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">replies</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">replies</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_person</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">llm</span><span class="p">,</span> <span class="n">retries</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">retries</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">llm</span><span class="o">.</span><span class="n">complete</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Return JSON with name and age: </span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">),</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"age"</span><span class="p">),</span> <span class="nb">int</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">data</span>
+        <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"model never produced valid output"</span><span class="p">)</span>
+
+<span class="c1"># the model misbehaves first (chatty prose), then complies: test the repair path offline</span>
+<span class="n">llm</span> <span class="o">=</span> <span class="n">FakeLLM</span><span class="p">([</span><span class="s2">"Sure! Here you go."</span><span class="p">,</span> <span class="s1">'{"name": "Ada", "age": 36}'</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">extract_person</span><span class="p">(</span><span class="s2">"Ada is 36"</span><span class="p">,</span> <span class="n">llm</span><span class="p">))</span>   <span class="c1"># prints: {'name': 'Ada', 'age': 36}</span>
+</code></pre></div>
+
+<p>```</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "How do you test an LLM feature?" Fake client for deterministic code, schema/property
+assertions, a versioned golden set with thresholds, LLM-as-judge only with a spot-checked rubric, then
+production monitoring.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Pyramid: many fast isolated unit tests, fewer integration tests with real parts, few end-to-end, plus an eval layer for LLMs.</li>
+<li>pytest discovers <code>test_*</code>, rewrites asserts for readable diffs, passes if nothing raises.</li>
+<li>Fixtures inject dependencies, <code>yield</code> gives teardown, scope controls reuse; keep mutable ones function-scoped.</li>
+<li><code>tmp_path</code>, <code>monkeypatch</code>, <code>caplog</code> give isolation for files, env vars and logs.</li>
+<li>Parametrize one test over a table of cases; each row is its own test.</li>
+<li>Prefer fakes and state-based assertions; use mocks when the interaction is the behaviour; inject dependencies.</li>
+<li>Patch where the name is looked up, use <code>autospec</code> so mocks keep the real signature.</li>
+<li><code>AsyncMock</code> plus <code>side_effect</code> simulates failures; inject <code>sleep</code> so retry tests are instant; never forget <code>await</code>.</li>
+<li>Coverage shows what ran, not what was verified.</li>
+<li><code>breakpoint()</code> / <code>pytest --pdb</code> for debugging; reproduce with a test first.</li>
+<li>Logging: <code>getLogger(__name__)</code>, hierarchy and propagation, handlers/formatters configured only by the app, lazy <code>%s</code> args, never secrets.</li>
+<li>Format (ruff format), lint (ruff check), type check (mypy) are three separate jobs; PEP 8 is the style baseline.</li>
+<li>Reproducible installs: venv, ranges in pyproject, lock file.</li>
+<li>Test LLM apps by faking the client, asserting properties/schemas, and running golden-set evals with thresholds.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-pandas.html">&larr; Data Processing with Pandas</a><a class="pn next" href="revise-py-genai.html">Python for Generative AI Applications &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

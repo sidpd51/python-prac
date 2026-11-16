@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generators notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.generators">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Generators</p><div class="note-head"><div id="note-progress" data-module="py.generators"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#generator-functions-and-yield" data-target="generator-functions-and-yield">Generator functions and yield</a></li><li><a href="#suspension-and-resumption" data-target="suspension-and-resumption">Suspension and resumption</a></li><li><a href="#lazy-evaluation-list-versus-generator" data-target="lazy-evaluation-list-versus-generator">Lazy evaluation, list versus generator</a></li><li><a href="#generator-expressions" data-target="generator-expressions">Generator expressions</a></li><li><a href="#exhaustion-one-pass-only" data-target="exhaustion-one-pass-only">Exhaustion: one pass only</a></li><li><a href="#pipelines-and-chaining" data-target="pipelines-and-chaining">Pipelines and chaining</a></li><li><a href="#yield-from" data-target="yield-from">yield from</a></li><li><a href="#send-throw-and-close" data-target="send-throw-and-close">send, throw and close</a></li><li><a href="#eager-validation-a-generator-trap" data-target="eager-validation-a-generator-trap">Eager validation: a generator trap</a></li><li><a href="#documents-chunking-and-metadata" data-target="documents-chunking-and-metadata">Documents, chunking and metadata</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="generators">Generators</h1>
+<p>A generator is a function that can pause and resume. Instead of building a whole result and
+returning it, it hands you values one at a time and remembers where it stopped. That one idea gives
+you constant memory on huge inputs, infinite streams, and the lazy pipelines behind most document
+ingestion code: read a file, clean it, chunk it, embed it, without ever holding the corpus in memory.
+Interviewers use generators to check whether you understand <em>when code actually runs</em>.</p>
+<h2 id="generator-functions-and-yield" data-topics="py.generators.functions,py.generators.yield">Generator functions and yield</h2>
+<!-- topics: functions, yield -->
+
+<p>A function containing <code>yield</code> is a <strong>generator function</strong>. Calling it does <strong>not</strong> run its body. It
+returns a <strong>generator object</strong> that is paused before the first line.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">countdown</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"start"</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">n</span>
+        <span class="n">n</span> <span class="o">-=</span> <span class="mi">1</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done"</span><span class="p">)</span>
+
+<span class="n">g</span> <span class="o">=</span> <span class="n">countdown</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>       <span class="c1"># nothing printed yet</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">g</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>  <span class="c1"># prints: generator</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>         <span class="c1"># prints: start, then 2</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>         <span class="c1"># prints: 1</span>
+</code></pre></div>
+
+<p><code>yield value</code> does two things: it hands <code>value</code> to whoever called <code>next()</code>, and it <strong>freezes the
+whole frame</strong> (local variables, loop position) until the next <code>next()</code>.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>yield</code> makes the <em>function</em> a generator. <code>return value</code> inside it just ends the
+iteration (the value rides on <code>StopIteration</code>, see <code>yield from</code> below).</p>
+<p><strong>Gotcha</strong> Because the body does not run on call, validation at the top of a generator is
+deferred until the first <code>next()</code>. See "Eager validation" later.</p>
+</blockquote>
+<details>
+<summary>Check yourself: what does `countdown(2)` print by itself?</summary>
+<p>Nothing. Calling it only creates the generator object. "start" appears on the first <code>next()</code>.</p>
+</details>
+<h2 id="suspension-and-resumption" data-topics="py.generators.suspension,py.generators.resumption">Suspension and resumption</h2>
+<!-- topics: suspension, resumption -->
+
+<p>Think of the generator as a paused frame:</p>
+<div class="hl"><pre><span></span><code>next(g)  -&gt;  run until the next `yield`  -&gt;  hand out the value  -&gt;  PAUSE (frame kept alive)
+next(g)  -&gt;  resume right after that `yield`  -&gt;  ...
+body ends -&gt;  raise StopIteration
+</code></pre></div>
+
+<p>You can watch the states with <code>inspect</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">gen</span><span class="p">():</span>
+    <span class="k">yield</span> <span class="mi">1</span>
+
+<span class="n">g</span> <span class="o">=</span> <span class="n">gen</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">getgeneratorstate</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>   <span class="c1"># prints: GEN_CREATED</span>
+<span class="nb">next</span><span class="p">(</span><span class="n">g</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">getgeneratorstate</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>   <span class="c1"># prints: GEN_SUSPENDED</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">next</span><span class="p">(</span><span class="n">g</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+    <span class="k">pass</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">getgeneratorstate</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>   <span class="c1"># prints: GEN_CLOSED</span>
+</code></pre></div>
+
+<p>The paused frame lives on the heap, which is why local variables survive between calls and why an
+unfinished generator can keep resources (a file, a DB cursor) open.</p>
+<h2 id="lazy-evaluation-list-versus-generator" data-topics="py.generators.lazy_evaluation,py.generators.list_vs_generator,py.generators.memory_efficiency">Lazy evaluation, list versus generator</h2>
+<!-- topics: lazy_evaluation, list_vs_generator, memory_efficiency -->
+
+<p>Lazy means: compute a value only when somebody asks for it. A list comprehension is eager, a
+generator is lazy.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="n">eager</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="o">*</span> <span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1_000_000</span><span class="p">)]</span>
+<span class="n">lazy</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1_000_000</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">eager</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1_000_000</span><span class="p">)</span>  <span class="c1"># prints: True   (megabytes)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">lazy</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">300</span><span class="p">)</span>         <span class="c1"># prints: True   (a few hundred bytes)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">lazy</span><span class="p">))</span>                        <span class="c1"># prints: 0</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>list</th>
+<th>generator</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory</td>
+<td>O(n)</td>
+<td>O(1)</td>
+</tr>
+<tr>
+<td>Reusable</td>
+<td>yes</td>
+<td><strong>one pass</strong></td>
+</tr>
+<tr>
+<td><code>len()</code>, index, slice</td>
+<td>yes</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Errors surface</td>
+<td>at creation</td>
+<td><strong>at consumption</strong></td>
+</tr>
+<tr>
+<td>Can be infinite</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "When is a generator the wrong choice?" Random access, multiple passes, <code>len()</code>,
+sorting, tiny data where the list is simpler, and when you need the work done <em>now</em> (e.g. a
+resource will be closed before you consume it).</p>
+<p><strong>AI use</strong> Streaming a 50 GB JSONL corpus into an embedding job only works because each stage
+keeps one record in memory.</p>
+</blockquote>
+<h2 id="generator-expressions" data-topics="py.generators.expressions">Generator expressions</h2>
+<!-- topics: expressions -->
+
+<p><code>(expr for x in it if cond)</code> is the lazy cousin of a list comprehension. Parentheses can be dropped
+when it is the only argument:</p>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)))</span>      <span class="c1"># prints: 14</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">any</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">5</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"bbbbbbb"</span><span class="p">]))</span>  <span class="c1"># prints: True  (stops at the first hit)</span>
+</code></pre></div>
+
+<p>The <strong>outermost iterable is evaluated immediately</strong>; everything else is evaluated lazily:</p>
+<div class="hl"><pre><span></span><code><span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">g</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="mi">10</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">nums</span><span class="p">)</span>
+<span class="n">nums</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>           <span class="c1"># the list object is shared, so the generator sees the 4</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>           <span class="c1"># prints: [10, 20, 30, 40]</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">h</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<span class="n">x</span> <span class="o">=</span> <span class="mi">100</span>                  <span class="c1"># x is looked up lazily</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">h</span><span class="p">))</span>           <span class="c1"># prints: [100, 101]</span>
+</code></pre></div>
+
+<h2 id="exhaustion-one-pass-only" data-topics="py.generators.exhaustion">Exhaustion: one pass only</h2>
+<!-- topics: exhaustion -->
+
+<p>Once a generator has produced everything it is <strong>exhausted</strong>. Asking again gives nothing, and
+there is no error.</p>
+<div class="hl"><pre><span></span><code><span class="n">squares</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">squares</span><span class="p">))</span>     <span class="c1"># prints: 14</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">squares</span><span class="p">))</span>     <span class="c1"># prints: 0</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">squares</span><span class="p">))</span>    <span class="c1"># prints: []</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Passing one generator to two consumers silently gives the second an empty stream.
+Fix: materialise with <code>list()</code>, recreate it, or use <code>itertools.tee</code> (which buffers).</p>
+</blockquote>
+<p>An <strong>iterable</strong> (list, <code>range</code>) hands out a fresh iterator each time; an <strong>iterator</strong> (generator)
+is its own iterator and can only be used once. <code>for</code> calls <code>iter()</code> first, which is why a list works
+in two loops and a generator does not.</p>
+<h2 id="pipelines-and-chaining" data-topics="py.generators.pipelines,py.generators.chaining">Pipelines and chaining</h2>
+<!-- topics: pipelines, chaining -->
+
+<p>Generators compose into <strong>pull-based pipelines</strong>: the last stage asks the previous one for an item,
+which asks the one before it, and so on.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">islice</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="n">lines</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">line</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"#"</span><span class="p">):</span>
+            <span class="n">level</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">level</span><span class="o">.</span><span class="n">upper</span><span class="p">(),</span> <span class="n">msg</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">only</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">level</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">records</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">level</span><span class="p">)</span>
+
+<span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"# header"</span><span class="p">,</span> <span class="s2">"info ok"</span><span class="p">,</span> <span class="s2">"error disk"</span><span class="p">,</span> <span class="s2">"warn slow"</span><span class="p">,</span> <span class="s2">"error oom"</span><span class="p">,</span> <span class="s2">"error never reached"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">islice</span><span class="p">(</span><span class="n">only</span><span class="p">(</span><span class="n">parse</span><span class="p">(</span><span class="n">lines</span><span class="p">),</span> <span class="s2">"ERROR"</span><span class="p">),</span> <span class="mi">2</span><span class="p">)))</span>
+<span class="c1"># prints: [('ERROR', 'disk'), ('ERROR', 'oom')]</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>islice(2)  &lt;-  only("ERROR")  &lt;-  parse  &lt;-  lines
+   pulls          pulls            pulls       (stops reading after the 2nd error)
+</code></pre></div>
+
+<p>Each stage holds one item at a time, so memory is O(1) whatever the input size, and the pipeline
+stops reading as soon as the last stage has enough. Standard helpers: <code>itertools.chain</code> (concatenate),
+<code>islice</code> (first N), <code>tee</code> (split, buffers), <code>heapq.merge</code> (merge sorted streams).</p>
+<details>
+<summary>Check yourself: why does `take(2, ...)` have to be careful about when it stops?</summary>
+<p>If it calls <code>next()</code> one extra time after getting 2 items, it consumes (and loses) an item from a
+shared source iterator. It must stop <em>before</em> pulling a third.</p>
+</details>
+<h2 id="yield-from" data-topics="py.generators.yield_from">yield from</h2>
+<!-- topics: yield_from -->
+
+<p><code>yield from sub</code> delegates to another iterable. It is more than <code>for x in sub: yield x</code>:</p>
+<ol>
+<li>it forwards <code>send()</code>, <code>throw()</code> and <code>close()</code> into the sub-generator, and</li>
+<li>it <strong>evaluates to the sub-generator's return value</strong>.</li>
+</ol>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">inner</span><span class="p">():</span>
+    <span class="k">yield</span> <span class="mi">1</span>
+    <span class="k">yield</span> <span class="mi">2</span>
+    <span class="k">return</span> <span class="s2">"inner result"</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">outer</span><span class="p">():</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">yield from</span> <span class="n">inner</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"got:"</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="mi">3</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">outer</span><span class="p">()))</span>
+<span class="c1"># prints: got: inner result</span>
+<span class="c1"># prints: [1, 2, 3]</span>
+</code></pre></div>
+
+<p>Typical use: recursive generators such as walking a nested structure.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">flatten</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">yield from</span> <span class="n">flatten</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">item</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">flatten</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="mi">5</span><span class="p">])))</span>   <span class="c1"># prints: [1, 2, 3, 4, 5]</span>
+</code></pre></div>
+
+<h2 id="send-throw-and-close" data-topics="py.generators.send,py.generators.throw,py.generators.close">send, throw and close</h2>
+<!-- topics: send, throw, close -->
+
+<p>Generators are two-way channels. These three methods are how a caller talks <em>into</em> a paused generator.</p>
+<ul>
+<li><code>g.send(v)</code> resumes it and makes the paused <code>yield</code> <strong>expression evaluate to <code>v</code></strong>; it returns the next yielded value.</li>
+<li><code>g.throw(exc)</code> raises <code>exc</code> <strong>at the paused <code>yield</code></strong>.</li>
+<li><code>g.close()</code> raises <code>GeneratorExit</code> there so <code>finally</code> blocks run. Yielding after that is a <code>RuntimeError</code>.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">averager</span><span class="p">():</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">average</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="k">yield</span> <span class="n">average</span>
+            <span class="n">total</span> <span class="o">+=</span> <span class="n">value</span>
+            <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">average</span> <span class="o">=</span> <span class="n">total</span> <span class="o">/</span> <span class="n">count</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"closing after"</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="s2">"values"</span><span class="p">)</span>
+
+<span class="n">avg</span> <span class="o">=</span> <span class="n">averager</span><span class="p">()</span>
+<span class="nb">next</span><span class="p">(</span><span class="n">avg</span><span class="p">)</span>             <span class="c1"># "prime" it: run to the first yield</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">avg</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>   <span class="c1"># prints: 10.0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">avg</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="mi">20</span><span class="p">))</span>   <span class="c1"># prints: 15.0</span>
+<span class="n">avg</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>           <span class="c1"># prints: closing after 2 values</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A fresh generator must be primed with <code>next(g)</code> (or <code>send(None)</code>) first. Sending a real
+value to a generator that is not paused at a <code>yield</code> raises <code>TypeError</code>.</p>
+<p><strong>Interview</strong> "How are generators related to <code>async</code>?" <code>await</code> is built on the same suspend/resume
+machinery: a coroutine is a generator-like object an event loop resumes when its awaited result is ready.</p>
+</blockquote>
+<h2 id="eager-validation-a-generator-trap" data-topics="py.generators.suspension">Eager validation: a generator trap</h2>
+<!-- topics: suspension -->
+
+<p>Since the body is deferred, argument checks inside a generator function fire late:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">chunks</span><span class="p">(</span><span class="n">size</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">size</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"size must be positive"</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="s2">"chunk"</span>
+
+<span class="n">g</span> <span class="o">=</span> <span class="n">chunks</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>          <span class="c1"># no error here, the bug is silently stored</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">next</span><span class="p">(</span><span class="n">g</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"late:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>  <span class="c1"># prints: late: size must be positive</span>
+</code></pre></div>
+
+<p>Fix: a normal function validates, then returns the generator.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">chunks</span><span class="p">(</span><span class="n">size</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">size</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"size must be positive"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_chunks</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_chunks</span><span class="p">(</span><span class="n">size</span><span class="p">):</span>
+    <span class="k">yield</span> <span class="s2">"chunk"</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">chunks</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"early:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>   <span class="c1"># prints: early: size must be positive</span>
+</code></pre></div>
+
+<h2 id="documents-chunking-and-metadata" data-topics="py.generators.document_processing,py.generators.rag_chunking,py.generators.chunk_metadata">Documents, chunking and metadata</h2>
+<!-- topics: document_processing, rag_chunking, chunk_metadata -->
+
+<p>RAG ingestion is a generator pipeline: documents in, chunks out, each carrying where it came from.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">chunk_text</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="n">size</span> <span class="o">-</span> <span class="n">overlap</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">step</span><span class="p">)):</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">size</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+        <span class="k">yield</span> <span class="p">{</span><span class="s2">"index"</span><span class="p">:</span> <span class="n">index</span><span class="p">,</span> <span class="s2">"start"</span><span class="p">:</span> <span class="n">start</span><span class="p">,</span> <span class="s2">"end"</span><span class="p">:</span> <span class="n">end</span><span class="p">,</span> <span class="s2">"text"</span><span class="p">:</span> <span class="n">text</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span><span class="p">]}</span>
+        <span class="k">if</span> <span class="n">end</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+            <span class="k">return</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">chunk_documents</span><span class="p">(</span><span class="n">docs</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">doc</span> <span class="ow">in</span> <span class="n">docs</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunk_text</span><span class="p">(</span><span class="n">doc</span><span class="p">[</span><span class="s2">"text"</span><span class="p">],</span> <span class="n">size</span><span class="p">,</span> <span class="n">overlap</span><span class="p">):</span>
+            <span class="n">chunk</span><span class="p">[</span><span class="s2">"doc_id"</span><span class="p">]</span> <span class="o">=</span> <span class="n">doc</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]</span>          <span class="c1"># keep provenance with every chunk</span>
+            <span class="n">chunk</span><span class="p">[</span><span class="s2">"source"</span><span class="p">]</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"source"</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">chunk</span>
+
+<span class="n">docs</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">"id"</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"source"</span><span class="p">:</span> <span class="s2">"a.md"</span><span class="p">,</span> <span class="s2">"text"</span><span class="p">:</span> <span class="s2">"abcdefghij"</span><span class="p">}]</span>
+<span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chunk_documents</span><span class="p">(</span><span class="n">docs</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s2">"doc_id"</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s2">"index"</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="s2">"text"</span><span class="p">])</span>
+<span class="c1"># prints: a 0 abcd</span>
+<span class="c1"># prints: a 1 defg</span>
+<span class="c1"># prints: a 2 ghij</span>
+</code></pre></div>
+
+<p>Why carry metadata (doc id, source, page, offsets)? It enables <strong>citations</strong>, <strong>metadata filters</strong> in the vector
+database (by tenant or date), <strong>re-indexing</strong> a changed document, and debugging "which chunk did the model see?".
+Copy the metadata dict per chunk; sharing one mutable dict lets one chunk's edit leak into the others.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Chunk size and overlap?" Start around 300-800 tokens with 10-15% overlap, measured in
+tokens not characters, then decide with retrieval metrics (recall@k) on a golden question set. Chunking is a
+hyperparameter you test, not a guess.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Calling a generator function runs nothing; <code>next()</code> runs to the next <code>yield</code> and pauses.</li>
+<li>Lazy = O(1) memory, one pass, errors at consumption; list = eager, reusable, O(n).</li>
+<li>A second consumer of an exhausted generator silently sees nothing.</li>
+<li>Pipelines pull: they read only as much input as the last stage needs.</li>
+<li><code>yield from</code> forwards send/throw/close and returns the sub-generator's value.</li>
+<li><code>send</code> feeds values in, <code>throw</code> injects exceptions, <code>close</code> triggers cleanup; prime a new generator first.</li>
+<li>Validate eagerly by splitting into a checking function and an inner generator.</li>
+<li>In ingestion pipelines, carry provenance metadata through every stage.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-iterators.html">&larr; Iterators</a><a class="pn next" href="revise-py-oop.html">Object-Oriented Programming &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

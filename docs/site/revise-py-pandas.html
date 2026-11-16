@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Processing with Pandas notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.pandas">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Data Processing with Pandas</p><div class="note-head"><div id="note-progress" data-module="py.pandas"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#series-and-dataframe" data-target="series-and-dataframe">Series and DataFrame</a></li><li><a href="#reading-and-writing-csv-json-export" data-target="reading-and-writing-csv-json-export">Reading and writing: CSV, JSON, export</a></li><li><a href="#inspecting-data" data-target="inspecting-data">Inspecting data</a></li><li><a href="#selecting-and-filtering-loc-iloc-masks" data-target="selecting-and-filtering-loc-iloc-masks">Selecting and filtering: [], loc, iloc, masks</a></li><li><a href="#missing-values" data-target="missing-values">Missing values</a></li><li><a href="#duplicates-and-data-cleaning" data-target="duplicates-and-data-cleaning">Duplicates and data cleaning</a></li><li><a href="#data-types-conversion-and-string-operations" data-target="data-types-conversion-and-string-operations">Data types, conversion and string operations</a></li><li><a href="#dates-and-times" data-target="dates-and-times">Dates and times</a></li><li><a href="#sorting" data-target="sorting">Sorting</a></li><li><a href="#groupby-and-aggregations" data-target="groupby-and-aggregations">GroupBy and aggregations</a></li><li><a href="#merging-joining-and-concatenating" data-target="merging-joining-and-concatenating">Merging, joining and concatenating</a></li><li><a href="#apply-map-and-vectorised-alternatives" data-target="apply-map-and-vectorised-alternatives">Apply, map and vectorised alternatives</a></li><li><a href="#basic-analysis-pivots-counts-and-leaderboards" data-target="basic-analysis-pivots-counts-and-leaderboards">Basic analysis: pivots, counts and leaderboards</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="pandas">Pandas</h1>
+<p>Pandas is the tool for tabular data in Python: LLM usage logs, eval result tables, labelled datasets, feature
+tables. The interview questions are rarely exotic. They check whether you think in <strong>columns, not rows</strong>,
+know what <code>loc</code> vs <code>iloc</code> and <code>groupby</code> actually do, can reason about missing data and merges without losing
+rows, and avoid <code>apply</code> loops where a vectorised expression exists. Everything here was run on pandas 3.1; where
+pandas 3 differs from older tutorials (copy-on-write, <code>str</code> dtype, datetime resolution, frequency aliases) it
+is called out.</p>
+<h2 id="series-and-dataframe" data-topics="py.pandas.series_dataframe,py.pandas.creation">Series and DataFrame</h2>
+<!-- topics: series_dataframe, creation -->
+
+<p>A <strong>Series</strong> is a 1-D labelled array: values (a NumPy array or an extension array) plus an <strong>index</strong>. A
+<strong>DataFrame</strong> is a table: an index plus named columns, where <strong>each column is a Series with its own dtype</strong>. Think
+"dict of aligned columns", not "list of rows".</p>
+<div class="hl"><pre><span></span><code>            columns -&gt;   model     pt     lat           each column = one Series, one dtype
+index  rid
+  r1                      a        10     1.5           df["pt"]            -&gt; Series  (int64)
+  r2                      b        20     NaN           df[["pt", "lat"]]   -&gt; DataFrame
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">"model"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">],</span> <span class="s2">"pt"</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">50</span><span class="p">],</span> <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]},</span>
+    <span class="n">index</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">([</span><span class="s2">"r1"</span><span class="p">,</span> <span class="s2">"r2"</span><span class="p">,</span> <span class="s2">"r3"</span><span class="p">,</span> <span class="s2">"r4"</span><span class="p">,</span> <span class="s2">"r5"</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s2">"rid"</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+<span class="c1">#     model  pt  lat</span>
+<span class="c1"># rid</span>
+<span class="c1"># r1      a  10  1.5</span>
+<span class="c1"># r2      b  20  NaN</span>
+<span class="c1"># r3      a  30  2.5</span>
+<span class="c1"># r4      b  40  3.0</span>
+<span class="c1"># r5      c  50  0.5</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"pt"</span><span class="p">])</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">df</span><span class="p">[[</span><span class="s2">"pt"</span><span class="p">]])</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: Series DataFrame</span>
+</code></pre></div>
+
+<p>Ways to build one: from a dict of columns (above), from a <strong>list of dicts</strong> (<code>pd.DataFrame(records)</code>, the natural shape
+for API logs), from a NumPy array with <code>columns=</code>, or from files. Operations <strong>align on the index</strong> by label, not by position:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">])</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"z"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">((</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>   <span class="c1"># prints: {'w': nan, 'x': nan, 'y': 22.0, 'z': 13.0}</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> The index is not a row number: it is a label that drives alignment, <code>loc</code>, joins and <code>groupby</code> results.</p>
+</blockquote>
+<h2 id="reading-and-writing-csv-json-export" data-topics="py.pandas.io,py.pandas.export">Reading and writing: CSV, JSON, export</h2>
+<!-- topics: io, export -->
+
+<p><code>read_csv</code> / <code>read_json</code> parse text into a DataFrame, and <strong>inference is the hazard</strong>: IDs like <code>0042</code> become the
+int <code>42</code>, true/false become bool, empty cells become NaN. State the types you care about:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">csv</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"run_id,created_at,question_id,correct,latency_ms</span><span class="se">\n</span><span class="s2">"</span>
+       <span class="s2">"r1,2025-01-01T10:00:00Z,0042,true,120</span><span class="se">\n</span><span class="s2">"</span>
+       <span class="s2">"r1,2025-01-01T10:00:05Z,0043,false,</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="n">naive</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">(</span><span class="n">csv</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">naive</span><span class="o">.</span><span class="n">question_id</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>    <span class="c1"># prints: [42, 43]      (leading zeros lost!)</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">(</span><span class="n">csv</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="p">{</span><span class="s2">"question_id"</span><span class="p">:</span> <span class="s2">"string"</span><span class="p">},</span> <span class="n">parse_dates</span><span class="o">=</span><span class="p">[</span><span class="s2">"created_at"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">question_id</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>        <span class="c1"># prints: ['0042', '0043']</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">dtypes</span><span class="p">[</span><span class="s2">"created_at"</span><span class="p">],</span> <span class="n">d</span><span class="o">.</span><span class="n">dtypes</span><span class="p">[</span><span class="s2">"correct"</span><span class="p">],</span> <span class="n">d</span><span class="o">.</span><span class="n">dtypes</span><span class="p">[</span><span class="s2">"latency_ms"</span><span class="p">])</span>
+<span class="c1"># prints: datetime64[us, UTC] bool float64</span>
+</code></pre></div>
+
+<p>Useful arguments: <code>dtype=</code>, <code>usecols=</code> (load only needed columns), <code>parse_dates=</code>, <code>na_values=</code>, <code>nrows=</code>, and
+<code>chunksize=</code> (an iterator of DataFrames for files bigger than RAM). <code>read_csv(dtype=str)</code> then converting explicitly is the
+safest pattern for messy data.</p>
+<p>JSON: <code>read_json(..., lines=True)</code> reads JSON Lines; nested objects stay as dict cells and <code>pd.json_normalize(list_of_dicts)</code> flattens them into columns like <code>u.p</code>.</p>
+<p>Exporting is the mirror image. Know that the <strong>round trip must preserve what you care about</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"qid"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"0042"</span><span class="p">],</span> <span class="s2">"ok"</span><span class="p">:</span> <span class="p">[</span><span class="kc">True</span><span class="p">],</span> <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">]})</span>
+<span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">()</span>
+<span class="n">d</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>                  <span class="c1"># index=False: do not write the row numbers</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="mi">1</span><span class="p">])</span>       <span class="c1"># prints: 0042,True,1.5</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">to_json</span><span class="p">(</span><span class="n">orient</span><span class="o">=</span><span class="s2">"records"</span><span class="p">))</span>          <span class="c1"># prints: [{"qid":"0042","ok":true,"lat":1.5}]</span>
+</code></pre></div>
+
+<p><code>to_parquet</code> (typed, columnar, needs <code>pyarrow</code>) beats CSV for data you reload. For datetimes in JSON pass <code>date_format="iso"</code>; the epoch default is being changed and pandas 3 warns.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> CSV loses types: reading back gives strings for IDs and no timezone. Parquet or explicit <code>dtype=</code> /
+<code>parse_dates=</code> fixes that. Always <code>index=False</code> unless the index carries data.</p>
+</blockquote>
+<h2 id="inspecting-data" data-topics="py.pandas.inspection">Inspecting data</h2>
+<!-- topics: inspection -->
+
+<p>First five minutes with any frame:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="s2">"abab"</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"c"</span><span class="p">],</span> <span class="s2">"pt"</span><span class="p">:</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                   <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]},</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"r1"</span><span class="p">,</span> <span class="s2">"r2"</span><span class="p">,</span> <span class="s2">"r3"</span><span class="p">,</span> <span class="s2">"r4"</span><span class="p">,</span> <span class="s2">"r5"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>            <span class="c1"># prints: (5, 3)</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">c</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">dtypes</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>   <span class="c1"># prints: {'model': 'str', 'pt': 'int64', 'lat': 'float64'}</span>
+</code></pre></div>
+
+<p>(<code>df</code> is the frame from the first section, repeated in the later examples. In pandas 3, text columns default to the dedicated <code>str</code> dtype; <code>df.info()</code> shows it as <code>str</code>.)</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>df.head()</code>, <code>df.sample(5, random_state=0)</code></td>
+<td>what the rows look like</td>
+</tr>
+<tr>
+<td><code>df.info()</code></td>
+<td>dtypes, non-null counts, memory</td>
+</tr>
+<tr>
+<td><code>df.describe()</code></td>
+<td>count/mean/std/quartiles of numeric columns (<code>include="all"</code> for text)</td>
+</tr>
+<tr>
+<td><code>df.isna().sum()</code></td>
+<td>missing values per column</td>
+</tr>
+<tr>
+<td><code>df["model"].value_counts()</code></td>
+<td>category frequencies</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>describe</code> counts exclude NaN, so they already reveal missingness. <code>info()</code> prints and returns <code>None</code>.</p>
+<h2 id="selecting-and-filtering-loc-iloc-masks" data-topics="py.pandas.selection,py.pandas.loc_iloc">Selecting and filtering: [], loc, iloc, masks</h2>
+<!-- topics: selection, loc_iloc -->
+
+<p>Three ways in, with different meanings:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Form</th>
+<th>Selects by</th>
+<th>Slice end</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>df["col"]</code>, <code>df[["a", "b"]]</code></td>
+<td>column label(s)</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td><code>df.loc[rows, cols]</code></td>
+<td><strong>labels</strong> (index values, column names), or boolean mask</td>
+<td><strong>inclusive</strong></td>
+</tr>
+<tr>
+<td><code>df.iloc[rows, cols]</code></td>
+<td><strong>integer positions</strong></td>
+<td>exclusive (like Python)</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="s2">"abab"</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"c"</span><span class="p">],</span> <span class="s2">"pt"</span><span class="p">:</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                   <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]},</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"r1"</span><span class="p">,</span> <span class="s2">"r2"</span><span class="p">,</span> <span class="s2">"r3"</span><span class="p">,</span> <span class="s2">"r4"</span><span class="p">,</span> <span class="s2">"r5"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">"r2"</span><span class="p">:</span><span class="s2">"r4"</span><span class="p">,</span> <span class="s2">"pt"</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>     <span class="c1"># prints: [20, 30, 40]     (label slice includes r4)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>    <span class="c1"># prints: [['b', 20], ['a', 30]]   (positions 1,2 and columns 0,1)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">pt</span> <span class="o">&gt;</span> <span class="mi">25</span><span class="p">,</span> <span class="p">[</span><span class="s2">"model"</span><span class="p">,</span> <span class="s2">"pt"</span><span class="p">]]</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: ['r3', 'r4', 'r5']</span>
+</code></pre></div>
+
+<p><strong>Boolean masks</strong> are how you filter. Combine with <code>&amp;</code>, <code>|</code>, <code>~</code> and <strong>parentheses</strong> (not <code>and</code>/<code>or</code>):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="s2">"abab"</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"c"</span><span class="p">],</span> <span class="s2">"pt"</span><span class="p">:</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                   <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]},</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"r1"</span><span class="p">,</span> <span class="s2">"r2"</span><span class="p">,</span> <span class="s2">"r3"</span><span class="p">,</span> <span class="s2">"r4"</span><span class="p">,</span> <span class="s2">"r5"</span><span class="p">])</span>
+<span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">pt</span> <span class="o">&gt;</span> <span class="mi">15</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">model</span> <span class="o">==</span> <span class="s2">"b"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>          <span class="c1"># prints: ['r2', 'r4']</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>iloc</code> on a frame with an integer index vs <code>loc</code>: after filtering, the index labels are no longer <code>0..n-1</code>,
+so <code>df.loc[0]</code> and <code>df.iloc[0]</code> mean different things. Use <code>iloc</code> for "the first row", <code>loc</code> for "the row with this id".</p>
+</blockquote>
+<p><strong>Copy-on-write (pandas 3 default).</strong> Any result derived from a frame behaves as an independent copy; writing to it
+never changes the parent, and chained assignment such as <code>df[mask]["col"] = 0</code> <strong>does nothing</strong> (it only emits a
+<code>ChainedAssignmentError</code> warning):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="s2">"b"</span><span class="p">:</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]})</span>
+<span class="n">sub</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">a</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">sub</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span>        <span class="c1"># modifies only sub</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">b</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>        <span class="c1"># prints: [4, 5, 6]</span>
+
+<span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">a</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>   <span class="c1"># the correct way: one .loc call with the mask and the column</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">b</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>        <span class="c1"># prints: [4, 0, 0]</span>
+</code></pre></div>
+
+<p>The rule: <strong>one <code>.loc[mask, col] = value</code></strong> for conditional updates, or <code>df.assign(col=...)</code> to build a new frame. (Before pandas 3 this was the <code>SettingWithCopyWarning</code> mess.)</p>
+<h2 id="missing-values" data-topics="py.pandas.missing">Missing values</h2>
+<!-- topics: missing -->
+
+<p>Missing data is <code>NaN</code> (float) or <code>pd.NA</code> (nullable dtypes); <code>None</code> in a numeric column becomes NaN. NaN is
+<strong>contagious in comparison and skipped in aggregations</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="n">s</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">skipna</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>   <span class="c1"># prints: 2.0 nan      (mean skips NaN by default)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>               <span class="c1"># prints: [False, True, False]</span>
+<span class="nb">print</span><span class="p">((</span><span class="n">s</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>          <span class="c1"># prints: [False, False, False]   (NaN != NaN: use isna)</span>
+</code></pre></div>
+
+<p>Handling options, from honest to risky:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">],</span> <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"lat"</span><span class="p">])</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>                          <span class="c1"># prints: (2, 2)  drop rows missing latency</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">lat</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">lat</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>                     <span class="c1"># prints: [1.0, 2.0, 3.0]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">lat_missing</span><span class="o">=</span><span class="n">d</span><span class="o">.</span><span class="n">lat</span><span class="o">.</span><span class="n">isna</span><span class="p">())</span><span class="o">.</span><span class="n">lat_missing</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span> <span class="c1"># prints: [False, True, False]</span>
+</code></pre></div>
+
+<p>Choose by meaning: drop when
+missing means "unusable", fill with a constant when there is a natural default (0 tokens), with a statistic when you
+need a complete numeric matrix, and keep an <strong>indicator column</strong> when the fact of being missing is informative
+(a timed-out request is not a 0 ms request!).</p>
+<p><strong>Nullable dtypes</strong> (<code>"Int64"</code>, <code>"boolean"</code>, <code>"string"</code>) hold <code>pd.NA</code> without turning integers into floats: <code>pd.Series([1, 2, None], dtype="Int64")</code> keeps <code>1, 2, &lt;NA&gt;</code>, whereas the default gives <code>1.0, 2.0, NaN</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>fillna(0)</code> on latency makes failed calls look instant and drags the mean down. Decide per column,
+and say so in the code.</p>
+</blockquote>
+<h2 id="duplicates-and-data-cleaning" data-topics="py.pandas.duplicates,py.pandas.cleaning">Duplicates and data cleaning</h2>
+<!-- topics: duplicates, cleaning -->
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"id"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">],</span> <span class="s2">"v"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">9</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">duplicated</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>                    <span class="c1"># prints: [False, True, False, False]  (full-row duplicates)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">duplicated</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"id"</span><span class="p">])</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>       <span class="c1"># prints: [False, True, False, True]   (key duplicates)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"id"</span><span class="p">],</span> <span class="n">keep</span><span class="o">=</span><span class="s2">"first"</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [0, 2]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"id"</span><span class="p">],</span> <span class="n">keep</span><span class="o">=</span><span class="s2">"last"</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>    <span class="c1"># prints: [2, 3]</span>
+</code></pre></div>
+
+<p><code>duplicated</code> marks every repeat <strong>after</strong> the first by default (<code>keep="first"</code>); <code>keep=False</code> marks all copies. After
+dedup the index has gaps, so <code>reset_index(drop=True)</code> if you rely on <code>0..n-1</code>. Decide the <strong>key</strong> first: what makes two rows "the same
+request"? Then decide which copy wins (latest by timestamp: <code>sort_values("ts").drop_duplicates("id", keep="last")</code>).</p>
+<p>A cleaning pass is a sequence of small, named, non-mutating steps. The typical order for a raw log:</p>
+<ol>
+<li>Copy the input (<code>df = raw.copy()</code>) so the caller's data is untouched.</li>
+<li>Normalise text: <code>str.strip()</code>, <code>str.lower()</code>, map blanks to NA.</li>
+<li>Convert types with errors turned into NaN (<code>to_numeric(errors="coerce")</code>, <code>to_datetime(errors="coerce")</code>).</li>
+<li>Validate and drop impossible rows (negative tokens, missing id), logging how many were dropped.</li>
+<li>Deduplicate on the business key, then fix the index.</li>
+</ol>
+<h2 id="data-types-conversion-and-string-operations" data-topics="py.pandas.dtypes,py.pandas.string_ops">Data types, conversion and string operations</h2>
+<!-- topics: dtypes, string_ops -->
+
+<p>Wrong dtypes cause silent errors (string <code>"9"</code> sorts after <code>"10"</code>) and wasted memory. Convert with:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="s2">"10"</span><span class="p">,</span> <span class="s2">"20"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="kc">None</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"coerce"</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>    <span class="c1"># prints: [10.0, 20.0, nan, nan]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">])</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"category"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">cat</span><span class="o">.</span><span class="n">categories</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> <span class="n">c</span><span class="o">.</span><span class="n">cat</span><span class="o">.</span><span class="n">codes</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>  <span class="c1"># prints: ['a', 'b'] [0, 1, 0, 0]</span>
+</code></pre></div>
+
+<p><code>astype</code> raises on bad values (good: loud), <code>to_numeric(errors="coerce")</code> turns them into NaN (convenient: <em>then count them</em>).
+<code>category</code> stores each distinct string once plus small integer codes, a big memory win for low-cardinality columns such as <code>model</code>
+or <code>status</code>. In pandas 3 the default text dtype is <code>str</code> (backed by a real string array, missing = NaN); older versions used <code>object</code>.</p>
+<p>The <code>.str</code> accessor applies string methods to a whole column, propagating missing values:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="s2">" GPT-4o "</span><span class="p">,</span> <span class="s2">"gpt-4o"</span><span class="p">,</span> <span class="s2">"Claude"</span><span class="p">,</span> <span class="kc">None</span><span class="p">])</span>
+<span class="n">clean</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">clean</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>                                   <span class="c1"># prints: ['gpt-4o', 'gpt-4o', 'claude', nan]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">clean</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"-"</span><span class="p">,</span> <span class="s2">"_"</span><span class="p">,</span> <span class="n">regex</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: ['gpt_4o', 'gpt_4o', 'claude', nan]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">clean</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span><span class="o">.</span><span class="n">str</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>             <span class="c1"># prints: ['gpt', 'gpt', 'claude', nan]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">clean</span><span class="o">.</span><span class="n">str</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="s2">"gpt"</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>               <span class="c1"># prints: [True, True, False, False]</span>
+</code></pre></div>
+
+<p>Prefer <code>.str</code> methods to <code>apply(lambda s: s.strip())</code>: they handle missing values and are faster. Set <code>regex=False</code>
+for literal replacement (default patterns are regexes for <code>contains</code>, <code>extract</code>).</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> On old object-dtype columns <code>.str.contains</code> returned NaN for missing values and broke <code>df[mask]</code>; pandas 3's <code>str</code> dtype returns <code>False</code>. Pass <code>na=False</code> to be explicit.</p>
+</blockquote>
+<h2 id="dates-and-times" data-topics="py.pandas.datetime">Dates and times</h2>
+<!-- topics: datetime -->
+
+<p>Parse text to real datetimes early; then the <code>.dt</code> accessor, arithmetic and resampling work.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">raw</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="s2">"2025-01-01T10:00:00Z"</span><span class="p">,</span> <span class="s2">"2025-01-01T12:30:00Z"</span><span class="p">,</span> <span class="s2">"bad"</span><span class="p">])</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"coerce"</span><span class="p">,</span> <span class="n">utc</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>                       <span class="c1"># prints: datetime64[us, UTC]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">dt</span><span class="o">.</span><span class="n">hour</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>                 <span class="c1"># prints: [10.0, 12.0, nan]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">t</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>              <span class="c1"># prints: 0 days 02:30:00</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">dt</span><span class="o">.</span><span class="n">tz_convert</span><span class="p">(</span><span class="s2">"Asia/Kolkata"</span><span class="p">)</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>   <span class="c1"># prints: 2025-01-01 15:30:00+05:30</span>
+</code></pre></div>
+
+<ul>
+<li>Always attach a <strong>timezone</strong> (<code>utc=True</code>) for logs from several systems; naive and aware timestamps cannot be mixed.</li>
+<li><code>errors="coerce"</code> gives <code>NaT</code> (the datetime NaN) for unparseable values.</li>
+<li>pandas 3 infers microsecond (<code>us</code>) resolution for parsed strings; older versions used nanoseconds (<code>ns</code>).
+<strong>Time series bucketing</strong> is <code>resample</code> on a datetime index (the temporal <code>groupby</code>), e.g. hourly request counts or daily cost:</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">idx</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">([</span><span class="s2">"2025-01-01 00:10"</span><span class="p">,</span> <span class="s2">"2025-01-01 00:50"</span><span class="p">,</span> <span class="s2">"2025-01-01 01:20"</span><span class="p">,</span> <span class="s2">"2025-01-01 02:05"</span><span class="p">])</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">resample</span><span class="p">(</span><span class="s2">"h"</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [3, 3, 4]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Frequency aliases were renamed: <code>"H"</code> is now <code>"h"</code>, month-end <code>"M"</code> is <code>"ME"</code>, <code>"T"</code> is <code>"min"</code>. In
+pandas 3 the old ones raise <code>ValueError: Invalid frequency: H ... Did you mean h?</code>. Tutorials written before 2024 use the old
+names.</p>
+</blockquote>
+<h2 id="sorting" data-topics="py.pandas.sorting">Sorting</h2>
+<!-- topics: sorting -->
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">],</span> <span class="s2">"score"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.6</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">sort_values</span><span class="p">([</span><span class="s2">"model"</span><span class="p">,</span> <span class="s2">"score"</span><span class="p">],</span> <span class="n">ascending</span><span class="o">=</span><span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">])</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [1, 3, 2, 0]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">score</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>         <span class="c1"># prints: [4.0, 2.0, 1.0, 3.0]</span>
+</code></pre></div>
+
+<p><code>sort_values</code> takes several keys with a per-key <code>ascending</code> list; NaN sorts last. Pass <code>kind="stable"</code> when you sort twice to break ties. <code>nlargest(n, col)</code> beats a full sort for top-n; <code>rank</code> gives positions (ties average unless <code>method="min"</code>). Sorting returns a <strong>new</strong> frame with a permuted index: <code>reset_index(drop=True)</code> to renumber.</p>
+<h2 id="groupby-and-aggregations" data-topics="py.pandas.groupby,py.pandas.aggregations">GroupBy and aggregations</h2>
+<!-- topics: groupby, aggregations -->
+
+<p><code>groupby</code> is <strong>split-apply-combine</strong>: split the rows into groups by key, apply a function per group, combine the results.</p>
+<div class="hl"><pre><span></span><code>model  pt                  groups              aggregate         combined
+  a    10        split      a: [10, 30]    -&gt;   sum = 40
+  b    20      ----------&gt;  b: [20, 40]    -&gt;   sum = 60    ---&gt; a 40 / b 60 / c 50
+  a    30                   c: [50]        -&gt;   sum = 50
+  b    40
+  c    50
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="s2">"abab"</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"c"</span><span class="p">],</span> <span class="s2">"pt"</span><span class="p">:</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                   <span class="s2">"lat"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]},</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"r1"</span><span class="p">,</span> <span class="s2">"r2"</span><span class="p">,</span> <span class="s2">"r3"</span><span class="p">,</span> <span class="s2">"r4"</span><span class="p">,</span> <span class="s2">"r5"</span><span class="p">])</span>
+<span class="n">out</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"model"</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="p">(</span><span class="s2">"pt"</span><span class="p">,</span> <span class="s2">"size"</span><span class="p">),</span> <span class="n">total</span><span class="o">=</span><span class="p">(</span><span class="s2">"pt"</span><span class="p">,</span> <span class="s2">"sum"</span><span class="p">),</span> <span class="n">avg_lat</span><span class="o">=</span><span class="p">(</span><span class="s2">"lat"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+<span class="c1">#        n  total  avg_lat</span>
+<span class="c1"># model</span>
+<span class="c1"># a      2     40      2.0</span>
+<span class="c1"># b      2     60      3.0</span>
+<span class="c1"># c      1     50      0.5</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"model"</span><span class="p">)[</span><span class="s2">"pt"</span><span class="p">]</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="s2">"sum"</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>    <span class="c1"># prints: [40, 60, 40, 60, 50]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"model"</span><span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">g</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: ['r1', 'r2', 'r3', 'r4']</span>
+</code></pre></div>
+
+<p><strong>Named aggregation</strong> (<code>new_name=("column", "func")</code>) is the clearest form. The key becomes the <strong>index</strong> of the result; use
+<code>as_index=False</code> or <code>reset_index()</code> to get it back as a column. Three behaviours to keep distinct:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Output shape</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agg</code> / <code>sum</code> / <code>mean</code></td>
+<td>one row per group</td>
+<td>totals per model</td>
+</tr>
+<tr>
+<td><code>transform</code></td>
+<td><strong>same length as input</strong>, aligned to original rows</td>
+<td><code>groupby("model").pt.transform("sum")</code> -&gt; share of group total</td>
+</tr>
+<tr>
+<td><code>apply</code> / <code>filter</code></td>
+<td>custom: any frame / keep or drop whole groups</td>
+<td><code>filter(lambda g: len(g) &gt; 1)</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Group by several keys for a MultiIndex; <code>.size()</code> counts rows, <code>.count()</code> non-null values; NaN keys are <strong>dropped by default</strong> (<code>dropna=False</code> keeps them).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Difference between <code>agg</code> and <code>transform</code>?" <code>agg</code> reduces each group to one row; <code>transform</code> returns a
+result the same shape as the input, so you can assign it back as a column (z-scores per group, group share, group mean fill).</p>
+<p><strong>AI use</strong> Per-model cost and p95 latency: <code>usage.groupby("model").agg(requests=("id", "size"), cost=("cost", "sum"),
+p95=("latency_ms", lambda s: s.quantile(0.95)))</code>. Error rate per model is the mean of a boolean column (<code>status == "error"</code>).</p>
+</blockquote>
+<h2 id="merging-joining-and-concatenating" data-topics="py.pandas.merge_join,py.pandas.concat">Merging, joining and concatenating</h2>
+<!-- topics: merge_join, concat -->
+
+<p><code>merge</code> is a SQL join on column values; <code>join</code> is the same keyed on the index; <code>concat</code> stacks frames (rows or columns) without matching keys.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">left</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="s2">"x"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">]})</span>
+<span class="n">right</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="s2">"y"</span><span class="p">:</span> <span class="p">[</span><span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">40</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">left</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">right</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">"k"</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">"inner"</span><span class="p">)</span><span class="o">.</span><span class="n">k</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [2, 3]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">left</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">right</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">"k"</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">"left"</span><span class="p">))</span>
+<span class="c1">#    k  x     y</span>
+<span class="c1"># 0  1  a   NaN</span>
+<span class="c1"># 1  2  b  20.0</span>
+<span class="c1"># 2  3  c  30.0</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">left</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">right</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">"k"</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">"outer"</span><span class="p">,</span> <span class="n">indicator</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="s2">"_merge"</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+<span class="c1"># prints: ['left_only', 'both', 'both', 'right_only']</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th><code>how</code></th>
+<th>Keeps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>inner</code></td>
+<td>keys in both (default)</td>
+</tr>
+<tr>
+<td><code>left</code></td>
+<td>all left rows, NaN where no match (use for "enrich my main table")</td>
+</tr>
+<tr>
+<td><code>right</code></td>
+<td>all right rows</td>
+</tr>
+<tr>
+<td><code>outer</code></td>
+<td>everything; <code>indicator=True</code> says where each row came from</td>
+</tr>
+</tbody>
+</table></div>
+<p>The trap is <strong>duplicate keys</strong>: a many-to-many match multiplies rows. Guard with <code>validate=</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">left</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="s2">"x"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">]})</span>
+<span class="n">dup</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="s2">"y"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">left</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">dup</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">"k"</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">"left"</span><span class="p">)))</span>   <span class="c1"># prints: 4   (key 1 matched twice: 3 rows became 4)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">left</span><span class="o">.</span><span class="n">merge</span><span class="p">(</span><span class="n">dup</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">"k"</span><span class="p">,</span> <span class="n">validate</span><span class="o">=</span><span class="s2">"one_to_one"</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">pd</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">MergeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"MergeError"</span><span class="p">)</span>                           <span class="c1"># prints: MergeError</span>
+</code></pre></div>
+
+<p>Also: <code>left_on=</code>/<code>right_on=</code> for different key names, <code>suffixes=</code> for overlapping columns, and a <strong>dtype mismatch</strong> (<code>"1"</code> vs <code>1</code>) matches nothing or raises. A left join that introduces NaN turns integer columns into floats (see <code>y</code>).</p>
+<p><code>concat</code> combines <strong>by position/label</strong>, not by key:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="p">])</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>                      <span class="c1"># prints: [0, 1, 0, 1]   (duplicate labels!)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [0, 1, 2, 3]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">a</span><span class="p">],</span> <span class="n">keys</span><span class="o">=</span><span class="p">[</span><span class="s2">"run1"</span><span class="p">,</span> <span class="s2">"run2"</span><span class="p">])</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+<span class="c1"># prints: [('run1', 0), ('run1', 1), ('run2', 0), ('run2', 1)]</span>
+</code></pre></div>
+
+<p><code>axis=0</code> stacks rows (columns align by name, gaps become NaN); <code>axis=1</code> sets frames side by side on the index. Call <code>concat</code> <strong>once</strong> on a list of frames; appending in a loop is O(n^2) and <code>DataFrame.append</code> is gone.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Eval tables: <code>concat</code> the per-run result frames (with <code>keys=</code> or a <code>run_id</code> column), <code>merge</code> with the experiments
+table on <code>experiment_id</code> (many results to one experiment: <code>validate="many_to_one"</code>), then <code>pivot_table</code> to a leaderboard.</p>
+</blockquote>
+<h2 id="apply-map-and-vectorised-alternatives" data-topics="py.pandas.apply_map">Apply, map and vectorised alternatives</h2>
+<!-- topics: apply_map -->
+
+<p><code>map</code> transforms a <strong>Series</strong> elementwise (with a function or a dict); <code>apply</code> runs a function over each column or each row (<code>axis=1</code>);
+<code>DataFrame.map</code> is elementwise over a whole frame (it replaced <code>applymap</code>).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">s</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">map</span><span class="p">({</span><span class="mi">1</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="s2">"b"</span><span class="p">})</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>       <span class="c1"># prints: ['a', 'b', nan]    (unmapped keys become NaN)</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="s2">"b"</span><span class="p">:</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">row</span><span class="p">:</span> <span class="n">row</span><span class="o">.</span><span class="n">a</span> <span class="o">+</span> <span class="n">row</span><span class="o">.</span><span class="n">b</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [4, 6]   (a Python call per row)</span>
+<span class="nb">print</span><span class="p">((</span><span class="n">d</span><span class="o">.</span><span class="n">a</span> <span class="o">+</span> <span class="n">d</span><span class="o">.</span><span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>                                   <span class="c1"># prints: [4, 6]   (vectorised, same result)</span>
+</code></pre></div>
+
+<p><strong>Prefer vectorised operations</strong>: <code>df.a + df.b</code>, <code>np.where</code>, <code>.str</code>/<code>.dt</code> accessors, <code>groupby.transform</code>. <code>apply(axis=1)</code> calls Python once per row and is typically 10-100x slower. Use <code>apply</code> only with no vectorised form, and consider <code>map</code> with a dict for lookups (e.g. price per model).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why is <code>apply(axis=1)</code> slow?" It is a Python-level loop that materialises a Series per row. Vectorise with
+column arithmetic, <code>map</code> with a dict, <code>np.where</code>, or <code>groupby</code>. Mention that for truly custom row logic you drop to a list comprehension over
+<code>zip(df.a, df.b)</code>, which still beats <code>apply(axis=1)</code>.</p>
+</blockquote>
+<h2 id="basic-analysis-pivots-counts-and-leaderboards" data-topics="py.pandas.analysis">Basic analysis: pivots, counts and leaderboards</h2>
+<!-- topics: analysis -->
+
+<p>The analysis toolkit answers "which is best, how many, how is it distributed":</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"model"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">],</span>
+    <span class="s2">"metric"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"acc"</span><span class="p">,</span> <span class="s2">"f1"</span><span class="p">,</span> <span class="s2">"acc"</span><span class="p">,</span> <span class="s2">"f1"</span><span class="p">],</span>
+    <span class="s2">"score"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">pivot</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s2">"model"</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="s2">"metric"</span><span class="p">,</span> <span class="n">values</span><span class="o">=</span><span class="s2">"score"</span><span class="p">))</span>
+<span class="c1"># metric  acc   f1</span>
+<span class="c1"># model</span>
+<span class="c1"># a       0.8  0.7</span>
+<span class="c1"># b       0.9  0.6</span>
+</code></pre></div>
+
+<ul>
+<li><code>pivot</code> reshapes long to wide (<strong>errors on duplicate index/column pairs</strong>); <code>pivot_table</code> does the same with an aggregation
+  (<code>aggfunc="mean"</code>) for duplicates; <code>melt</code> is the reverse (wide to long). Keep data <strong>long</strong> for storage and groupby, <strong>wide</strong> for display.</li>
+<li>A leaderboard is <code>groupby(...).agg(...)</code> then <code>sort_values(..., ascending=False)</code> then <code>reset_index()</code>.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">runs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"model"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">],</span> <span class="s2">"ok"</span><span class="p">:</span> <span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">],</span>
+                     <span class="s2">"latency_ms"</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">,</span> <span class="mf">220.0</span><span class="p">]})</span>
+<span class="n">board</span> <span class="o">=</span> <span class="p">(</span><span class="n">runs</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"model"</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">accuracy</span><span class="o">=</span><span class="p">(</span><span class="s2">"ok"</span><span class="p">,</span> <span class="s2">"mean"</span><span class="p">),</span> <span class="n">p50</span><span class="o">=</span><span class="p">(</span><span class="s2">"latency_ms"</span><span class="p">,</span> <span class="s2">"median"</span><span class="p">))</span>
+             <span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">"accuracy"</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+             <span class="o">.</span><span class="n">reset_index</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">board</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>   <span class="c1"># prints: [['b', 1.0, 210.0], ['a', 0.5, 200.0]]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Averages of averages mislead: the mean of two group means is not the overall mean when groups differ in size. Aggregate
+from the row level, and report counts next to percentages. Also <code>std</code> here is the sample std (<code>ddof=1</code>), unlike NumPy's default.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>A DataFrame is aligned, typed columns plus an index; operations align on labels; think columns, not rows.</li>
+<li><code>loc</code> = labels (end inclusive) or a mask; <code>iloc</code> = positions (end exclusive); combine masks with <code>&amp;</code>, <code>|</code>, <code>~</code> and parentheses.</li>
+<li>pandas 3 is copy-on-write: derived frames are independent; chained assignment does nothing. Use <code>df.loc[mask, "col"] = v</code>.</li>
+<li>Missing: <code>isna</code>, <code>dropna(subset=)</code>, <code>fillna</code>, indicator columns; NaN != NaN, aggregations skip it; fill choices change meaning.</li>
+<li>Duplicates: define the key, choose <code>keep</code>, reset the index; cleaning is a sequence of small non-mutating steps.</li>
+<li>Convert dtypes explicitly (<code>to_numeric</code>/<code>to_datetime(errors="coerce")</code>, <code>category</code>, <code>Int64</code>); <code>.str</code> and <code>.dt</code> are vectorised.</li>
+<li>Datetimes: parse once, use UTC, <code>resample</code> for time buckets; <code>"H"</code> is <code>"h"</code>, <code>"M"</code> is <code>"ME"</code>; pandas 3 parses to <code>us</code> resolution.</li>
+<li><code>groupby</code> = split, apply, combine; <code>agg</code> reduces, <code>transform</code> keeps shape, <code>filter</code> drops groups; key becomes the index.</li>
+<li><code>merge</code> how: inner/left/right/outer; duplicate keys multiply rows, so use <code>validate=</code> and <code>indicator=</code>; <code>concat</code> once, <code>ignore_index=True</code>.</li>
+<li>Prefer vectorised code over <code>apply(axis=1)</code>; <code>map</code> with a dict for lookups; <code>pivot</code> long to wide.</li>
+<li>Read CSV with explicit <code>dtype</code>/<code>parse_dates</code> (IDs with leading zeros!); export with <code>index=False</code>; Parquet preserves types.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-numpy.html">&larr; Data Processing with NumPy</a><a class="pn next" href="revise-py-testing.html">Testing and Code Quality &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

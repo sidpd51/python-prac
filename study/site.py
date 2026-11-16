@@ -51,7 +51,7 @@ INSERTS: dict[str, list[tuple[str, str, str]]] = {
         ("before", "how-to-work-a-milestone", "tracker"),
         ("after", "phase-0-python-foundations-current-track-py-tests-provided", "chunker"),
     ],
-    "decisions.html": [("before", "yyyy-mm-dd-", "decision-form")],
+    "decisions.html": [("before", "yyyy-mm-dd-decision", "decision-form")],
 }
 
 
@@ -181,18 +181,37 @@ def _fix_lists(text: str) -> str:
     return "\n".join(out)
 
 
+_KEEP = re.compile(r"(```.*?```|~~~.*?~~~|`[^`\n]*`|<details[^>\n]*>|</details>|<summary>|</summary>|<!--.*?-->)", re.S)
+
+
+def _escape_angles(text: str) -> str:
+    """Escape '<' that starts something tag-like in prose (e.g. 'lines like <title>'), so it shows as text.
+
+    Code fences/spans, <details>/<summary> and HTML comments are left alone.
+    """
+    parts = _KEEP.split(text)
+    for i in range(0, len(parts), 2):  # even indexes are the non-protected prose
+        parts[i] = re.sub(r"<(?=[A-Za-z/!?])", "&lt;", parts[i])
+    return "".join(parts)
+
+
 def _render(text: str) -> tuple[str, list[tuple[str, str]]]:
     import markdown  # imported lazily: only needed to build the site
 
     md = markdown.Markdown(
-        extensions=["tables", "fenced_code", "codehilite", "toc", "sane_lists"],
+        extensions=["tables", "fenced_code", "codehilite", "toc", "sane_lists", "md_in_html"],
         extension_configs={"codehilite": {"guess_lang": False, "css_class": "hl"}, "toc": {"toc_depth": "2"}},
     )
-    body = md.convert(_fix_lists(text))
+    body = md.convert(_fix_lists(_escape_angles(text)))
     body = re.sub(r"<li>\[ \]\s*", '<li class="task"><span class="box" aria-label="open"></span>', body)
     body = re.sub(r"<li>\[x\]\s*", '<li class="task done"><span class="box" aria-label="done"></span>', body)
     body = body.replace("<td>[ ]</td>", '<td class="tick"><span class="box" aria-label="open"></span></td>')
     body = body.replace("<th>✓</th>", '<th class="tick">Done</th>')
+    body = re.sub(
+        r"<blockquote>\s*<p><strong>(Remember|Gotcha|Interview|AI use)</strong>",
+        lambda m: f'<blockquote class="co co-{m.group(1).lower().replace(" ", "")}"><p><strong>{m.group(1)}</strong>',
+        body,
+    )
     body = body.replace("<table>", '<div class="tablewrap"><table>').replace("</table>", "</table></div>")
     headings: list[tuple[str, str]] = []
     for top in md.toc_tokens:
@@ -202,10 +221,21 @@ def _render(text: str) -> tuple[str, list[tuple[str, str]]]:
     return body, headings
 
 
-def _shell(title: str, current: str, inner: str) -> str:
+NAV = [
+    ("index.html", "Today"),
+    ("revise.html", "Revise"),
+    ("quiz.html", "Quiz"),
+    ("exercises.html", "Exercises"),
+    ("topics.html", "My topics"),
+    ("explainers.html", "Explainers"),
+    ("guide.html", "Guide"),
+]
+DOC_PAGES = {"readme.html", "reference.html", "content-guide.html", "roadmap.html", "decisions.html"}
+
+
+def _shell(title: str, nav: str, inner: str, page: str = "doc", attrs: str = "") -> str:
     tabs = "".join(
-        f'<a class="tab" href="{f}"{" aria-current=\"page\"" if f == current else ""}>{html.escape(label)}</a>'
-        for f, label, _, _ in PAGES
+        f'<a class="tab" href="{f}"{" aria-current=\"page\"" if f == nav else ""}>{html.escape(label)}</a>' for f, label in NAV
     )
     return f"""<!doctype html>
 <html lang="en">
@@ -215,27 +245,90 @@ def _shell(title: str, current: str, inner: str) -> str:
 <title>{html.escape(title)}</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page="{page}" {attrs}>
 <div class="wrap">
 <header class="top">
-  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
-  <nav class="tabs" aria-label="Documents">{tabs}</nav>
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections">{tabs}</nav>
 </header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
 {inner}
 </div>
+<script src="data.js"></script>
 <script src="site.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
 """
 
 
+def _doc_layout(src_label: str, toc: str, body: str, crumb: str) -> str:
+    return (
+        f'<p class="crumb"><a href="guide.html">Guide</a> / {html.escape(crumb)}</p><p class="src">{html.escape(src_label)}</p>'
+        f'<div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol>{toc}</ol></nav>'
+        f'<article class="prose">{body}</article></div>'
+    )
+
+
 def build_site() -> list[Path]:
+    from .curriculum import load_curriculum
+    from .site_data import app_modules, build_payload, exercises_html, note_page_name, payload_js, render_note
+
+    cur = load_curriculum()
     SITE_DIR.mkdir(parents=True, exist_ok=True)
+    for stale in SITE_DIR.glob("revise-*.html"):
+        stale.unlink()
     written: list[Path] = []
-    for name in ("style.css", "site.js"):
+
+    def write(name: str, text: str) -> None:
+        path = SITE_DIR / name
+        path.write_text(text, encoding="utf-8")
+        written.append(path)
+
+    for name in ("style.css", "site.js", "app.js"):
         shutil.copyfile(ASSETS / name, SITE_DIR / name)
         written.append(SITE_DIR / name)
 
+    # revision notes -> one page per module
+    notes: dict[str, list[dict]] = {}
+    mods = app_modules(cur)
+    rendered = {m.id: render_note(m) for m in mods}
+    for m in mods:
+        if rendered[m.id]:
+            notes[m.id] = rendered[m.id][1]
+    with_notes = [m for m in mods if m.id in notes]
+    for i, m in enumerate(with_notes):
+        body, sections = rendered[m.id]
+        toc = "".join(f'<li><a href="#{sec["id"]}" data-target="{sec["id"]}">{html.escape(sec["title"])}</a></li>' for sec in sections)
+        prev_m = with_notes[i - 1] if i else None
+        next_m = with_notes[i + 1] if i + 1 < len(with_notes) else None
+        nav = "".join([
+            f'<a class="pn prev" href="{note_page_name(prev_m)}">&larr; {html.escape(prev_m.title)}</a>' if prev_m else "<span></span>",
+            f'<a class="pn next" href="{note_page_name(next_m)}">{html.escape(next_m.title)} &rarr;</a>' if next_m else "<span></span>",
+        ])
+        inner = (
+            f'<p class="crumb"><a href="revise.html">Revise</a> / {html.escape(m.title)}</p>'
+            f'<div class="note-head"><div id="note-progress" data-module="{m.id}"></div></div>'
+            f'<div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol>{toc}</ol></nav>'
+            f'<article class="prose notedoc">{body}<div class="pn-bar">{nav}</div></article></div>'
+        )
+        write(note_page_name(m), _shell(f"{m.title} notes - AI Eng Prep", "revise.html", inner, "note", f'data-module="{m.id}"'))
+
+    write("data.js", payload_js(build_payload(cur, notes)))
+    noscript = '<noscript><p class="banner">This page needs JavaScript (it is how your progress is saved in the browser).</p></noscript>'
+    write("index.html", _shell("Today - AI Eng Prep", "index.html", f'<main id="app" class="app">{noscript}</main>', "today"))
+    write("revise.html", _shell("Revise - AI Eng Prep", "revise.html", f'<main id="app" class="app">{noscript}</main>', "revise"))
+    write("quiz.html", _shell("Quiz - AI Eng Prep", "quiz.html", f'<main id="app" class="app">{noscript}</main>', "quiz"))
+    write("topics.html", _shell("My topics - AI Eng Prep", "topics.html", f'<main id="app" class="app">{noscript}</main>', "topics"))
+    ex_intro = (
+        '<main class="app"><h1 class="page-h">Exercises</h1>'
+        '<p class="lede">Coding problems for each module. Read the problem, write your solution in your editor, then compare with the reference. '
+        "Rate how it went and it counts towards your topics. (Automatic test runs are optional and need the terminal helper; you don't need them.)</p>"
+        f'<div id="ex-summary" class="panel"></div>{exercises_html(cur)}</main>'
+    )
+    write("exercises.html", _shell("Exercises - AI Eng Prep", "exercises.html", ex_intro, "exercises"))
+
+    # markdown guide pages
     cards = []
     for filename, label, src, blurb in PAGES:
         if src is None:
@@ -246,30 +339,22 @@ def build_site() -> list[Path]:
                 body = _insert(body, where, hid, _widget(name))
         headings = [(i, re.sub(r"<[^>]+>", "", t)) for i, t in re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', body)]
         toc = "".join(f'<li><a href="#{i}">{html.escape(t)}</a></li>' for i, t in headings)
-        shown = src or "generated page: widgets plus your question banks"
-        inner = (
-            f'<p class="src">{html.escape(shown)}</p>'
-            f'<div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol>{toc}</ol></nav>'
-            f'<article class="prose">{body}</article></div>'
-        )
-        path = SITE_DIR / filename
-        path.write_text(_shell(f"{label} - AI Eng Prep Notes", filename, inner), encoding="utf-8")
-        written.append(path)
-        cards.append(
-            f'<a class="card" href="{filename}"><h2>{html.escape(label)}</h2><p>{html.escape(blurb)}</p>'
-            f"<small>{html.escape(src or 'interactive')}</small></a>"
-        )
-
-    index = (
-        '<section class="hero"><h1>Notes for the AI engineering prep system</h1>'
-        "<p>Everything you need to run the daily loop, add new modules and build the DocMind capstone, readable in any browser.</p></section>"
-        f'<div class="cards">{"".join(cards)}</div>'
-        '<p class="note">These pages are generated from the markdown files shown on each card. After editing one, run '
-        "<code>study site</code> to refresh them.</p>"
+        if src is None:
+            inner = (
+                f'<p class="src">generated page: widgets plus your question banks</p><div class="layout"><nav class="toc" aria-label="On this page">'
+                f'<p class="toc-h">On this page</p><ol>{toc}</ol></nav><article class="prose">{body}</article></div>'
+            )
+            write(filename, _shell(f"{label} - AI Eng Prep", "explainers.html", inner, "explainers"))
+        else:
+            write(filename, _shell(f"{label} - AI Eng Prep", "guide.html", _doc_layout(src, toc, body, label), "doc"))
+            cards.append(
+                f'<a class="card" href="{filename}"><h2>{html.escape(label)}</h2><p>{html.escape(blurb)}</p><small>{html.escape(src)}</small></a>'
+            )
+    guide = (
+        '<main class="app"><h1 class="page-h">Guide</h1><p class="lede">How the system works, how to add content, and the capstone project. '
+        "You don't need any of this to revise and practise.</p>" + f'<div class="cards">{"".join(cards)}</div></main>'
     )
-    idx = SITE_DIR / "index.html"
-    idx.write_text(_shell("AI Eng Prep Notes", "index.html", index), encoding="utf-8")
-    written.append(idx)
+    write("guide.html", _shell("Guide - AI Eng Prep", "guide.html", guide, "guide"))
     return written
 
 

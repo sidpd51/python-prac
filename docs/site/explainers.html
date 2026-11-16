@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Visual explainers - AI Eng Prep Notes</title>
+<title>Visual explainers - AI Eng Prep</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page="explainers" >
 <div class="wrap">
 <header class="top">
-  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
-  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="reference.html">Reference</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html" aria-current="page">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html" aria-current="page">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
 </header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
 <p class="src">generated page: widgets plus your question banks</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#lazy-pipelines">Lazy pipelines (generators)</a></li><li><a href="#async-concurrency">Async concurrency</a></li><li><a href="#retries-and-backoff">Retries and backoff</a></li><li><a href="#predict-the-output">Predict the output</a></li></ol></nav><article class="prose"><h1 id="visual-explainers">Visual explainers</h1><p>Four ideas that come up in almost every AI-engineering interview, as things you can poke. Each one maps to exercises in the Python track.</p><h2 id="lazy-pipelines">Lazy pipelines (generators)</h2><p>A generator pipeline runs when something <em>pulls</em> from the end, and each stage asks the stage before it for one item. That is why memory stays flat on a 50 GB file, and why <code>take(2, ...)</code> must not read one item too many. Practice: <code>study test generators</code>.</p><div class="widget" data-widget="lazy">
   <h3 class="w-title">Lazy pipelines pull, they don't push</h3>
   <p class="w-sub">We ask for the first 2 ERROR lines through <code>take(2, only(parse(lines), "ERROR"))</code>. Step through and watch how little is read.</p>
@@ -1152,6 +1153,8 @@ done 1
   other tasks keep running (TaskGroup cancels them).</li>
 </ul></div></div></details></div></article></div>
 </div>
+<script src="data.js"></script>
 <script src="site.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

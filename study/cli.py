@@ -520,6 +520,21 @@ def cmd_site(args: argparse.Namespace) -> None:
     console.print(f"Built {SITE_DIR.relative_to(ROOT)}/  → open [cyan]{SITE_DIR / 'index.html'}[/cyan] in a browser")
 
 
+def cmd_notes_check(args: argparse.Namespace) -> None:
+    from .notes import check_module, note_path
+
+    cur = load_curriculum()
+    mods = [cur.module(args.module)] if args.module else [m for m in cur.modules.values() if note_path(m).exists()]
+    bad = 0
+    for m in mods:
+        probs = check_module(m, run=args.run)
+        bad += len(probs)
+        console.print(("[red]✗[/red] " if probs else "[green]✓[/green] ") + m.id)
+        for p in probs:
+            console.print(f"   {p}")
+    sys.exit(1 if bad else 0)
+
+
 def cmd_notes(args: argparse.Namespace) -> None:
     import subprocess
     import webbrowser
@@ -656,6 +671,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("notes", help="open the notes in your browser")
     p.set_defaults(func=cmd_notes)
+
+    p = sub.add_parser("notes-check", help=argparse.SUPPRESS)
+    p.add_argument("module", nargs="?")
+    p.add_argument("--run", action="store_true", help="also execute python blocks")
+    p.set_defaults(func=cmd_notes_check)
 
     p = sub.add_parser("site", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_site)

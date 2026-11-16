@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Managers notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.context_managers">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Context Managers</p><div class="note-head"><div id="note-progress" data-module="py.context_managers"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#the-protocol" data-target="the-protocol">The protocol</a></li><li><a href="#enter-and-exit-semantics" data-target="enter-and-exit-semantics">__enter__ and __exit__ semantics</a></li><li><a href="#what-the-with-statement-really-does" data-target="what-the-with-statement-really-does">What the with statement really does</a></li><li><a href="#writing-a-class-based-context-manager" data-target="writing-a-class-based-context-manager">Writing a class-based context manager</a></li><li><a href="#contextlibcontextmanager" data-target="contextlibcontextmanager">contextlib.contextmanager</a></li><li><a href="#exitstack" data-target="exitstack">ExitStack</a></li><li><a href="#resource-management" data-target="resource-management">Resource management</a></li><li><a href="#database-and-file-cleanup" data-target="database-and-file-cleanup">Database and file cleanup</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="context-managers">Context managers</h1>
+<p>A context manager is an object that sets something up when a <code>with</code> block starts and tears it down when the block
+ends, no matter how it ends. That guarantee is how Python handles files, locks, database transactions, HTTP
+sessions, temporary state and timers without leaks. In AI engineering you meet them everywhere: <code>with open</code>,
+<code>with httpx.Client()</code>, <code>with torch.no_grad()</code>, <code>with tracer.span(...)</code>, <code>with timer()</code>. Interviews ask what <code>with</code>
+really expands to, what <code>__exit__</code> returning True means, and how <code>@contextmanager</code> and <code>ExitStack</code> work.</p>
+<h2 id="the-protocol" data-topics="py.context_managers.protocol">The protocol</h2>
+<!-- topics: protocol -->
+
+<p>Any object with <code>__enter__</code> and <code>__exit__</code> methods is a context manager.</p>
+<div class="hl"><pre><span></span><code>with EXPR as NAME:        manager = EXPR
+    BODY                  NAME = manager.__enter__()        &lt;- return value goes to NAME
+                          BODY runs
+                          manager.__exit__(exc_type, exc, tb)   &lt;- ALWAYS called
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Demo</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"enter"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">"resource"</span>           <span class="c1"># becomes the `as` target</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"exit"</span><span class="p">,</span> <span class="n">exc_type</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">if</span> <span class="n">exc_type</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>                <span class="c1"># do not swallow exceptions</span>
+
+<span class="k">with</span> <span class="n">Demo</span><span class="p">()</span> <span class="k">as</span> <span class="n">r</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"body"</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+<span class="c1"># prints: enter</span>
+<span class="c1"># prints: body resource</span>
+<span class="c1"># prints: exit None</span>
+</code></pre></div>
+
+<h2 id="enter-and-exit-semantics" data-topics="py.context_managers.enter,py.context_managers.exit"><strong>enter</strong> and <strong>exit</strong> semantics</h2>
+<!-- topics: enter, exit -->
+
+<p><strong><code>__enter__</code></strong> acquires the resource and returns what you want bound to the <code>as</code> name. It often returns <code>self</code>,
+but it does not have to (<code>open</code> returns the file; a lock returns <code>True</code>; a transaction might return a cursor). If
+<code>__enter__</code> raises, <code>__exit__</code> is <strong>not</strong> called, because setup never completed.</p>
+<p><strong><code>__exit__(exc_type, exc_value, traceback)</code></strong> gets <code>(None, None, None)</code> on a clean exit, otherwise the exception
+details. Its <strong>return value</strong> matters:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Returns</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>falsy (<code>None</code>, <code>False</code>)</td>
+<td>the exception, if any, <strong>propagates</strong> after cleanup</td>
+</tr>
+<tr>
+<td>truthy (<code>True</code>)</td>
+<td>the exception is <strong>suppressed</strong>; execution continues after the <code>with</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Suppress</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">et</span><span class="p">,</span> <span class="n">ev</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"suppressing"</span><span class="p">,</span> <span class="n">et</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+
+<span class="k">with</span> <span class="n">Suppress</span><span class="p">():</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"ignored"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"still running"</span><span class="p">)</span>
+<span class="c1"># prints: suppressing ValueError</span>
+<span class="c1"># prints: still running</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Forgetting <code>return</code> in <code>__exit__</code> returns <code>None</code>, so exceptions propagate. That is the safe default.
+Returning True by accident (for example <code>return self.cleanup()</code> that happens to be truthy) silently eats bugs.
+Also never <code>raise</code> the received exception yourself; just return falsy and Python re-raises it.</p>
+</blockquote>
+<h2 id="what-the-with-statement-really-does" data-topics="py.context_managers.with_internals">What the with statement really does</h2>
+<!-- topics: with_internals -->
+
+<p><code>with</code> is not just <code>try/finally</code>. Roughly, Python expands it to:</p>
+<div class="hl"><pre><span></span><code>mgr = EXPR
+enter, exit = type(mgr).__enter__, type(mgr).__exit__    # looked up on the TYPE
+value = enter(mgr)
+try:
+    NAME = value
+    BODY
+except BaseException as e:
+    if not exit(mgr, type(e), e, e.__traceback__):
+        raise                                         # falsy -&gt; re-raise
+else:
+    exit(mgr, None, None, None)                       # clean exit
+</code></pre></div>
+
+<p>Consequences you can state in an interview:</p>
+<ul>
+<li>The methods are looked up on the <strong>class</strong>, so assigning <code>obj.__enter__ = ...</code> on an instance does nothing.</li>
+<li><code>__exit__</code> runs on <code>return</code>, <code>break</code> and <code>continue</code> inside the body too.</li>
+<li>If <code>__exit__</code> itself raises, that new exception replaces the original (chained via <code>__context__</code>).</li>
+<li><code>BaseException</code> is covered, so Ctrl-C still triggers cleanup.</li>
+<li>Several managers in one statement nest and exit in <strong>reverse</strong> order:</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">tag</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"open"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"close"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">tag</span><span class="p">(</span><span class="s2">"a"</span><span class="p">),</span> <span class="n">tag</span><span class="p">(</span><span class="s2">"b"</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"inside"</span><span class="p">)</span>
+<span class="c1"># prints: open a</span>
+<span class="c1"># prints: open b</span>
+<span class="c1"># prints: inside</span>
+<span class="c1"># prints: close b</span>
+<span class="c1"># prints: close a</span>
+</code></pre></div>
+
+<p>Parenthesised multi-line <code>with (open(a) as x, open(b) as y):</code> is supported from 3.10.</p>
+<details>
+<summary>Check yourself: `__enter__` raises. Is `__exit__` called?</summary>
+<p>No. The <code>with</code> only guarantees <code>__exit__</code> once <code>__enter__</code> has succeeded. If <code>__enter__</code> acquires two things,
+it must clean up the first itself if the second fails.</p>
+</details>
+<h2 id="writing-a-class-based-context-manager" data-topics="py.context_managers.custom">Writing a class-based context manager</h2>
+<!-- topics: custom -->
+
+<p>Use a class when the manager has state, is reusable, or needs both a rich API and cleanup.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Timer</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">et</span><span class="p">,</span> <span class="n">ev</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">start</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+<span class="k">with</span> <span class="n">Timer</span><span class="p">()</span> <span class="k">as</span> <span class="n">t</span><span class="p">:</span>
+    <span class="nb">sum</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">elapsed</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span>     <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>A transaction manager shows the point of <code>exc_type</code>: commit on success, roll back on error, never swallow.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Transaction</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log</span><span class="p">):</span> <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">log</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"begin"</span><span class="p">);</span> <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">et</span><span class="p">,</span> <span class="n">ev</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"rollback"</span> <span class="k">if</span> <span class="n">et</span> <span class="k">else</span> <span class="s2">"commit"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+<span class="n">log</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">Transaction</span><span class="p">(</span><span class="n">log</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"db error"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+    <span class="k">pass</span>
+<span class="k">with</span> <span class="n">Transaction</span><span class="p">(</span><span class="n">log</span><span class="p">):</span>
+    <span class="k">pass</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">log</span><span class="p">)</span>   <span class="c1"># prints: ['begin', 'rollback', 'begin', 'commit']</span>
+</code></pre></div>
+
+<p>Reusability: a manager that stores state on <code>self</code> in <code>__enter__</code> (like <code>Timer</code>) breaks if you nest or reuse the
+same instance concurrently. Return a fresh object, or store state per entry, if it must be reentrant. Async
+code uses <code>__aenter__</code>/<code>__aexit__</code> with <code>async with</code>.</p>
+<h2 id="contextlibcontextmanager" data-topics="py.context_managers.contextmanager">contextlib.contextmanager</h2>
+<!-- topics: contextmanager -->
+
+<p><code>@contextmanager</code> turns a <strong>generator with exactly one <code>yield</code></strong> into a context manager. Code before <code>yield</code> is
+<code>__enter__</code>; the yielded value is the <code>as</code> target; code after is <code>__exit__</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">opened</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"setup"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"teardown"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">opened</span><span class="p">(</span><span class="s2">"db"</span><span class="p">)</span> <span class="k">as</span> <span class="n">x</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"using"</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="c1"># prints: setup db</span>
+<span class="c1"># prints: using DB</span>
+<span class="c1"># prints: teardown db</span>
+</code></pre></div>
+
+<p>If the body raises, the exception is <strong>thrown into the generator at the <code>yield</code></strong>. Without <code>try/finally</code> your
+teardown is skipped. To suppress, catch it and do not re-raise:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">ignore</span><span class="p">(</span><span class="o">*</span><span class="n">types</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">except</span> <span class="n">types</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"ignored"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">ignore</span><span class="p">(</span><span class="ne">KeyError</span><span class="p">):</span>
+    <span class="p">{}[</span><span class="s2">"x"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"continued"</span><span class="p">)</span>
+<span class="c1"># prints: ignored KeyError</span>
+<span class="c1"># prints: continued</span>
+</code></pre></div>
+
+<p>The most common mistake: omitting <code>try/finally</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">bad</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"setup"</span><span class="p">)</span>
+    <span class="k">yield</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"cleanup"</span><span class="p">)</span>       <span class="c1"># skipped when the body raises</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">bad</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span>
+<span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"no cleanup ran"</span><span class="p">)</span>
+<span class="c1"># prints: setup</span>
+<span class="c1"># prints: no cleanup ran</span>
+</code></pre></div>
+
+<p>The standard library ships useful ones: <code>contextlib.suppress(...)</code>, <code>redirect_stdout</code>, <code>closing(obj)</code> (calls
+<code>.close()</code>), <code>nullcontext()</code> (no-op placeholder, handy for optional managers), and <code>chdir</code>.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Choose</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@contextmanager</code></td>
+<td>short setup/teardown, no extra API</td>
+</tr>
+<tr>
+<td>class with <code>__enter__/__exit__</code></td>
+<td>state, reuse, extra methods, subclassing</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "How does <code>@contextmanager</code> work?" A wrapper object whose <code>__enter__</code> calls <code>next()</code> on your
+generator and whose <code>__exit__</code> either resumes it (clean exit) or <code>throw()</code>s the exception into it.</p>
+</blockquote>
+<h2 id="exitstack" data-topics="py.context_managers.exitstack">ExitStack</h2>
+<!-- topics: exitstack -->
+
+<p><code>ExitStack</code> is a context manager that manages a <strong>dynamic number</strong> of other context managers (or callbacks), then
+unwinds them in reverse order. Use it when you cannot write the <code>with</code> statements statically.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExitStack</span><span class="p">,</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">res</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"open"</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="n">n</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"close"</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="n">ExitStack</span><span class="p">()</span> <span class="k">as</span> <span class="n">stack</span><span class="p">:</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="p">[</span><span class="n">stack</span><span class="o">.</span><span class="n">enter_context</span><span class="p">(</span><span class="n">res</span><span class="p">(</span><span class="n">i</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+    <span class="n">stack</span><span class="o">.</span><span class="n">callback</span><span class="p">(</span><span class="nb">print</span><span class="p">,</span> <span class="s2">"callback last registered, runs first"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"items"</span><span class="p">,</span> <span class="n">items</span><span class="p">)</span>
+<span class="c1"># prints: open 0</span>
+<span class="c1"># prints: open 1</span>
+<span class="c1"># prints: open 2</span>
+<span class="c1"># prints: items [0, 1, 2]</span>
+<span class="c1"># prints: callback last registered, runs first</span>
+<span class="c1"># prints: close 2</span>
+<span class="c1"># prints: close 1</span>
+<span class="c1"># prints: close 0</span>
+</code></pre></div>
+
+<p>Typical uses: open N files whose count is only known at runtime (<code>for p in paths: stack.enter_context(open(p))</code>),
+conditionally enter a manager, and register arbitrary cleanup with <code>callback()</code>. If entering the 3rd resource
+fails, the first two are still closed. <code>stack.pop_all()</code> transfers ownership so you can keep resources open past
+the <code>with</code> (used inside <code>__enter__</code> of your own classes).</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>ExitStack</code> = a <code>with</code> for "I do not know how many". Exits run in LIFO order, like nested <code>with</code>.</p>
+</blockquote>
+<h2 id="resource-management" data-topics="py.context_managers.resources">Resource management</h2>
+<!-- topics: resources -->
+
+<p>A <strong>resource</strong> is anything you must give back: file descriptors, sockets, locks, DB connections, GPU memory,
+temporary state. Rely on <code>with</code>, not on garbage collection or <code>__del__</code>, because release timing in <code>__del__</code> is
+unspecified and it can run during interpreter shutdown.</p>
+<p>The pattern "change global state, then restore it" is a perfect fit:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
+
+<span class="nd">@contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">env</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+    <span class="n">old</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">old</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">del</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">old</span>
+
+<span class="k">with</span> <span class="n">env</span><span class="p">(</span><span class="s2">"MODEL"</span><span class="p">,</span> <span class="s2">"small"</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"MODEL"</span><span class="p">])</span>      <span class="c1"># prints: small</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"MODEL"</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">)</span>        <span class="c1"># prints: False</span>
+</code></pre></div>
+
+<p>Other familiar examples: <code>threading.Lock</code> (<code>with lock:</code> releases on error, so no deadlock from a forgotten
+release), <code>decimal.localcontext()</code>, <code>unittest.mock.patch</code>, <code>torch.no_grad()</code>, <code>httpx.Client()</code>.</p>
+<p>Generators, by contrast, hold resources until closed: <code>with closing(gen)</code> or keeping <code>open</code> inside a <code>with</code>
+around the loop avoids leaking a file behind an abandoned generator.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>x = open(p).read()</code> leaves closing to the garbage collector, and <code>ResourceWarning</code> shows when
+warnings are enabled. Always wrap in <code>with</code> (or use <code>Path.read_text</code>).</p>
+<p><strong>AI use</strong> A pooled <code>httpx.Client</code> or <code>AsyncClient</code> in a <code>with</code> block reuses TCP connections for many LLM
+calls and closes them deterministically. Creating a new client per request wastes connections and latency.</p>
+</blockquote>
+<h2 id="database-and-file-cleanup" data-topics="py.context_managers.cleanup">Database and file cleanup</h2>
+<!-- topics: cleanup -->
+
+<p>Cleanup contexts guarantee <strong>commit/rollback</strong> and <strong>close</strong> even when code between raises. Beware that the
+driver's own context manager differs from what you may assume. <code>sqlite3.Connection</code> as a context manager manages
+the <em>transaction</em> (commit or rollback) but does <strong>not</strong> close the connection:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">sqlite3</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">closing</span>
+
+<span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">sqlite3</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s2">":memory:"</span><span class="p">))</span> <span class="k">as</span> <span class="n">conn</span><span class="p">:</span>    <span class="c1"># closing -&gt; conn.close() at the end</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"create table t (x integer)"</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">conn</span><span class="p">:</span>                                    <span class="c1"># transaction scope</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"insert into t values (1)"</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"fail after insert"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"select count(*) from t"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>   <span class="c1"># prints: 0  (rolled back)</span>
+
+    <span class="k">with</span> <span class="n">conn</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"insert into t values (2)"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"select count(*) from t"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span>   <span class="c1"># prints: 1  (committed)</span>
+</code></pre></div>
+
+<p>Layering is the pattern: outer manager for the connection lifetime, inner one for each transaction. For files, the
+same ideas appear as: close on error, flush before success is reported, and write to a temp file then rename
+(see the files module). When cleanup itself can fail, put the cleanup in <code>finally</code>/<code>__exit__</code> but keep it from
+masking the original error: log the secondary failure instead of raising it.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Does <code>with sqlite3.connect()</code> close the connection?" No, it commits or rolls back. Wrap it in
+<code>contextlib.closing</code> or close it explicitly. SQLAlchemy sessions and psycopg connections have their own rules,
+so read what <code>__exit__</code> does.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li><code>with</code> calls <code>__enter__</code> (its return value is the <code>as</code> target) then guarantees <code>__exit__(type, exc, tb)</code>.</li>
+<li><code>__exit__</code> returning truthy suppresses the exception; falsy or <code>None</code> lets it propagate. Default to falsy.</li>
+<li>If <code>__enter__</code> raises, <code>__exit__</code> does not run. Methods are looked up on the type.</li>
+<li>Multiple managers exit in reverse (LIFO) order.</li>
+<li><code>@contextmanager</code>: one <code>yield</code>; wrap it in <code>try/finally</code> or teardown is skipped on error.</li>
+<li>Use a class for state and reuse, a generator for short setup/teardown.</li>
+<li><code>ExitStack</code> handles a runtime-determined number of managers or callbacks, unwinding LIFO.</li>
+<li>Prefer <code>with</code> to <code>__del__</code> or GC for any resource; restore global state in <code>finally</code>.</li>
+<li><code>sqlite3</code> connection-as-manager handles transactions only; add <code>closing()</code> to close.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-files.html">&larr; File Handling</a><a class="pn next" href="revise-py-packaging.html">Python Modules and Packages &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

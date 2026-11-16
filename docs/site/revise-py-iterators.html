@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Iterators notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.iterators">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Iterators</p><div class="note-head"><div id="note-progress" data-module="py.iterators"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#iterable-versus-iterator" data-target="iterable-versus-iterator">Iterable versus iterator</a></li><li><a href="#iter-next-and-stopiteration" data-target="iter-next-and-stopiteration">iter(), next() and StopIteration</a></li><li><a href="#how-a-for-loop-works" data-target="how-a-for-loop-works">How a for loop works</a></li><li><a href="#the-iterator-protocol-iter-and-next" data-target="the-iterator-protocol-iter-and-next">The iterator protocol: __iter__ and __next__</a></li><li><a href="#custom-iterator-classes" data-target="custom-iterator-classes">Custom iterator classes</a></li><li><a href="#iterable-containers-that-produce-fresh-iterators" data-target="iterable-containers-that-produce-fresh-iterators">Iterable containers that produce fresh iterators</a></li><li><a href="#exhaustion-and-one-pass-iterators" data-target="exhaustion-and-one-pass-iterators">Exhaustion and one-pass iterators</a></li><li><a href="#infinite-iterators-and-useful-tools" data-target="infinite-iterators-and-useful-tools">Infinite iterators and useful tools</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="iterators">Iterators</h1>
+<p>The iterator protocol is the small contract behind every <code>for</code> loop, comprehension, <code>list()</code>,
+<code>sum()</code>, unpacking and <code>in</code> test in Python. Understanding it explains why a list can be looped twice
+but a file or generator cannot, why <code>StopIteration</code> exists, and how generators (see the generators note)
+are really just a convenient way to write iterators. In AI engineering it matters for streaming
+LLM tokens, paginated vector-DB APIs and lazy dataset loading, where you consume values one at a time and
+sometimes only once. Interviewers ask "what does a <code>for</code> loop actually do?" to find out how deep your
+model of Python goes.</p>
+<h2 id="iterable-versus-iterator" data-topics="py.iterators.iterable_vs_iterator">Iterable versus iterator</h2>
+<!-- topics: iterable_vs_iterator -->
+
+<p>Two roles, two different protocols:</p>
+<ul>
+<li>An <strong>iterable</strong> is anything you can loop over: it has <code>__iter__()</code> that returns an iterator
+  (or <code>__getitem__</code> with integers from 0, the legacy route). Lists, tuples, strings, dicts, sets, <code>range</code>.</li>
+<li>An <strong>iterator</strong> is the object that does the walking: it has <code>__next__()</code> that returns the next item or
+  raises <code>StopIteration</code>, and <code>__iter__()</code> that returns <strong>itself</strong>. Generators, file objects, <code>zip</code>,
+  <code>map</code>, <code>enumerate</code>.</li>
+</ul>
+<div class="hl"><pre><span></span><code>iterable  --iter()--&gt;  iterator  --next()--&gt;  item, item, ..., StopIteration
+(re-usable)            (one position, one pass)
+</code></pre></div>
+
+<p>Every iterator is an iterable (because <code>__iter__</code> returns itself), but not the other way round. The
+key difference: an iterable gives you a <strong>fresh iterator each time</strong>, so you can loop it repeatedly;
+an iterator holds the position and is used up.</p>
+<div class="hl"><pre><span></span><code><span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">nums</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">nums</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">iter</span><span class="p">(</span><span class="n">nums</span><span class="p">))</span>   <span class="c1"># prints: False   (list makes a new iterator each time)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">it</span><span class="p">)</span> <span class="ow">is</span> <span class="n">it</span><span class="p">)</span>             <span class="c1"># prints: True    (an iterator is its own iterator)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">nums</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">it</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>   <span class="c1"># prints: list list_iterator</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">it</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>         <span class="c1"># prints: [1, 2, 3] []</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> iterable = "can give me an iterator"; iterator = "is the cursor". <code>list</code> is iterable
+but not an iterator: <code>next([1, 2])</code> raises <code>TypeError</code>.</p>
+</blockquote>
+<h2 id="iter-next-and-stopiteration" data-topics="py.iterators.iter,py.iterators.next,py.iterators.stopiteration">iter(), next() and StopIteration</h2>
+<!-- topics: iter, next, stopiteration -->
+
+<p><code>iter(obj)</code> calls <code>obj.__iter__()</code> and returns the iterator (TypeError if <code>obj</code> is not iterable).
+<code>next(it)</code> calls <code>it.__next__()</code>. When there is nothing left, <code>__next__</code> raises <code>StopIteration</code>, which is
+the normal end-of-data <em>signal</em>, not an error.</p>
+<div class="hl"><pre><span></span><code><span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">([</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>     <span class="c1"># prints: a</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>     <span class="c1"># prints: b</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done"</span><span class="p">)</span>   <span class="c1"># prints: done</span>
+</code></pre></div>
+
+<p><code>next(it, default)</code> returns <code>default</code> instead of raising: the clean way to "get the first item or a
+fallback".</p>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">([]),</span> <span class="kc">None</span><span class="p">))</span>          <span class="c1"># prints: None</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">]),</span> <span class="kc">None</span><span class="p">))</span>    <span class="c1"># prints: 10</span>
+<span class="n">words</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"apple"</span><span class="p">,</span> <span class="s2">"avocado"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">((</span><span class="n">w</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span> <span class="k">if</span> <span class="n">w</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"a"</span><span class="p">)),</span> <span class="s2">"none"</span><span class="p">))</span>   <span class="c1"># prints: apple</span>
+</code></pre></div>
+
+<p>There is also a two-argument form, <code>iter(callable, sentinel)</code>, which calls <code>callable()</code> repeatedly until it
+returns <code>sentinel</code>. Perfect for reading fixed-size blocks:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+
+<span class="n">stream</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="sa">b</span><span class="s2">"abcdefgh"</span><span class="p">)</span>
+<span class="n">chunks</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">stream</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="sa">b</span><span class="s2">""</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>   <span class="c1"># prints: [b'abc', b'def', b'gh']</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>StopIteration</code> raised <em>inside</em> a generator body is converted to <code>RuntimeError</code> (PEP 479),
+so it cannot silently end the generator early. In your own <code>for_each</code>-style helpers keep the <code>try</code>
+around <code>next()</code> only, otherwise a <code>StopIteration</code> raised by your callback is mistaken for end of data.</p>
+</blockquote>
+<details>
+<summary>Check yourself: why is `next(it, None)` often better than try/except?</summary>
+<p>It expresses "first item or default" in one expression and cannot accidentally catch a <code>StopIteration</code>
+raised by unrelated code. Use a unique <code>object()</code> sentinel if <code>None</code> could be a real value.</p>
+</details>
+<h2 id="how-a-for-loop-works" data-topics="py.iterators.for_internals">How a for loop works</h2>
+<!-- topics: for_internals -->
+
+<div class="hl"><pre><span></span><code><span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">iterable</span><span class="p">:</span>
+    <span class="n">body</span>
+</code></pre></div>
+
+<p>is equivalent to:</p>
+<div class="hl"><pre><span></span><code><span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">iterable</span><span class="p">)</span>                 <span class="c1"># ONE call to __iter__</span>
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">)</span>                <span class="c1"># __next__ each round</span>
+    <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+        <span class="k">break</span>                       <span class="c1"># normal exit; `else:` clause runs only if no break</span>
+    <span class="n">body</span>
+</code></pre></div>
+
+<p>You can prove it by implementing the loop by hand:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">manual_for</span><span class="p">(</span><span class="n">iterable</span><span class="p">,</span> <span class="n">fn</span><span class="p">):</span>
+    <span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">iterable</span><span class="p">)</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">item</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">count</span>
+        <span class="n">fn</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>               <span class="c1"># outside the try: its own StopIteration must propagate</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="n">seen</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">manual_for</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">,</span> <span class="n">seen</span><span class="o">.</span><span class="n">append</span><span class="p">),</span> <span class="n">seen</span><span class="p">)</span>   <span class="c1"># prints: 3 ['a', 'b', 'c']</span>
+</code></pre></div>
+
+<p>The same protocol drives comprehensions, <code>list(x)</code>, <code>tuple(x)</code>, <code>sum</code>, <code>max</code>, <code>sorted</code>, <code>in</code>
+(falls back to iterating), unpacking <code>a, b = x</code>, <code>*args</code> expansion and <code>dict(pairs)</code>. Because the loop calls
+<code>iter()</code> once up front, <strong>mutating a list while looping</strong> misbehaves: the list iterator holds an index.</p>
+<div class="hl"><pre><span></span><code><span class="n">items</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">]</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">x</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">items</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">items</span><span class="p">)</span>   <span class="c1"># prints: [4, 8]</span>
+</code></pre></div>
+
+<p>Every element is even, yet half survive: after removing 2 the list shifted left but the iterator's index
+moved on, skipping 4. Iterate over a copy (<code>for x in items[:]</code>) or build a new list instead.</p>
+<h2 id="the-iterator-protocol-iter-and-next" data-topics="py.iterators.protocol,py.iterators.dunder_iter,py.iterators.dunder_next">The iterator protocol: <strong>iter</strong> and <strong>next</strong></h2>
+<!-- topics: protocol, dunder_iter, dunder_next -->
+
+<p>To be an <strong>iterator</strong> a class implements both methods:</p>
+<ul>
+<li><code>__iter__(self)</code> returns <code>self</code>.</li>
+<li><code>__next__(self)</code> returns the next value or raises <code>StopIteration</code>.</li>
+</ul>
+<p>To be merely <strong>iterable</strong> a class implements only <code>__iter__</code> and returns a (new) iterator, which can be a
+generator.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Iterator</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Countdown</span><span class="p">:</span>                      <span class="c1"># an iterator</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">StopIteration</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span>
+
+<span class="n">c</span> <span class="o">=</span> <span class="n">Countdown</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">c</span><span class="p">))</span>                                   <span class="c1"># prints: [3, 2, 1]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">Iterator</span><span class="p">),</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">))</span>   <span class="c1"># prints: True True</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="n">Iterator</span><span class="p">),</span> <span class="nb">isinstance</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="n">Iterable</span><span class="p">))</span>   <span class="c1"># prints: False True</span>
+</code></pre></div>
+
+<p><code>collections.abc.Iterator</code> checks structurally (the presence of <code>__iter__</code> and <code>__next__</code>); you do not
+need to inherit from it.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "<code>isinstance(obj, Iterable)</code> returned False, but <code>for x in obj</code> works. How?" The class has
+no <code>__iter__</code> but defines <code>__getitem__</code>, the legacy sequence protocol: <code>iter()</code> then builds an iterator that
+calls <code>obj[0]</code>, <code>obj[1]</code>, ... until <code>IndexError</code>. The reliable test is simply <code>try: iter(obj)</code>.</p>
+</blockquote>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Legacy</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span>
+        <span class="k">return</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">10</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">Legacy</span><span class="p">(),</span> <span class="n">Iterable</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">Legacy</span><span class="p">()))</span>   <span class="c1"># prints: False [0, 10, 20]</span>
+</code></pre></div>
+
+<h2 id="custom-iterator-classes" data-topics="py.iterators.custom">Custom iterator classes</h2>
+<!-- topics: custom -->
+
+<p>Write a class when the iterator needs <strong>state you want to expose</strong> (<code>pages_fetched</code>), methods besides
+<code>__next__</code>, or lazy resources with explicit lifecycle. A cursor-paginated API is the textbook case:</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">DocumentPager</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Yields every document across pages; fetches a page only when needed."""</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fetch_page</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fetch</span> <span class="o">=</span> <span class="n">fetch_page</span>          <span class="c1"># fetch_page(cursor) -&gt; (items, next_cursor)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_started</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_done</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pages_fetched</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="p">:</span>           <span class="c1"># loop: empty pages may still have a next cursor</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_done</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">StopIteration</span>
+            <span class="n">items</span><span class="p">,</span> <span class="n">nxt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fetch</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pages_fetched</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">reversed</span><span class="p">(</span><span class="n">items</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cursor</span> <span class="o">=</span> <span class="n">nxt</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_done</span> <span class="o">=</span> <span class="n">nxt</span> <span class="ow">is</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_buffer</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+<span class="n">pages</span> <span class="o">=</span> <span class="p">{</span><span class="kc">None</span><span class="p">:</span> <span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="s2">"c2"</span><span class="p">),</span> <span class="s2">"c2"</span><span class="p">:</span> <span class="p">([],</span> <span class="s2">"c3"</span><span class="p">),</span> <span class="s2">"c3"</span><span class="p">:</span> <span class="p">([</span><span class="mi">3</span><span class="p">],</span> <span class="kc">None</span><span class="p">)}</span>
+<span class="n">pager</span> <span class="o">=</span> <span class="n">DocumentPager</span><span class="p">(</span><span class="k">lambda</span> <span class="n">cursor</span><span class="p">:</span> <span class="n">pages</span><span class="p">[</span><span class="n">cursor</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">pager</span><span class="p">),</span> <span class="n">pager</span><span class="o">.</span><span class="n">pages_fetched</span><span class="p">)</span>   <span class="c1"># prints: [1, 2, 3] 3</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">pager</span><span class="p">))</span>                        <span class="c1"># prints: []</span>
+</code></pre></div>
+
+<p>Rules for a well-behaved iterator:</p>
+<ol>
+<li><code>__iter__</code> returns <code>self</code>.</li>
+<li>After <code>StopIteration</code> it must <strong>keep raising</strong> it on every later <code>next()</code> (never "restart").</li>
+<li>Be lazy: constructing it does no work; fetch on demand.</li>
+<li>Do not mutate or double-consume the source.</li>
+</ol>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> For production pagination also think about: page size, retries with backoff on a failed
+page (without losing the cursor), a max-items cap, and not holding every page in memory.
+Exposing <code>pages_fetched</code> makes it testable ("did it stay lazy?").</p>
+</blockquote>
+<p>A <strong>generator</strong> gives you rules 1-3 for free and is usually shorter:</p>
+<div class="hl"><pre><span></span><code><span class="n">pages</span> <span class="o">=</span> <span class="p">{</span><span class="kc">None</span><span class="p">:</span> <span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="s2">"c2"</span><span class="p">),</span> <span class="s2">"c2"</span><span class="p">:</span> <span class="p">([],</span> <span class="s2">"c3"</span><span class="p">),</span> <span class="s2">"c3"</span><span class="p">:</span> <span class="p">([</span><span class="mi">3</span><span class="p">],</span> <span class="kc">None</span><span class="p">)}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">pager_gen</span><span class="p">(</span><span class="n">fetch_page</span><span class="p">):</span>
+    <span class="n">cursor</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">items</span><span class="p">,</span> <span class="n">cursor</span> <span class="o">=</span> <span class="n">fetch_page</span><span class="p">(</span><span class="n">cursor</span><span class="p">)</span>
+        <span class="k">yield from</span> <span class="n">items</span>
+        <span class="k">if</span> <span class="n">cursor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">pager_gen</span><span class="p">(</span><span class="k">lambda</span> <span class="n">c</span><span class="p">:</span> <span class="n">pages</span><span class="p">[</span><span class="n">c</span><span class="p">])))</span>   <span class="c1"># prints: [1, 2, 3]</span>
+</code></pre></div>
+
+<p>Prefer the generator unless you need extra public state/methods, a custom <code>__repr__</code>, or to implement
+<code>__iter__</code> and <code>__next__</code> for performance in a hot library path.</p>
+<h2 id="iterable-containers-that-produce-fresh-iterators" data-topics="py.iterators.iterable_vs_iterator,py.iterators.dunder_iter">Iterable containers that produce fresh iterators</h2>
+<!-- topics: iterable_vs_iterator, dunder_iter -->
+
+<p>A container should be <em>iterable but not an iterator</em>, so it can be looped many times. Implement
+<code>__iter__</code> as a generator or return a new iterator object each call:</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Corpus</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">docs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">docs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">docs</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>                 <span class="c1"># a generator function: a new generator per loop</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">docs</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">d</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+<span class="n">corpus</span> <span class="o">=</span> <span class="n">Corpus</span><span class="p">([</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">corpus</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">corpus</span><span class="p">))</span>   <span class="c1"># prints: ['a', 'b'] ['a', 'b']</span>
+</code></pre></div>
+
+<p>The trap is the opposite design, where <code>__iter__</code> returns <code>self</code> on a container: the second loop is silently
+empty.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BadCorpus</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">docs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">docs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">docs</span><span class="p">),</span> <span class="mi">0</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">docs</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">StopIteration</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">docs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">bad</span> <span class="o">=</span> <span class="n">BadCorpus</span><span class="p">([</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">bad</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">bad</span><span class="p">))</span>   <span class="c1"># prints: ['A', 'B'] []</span>
+</code></pre></div>
+
+<p>Many APIs check <code>iter(x) is x</code> to detect "this is a one-shot iterator" (e.g. to decide whether to
+materialise). A dataset class passed to <code>DataLoader</code>-style code should be re-iterable per epoch.</p>
+<h2 id="exhaustion-and-one-pass-iterators" data-topics="py.iterators.exhaustion,py.iterators.one_pass">Exhaustion and one-pass iterators</h2>
+<!-- topics: exhaustion, one_pass -->
+
+<p>An exhausted iterator stays exhausted and gives no error on later loops. File objects, generators,
+<code>map</code>, <code>zip</code>, <code>filter</code>, <code>enumerate</code>, <code>csv.reader</code> and network streams are all <strong>one-pass</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="n">m</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">upper</span><span class="p">,</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>   <span class="c1"># prints: ['A', 'B']</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>   <span class="c1"># prints: []</span>
+
+<span class="n">z</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="s2">"ab"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">z</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">z</span><span class="p">))</span>   <span class="c1"># prints: (2, 'b') []</span>
+</code></pre></div>
+
+<p>Consuming partially is also consuming: <code>next()</code>, <code>in</code>, <code>any()</code>, <code>min()</code> and a <code>break</code> out of a <code>for</code> all
+advance the same shared iterator.</p>
+<div class="hl"><pre><span></span><code><span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">3</span> <span class="ow">in</span> <span class="n">it</span><span class="p">)</span>           <span class="c1"># prints: True   (consumed 0, 1, 2, 3)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>          <span class="c1"># prints: 4</span>
+</code></pre></div>
+
+<p>Options when you need to traverse <strong>twice</strong>:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list(it)</code> (materialise)</td>
+<td>O(n) memory, simplest, fine if it fits</td>
+</tr>
+<tr>
+<td><code>itertools.tee(it, 2)</code></td>
+<td>buffers the gap between the two consumers; O(n) worst case, and you must not use the original afterwards</td>
+</tr>
+<tr>
+<td>re-create the iterator from the source</td>
+<td>recompute / re-read; needs a re-iterable source or a factory function</td>
+</tr>
+<tr>
+<td>single pass computing everything</td>
+<td>O(1) memory: gather count, sum and your output in one loop</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">tee</span>
+
+<span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">])</span>
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">tee</span><span class="p">(</span><span class="n">it</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">b</span><span class="p">))</span>   <span class="c1"># prints: 10 [1, 2, 3, 4]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>tee</code> is not free: if one branch runs far ahead, everything it consumed stays buffered, so it is
+no better than <code>list()</code> for "stats first, then stream".</p>
+<p><strong>AI use</strong> A streamed LLM response is a one-pass iterator of chunks. If you need both to show tokens live
+and keep the full text, accumulate into a list <em>as you iterate</em> instead of trying to loop twice.</p>
+</blockquote>
+<details>
+<summary>Check yourself: why does `sum(z)` then `list(z)` give nothing for `z = zip(...)`?</summary>
+<p><code>zip</code> returns an iterator. <code>sum</code> consumed it to the end, so the second pass starts at the end position
+and <code>list(z)</code> is empty. Nothing raises.</p>
+</details>
+<h2 id="infinite-iterators-and-useful-tools" data-topics="py.iterators.iter,py.iterators.next">Infinite iterators and useful tools</h2>
+<!-- topics: iter, next -->
+
+<p>Iterators are lazy, so they may be infinite as long as consumers stop themselves. <code>itertools</code> provides the
+standard building blocks:</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">count</span><span class="p">,</span> <span class="n">cycle</span><span class="p">,</span> <span class="n">islice</span><span class="p">,</span> <span class="n">chain</span><span class="p">,</span> <span class="n">takewhile</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">islice</span><span class="p">(</span><span class="n">count</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="mi">3</span><span class="p">)))</span>                  <span class="c1"># prints: [10, 15, 20]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">islice</span><span class="p">(</span><span class="n">cycle</span><span class="p">(</span><span class="s2">"ab"</span><span class="p">),</span> <span class="mi">5</span><span class="p">)))</span>                   <span class="c1"># prints: ['a', 'b', 'a', 'b', 'a']</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">chain</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">))))</span>                       <span class="c1"># prints: [1, 2, 3]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">takewhile</span><span class="p">(</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">,</span> <span class="n">count</span><span class="p">())))</span>      <span class="c1"># prints: [0, 1, 2]</span>
+</code></pre></div>
+
+<p><code>enumerate(it)</code>, <code>zip(a, b)</code> and <code>reversed(seq)</code> are iterators too. <code>islice</code> is the iterator
+equivalent of slicing (lists support <code>[a:b]</code>, iterators do not). <code>zip</code> stops at the shortest input
+(<code>zip(..., strict=True)</code> raises on mismatched lengths; <code>itertools.zip_longest</code> pads).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Iterator vs generator vs iterable?" Iterable: has <code>__iter__</code>. Iterator: has <code>__next__</code>
+and <code>__iter__</code> returning self. Generator: an iterator created by a function with <code>yield</code> or a generator
+expression; all generators are iterators, not all iterators are generators.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Iterable: <code>__iter__</code> returns a fresh iterator (list, dict, str, range). Iterator: <code>__next__</code> + <code>__iter__</code> returning self (generator, file, map, zip).</li>
+<li><code>iter(x)</code> -&gt; iterator; <code>next(it)</code> -&gt; item or <code>StopIteration</code>; <code>next(it, default)</code> avoids the exception; <code>iter(callable, sentinel)</code> reads until a sentinel.</li>
+<li><code>for</code> = one <code>iter()</code> call, then <code>next()</code> in a loop, ending on <code>StopIteration</code>; comprehensions, unpacking and <code>list()</code> use the same machinery.</li>
+<li>A custom iterator implements <code>__iter__</code> (return <code>self</code>) and <code>__next__</code>; once exhausted it must keep raising <code>StopIteration</code>.</li>
+<li>Containers should be iterable-not-iterator (<code>__iter__</code> creating a new iterator); <code>__iter__</code> returning <code>self</code> makes them one-shot.</li>
+<li>Iterators are one-pass: a second loop is silently empty. Re-traverse with <code>list</code>, <code>tee</code>, or by re-creating.</li>
+<li>Reliable iterability test: <code>iter(obj)</code> (the legacy <code>__getitem__</code> route is iterable without <code>Iterable</code>).</li>
+<li>Prefer a generator; write a class when you need exposed state or extra methods.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-decorators.html">&larr; Decorators</a><a class="pn next" href="revise-py-generators.html">Generators &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

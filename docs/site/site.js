@@ -28,7 +28,7 @@
   })();
 
   /* ---------- copy buttons on code blocks ---------- */
-  $$(".prose pre").forEach(function (pre) {
+  $$(".prose pre, .ex-body pre").forEach(function (pre) {
     if (pre.closest(".out")) return;
     var wrap = pre.closest(".hl") || pre; wrap.classList.add("has-copy");
     var b = document.createElement("button"); b.type = "button"; b.className = "copy"; b.textContent = "Copy"; b.setAttribute("aria-label", "Copy code");
@@ -68,10 +68,10 @@
   /* ---------- daily loop ---------- */
   $$('[data-widget="daily-loop"]').forEach(function (w) {
     var steps = [
-      { t: "Review", m: 20, cmd: "study quiz --due", d: "Answer aloud as if an interviewer were in the room, reveal the key points, then grade yourself 0-5. Low grades come back tomorrow." },
-      { t: "Practice", m: 40, cmd: "study test <module>", d: "Solve one or two exercises in your weakest topics. Stuck for 15 minutes: read the hints. Stuck for 30: read the solution, close it, redo it from memory tomorrow." },
-      { t: "Build", m: 25, cmd: "study test capstone", d: "The next DocMind milestone. Building it proves several topics at once." },
-      { t: "Close the loop", m: 5, cmd: 'study mistake "..." -t <topic>', d: "Turn anything you got wrong into one sentence. These land in journal/mistakes.md, which you reread before interviews." }
+      { t: "Review", m: 20, href: "quiz.html#mode=mixed&n=10&go=1", label: "Start 10 questions", d: "Answer aloud as if an interviewer were in the room, reveal the key points, then grade yourself 0-5. Low grades come back tomorrow." },
+      { t: "Revise", m: 25, href: "revise.html", label: "Open the notes", d: "Read one section of a note you are weak on, tick it as revised, then press 'Quiz me on this'." },
+      { t: "Practise", m: 40, href: "exercises.html", label: "Open exercises", d: "Solve one or two exercises. Stuck for 15 minutes: read the problem again. Stuck for 30: open the solution, close it, and redo it from memory tomorrow." },
+      { t: "Close the loop", m: 5, href: "topics.html", label: "Open my topics", d: "Note anything you got wrong in the box that appears when you grade 0-2, and re-rate topics that changed." }
     ];
     var bar = $(".loop-bar", w), panel = $("[data-panel]", w), total = steps.reduce(function (a, s) { return a + s.m; }, 0);
     steps.forEach(function (s, i) {
@@ -79,8 +79,7 @@
       b.innerHTML = "<span>" + s.t + "</span><small>" + s.m + " min</small>";
       b.addEventListener("click", function () {
         $$(".loop-seg", bar).forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
-        panel.innerHTML = "<strong>" + s.t + " · " + s.m + " of " + total + " min.</strong> " + s.d + '<div class="cmdline"><code>' + esc(s.cmd) + '</code><button type="button" class="copy inline">Copy</button></div>';
-        $(".copy", panel).addEventListener("click", function (e) { copy(s.cmd, e.target); });
+        panel.innerHTML = "<strong>" + s.t + " · " + s.m + " of " + total + " min.</strong> " + s.d + '<div class="cmdline"><a class="btn small" href="' + s.href + '">' + esc(s.label) + "</a></div>";
       });
       bar.appendChild(b); if (i === 0) b.click();
     });

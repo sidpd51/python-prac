@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Fundamentals notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.fundamentals">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Fundamentals</p><div class="note-head"><div id="note-progress" data-module="py.fundamentals"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#variables-are-names-not-boxes" data-target="variables-are-names-not-boxes">Variables are names, not boxes</a></li><li><a href="#type-conversion" data-target="type-conversion">Type conversion</a></li><li><a href="#mutable-vs-immutable-objects" data-target="mutable-vs-immutable-objects">Mutable vs immutable objects</a></li><li><a href="#identity-vs-equality" data-target="identity-vs-equality">Identity vs equality</a></li><li><a href="#truthiness-and-none" data-target="truthiness-and-none">Truthiness and None</a></li><li><a href="#operators" data-target="operators">Operators</a></li><li><a href="#conditionals" data-target="conditionals">Conditionals</a></li><li><a href="#loops-and-loop-control" data-target="loops-and-loop-control">Loops and loop control</a></li><li><a href="#comprehensions-list-dict-set" data-target="comprehensions-list-dict-set">Comprehensions: list, dict, set</a></li><li><a href="#nested-data-structures" data-target="nested-data-structures">Nested data structures</a></li><li><a href="#strings-and-f-strings" data-target="strings-and-f-strings">Strings and f-strings</a></li><li><a href="#slicing-and-indexing" data-target="slicing-and-indexing">Slicing and indexing</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="python-fundamentals">Python Fundamentals</h1>
+<p>Everything else in Python sits on a small object model: names point to objects, objects have a type and an
+identity, and some objects can change while others cannot. Most "weird" interview snippets (a list that changes
+behind your back, <code>is</code> returning surprising results, an empty string being falsy) are this model showing through.
+In AI engineering the same ideas show up daily: parsing nested JSON from an LLM API, normalising text before
+tokenising, shaping config, and not corrupting a shared default dict. Get the model right and the rest is syntax.</p>
+<h2 id="variables-are-names-not-boxes" data-topics="py.fundamentals.variables">Variables are names, not boxes</h2>
+<!-- topics: variables -->
+
+<p>In Python a variable is a <strong>name bound to an object</strong>. Assignment never copies; it makes the name point at an
+object that already exists (or is created by the right-hand side).</p>
+<div class="hl"><pre><span></span><code>a = [1, 2]       a ──────►  [1, 2]
+b = a            b ──────►  (same object)
+</code></pre></div>
+
+<p>Every object has an <strong>identity</strong> (<code>id()</code>, roughly its memory address), a <strong>type</strong>, and a <strong>value</strong>. Types belong to
+objects, not names, so a name can be rebound to any type (dynamic typing) but each object is strongly typed:
+<code>"1" + 1</code> raises <code>TypeError</code> instead of guessing.</p>
+<div class="hl"><pre><span></span><code><span class="n">x</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>       <span class="c1"># prints: int</span>
+<span class="n">x</span> <span class="o">=</span> <span class="s2">"ten"</span>                     <span class="c1"># same name, new object of another type</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>       <span class="c1"># prints: str</span>
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span>
+<span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span>                   <span class="c1"># tuple packing/unpacking swap</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                   <span class="c1"># prints: 2 1</span>
+<span class="n">first</span><span class="p">,</span> <span class="o">*</span><span class="n">rest</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">rest</span><span class="p">)</span>            <span class="c1"># prints: 1 [2, 3, 4]</span>
+</code></pre></div>
+
+<p>The core built-in types you must know cold: <code>int</code> (unbounded), <code>float</code> (IEEE-754 double), <code>bool</code> (a subclass of
+<code>int</code>), <code>str</code>, <code>bytes</code>, <code>list</code>, <code>tuple</code>, <code>dict</code>, <code>set</code>, <code>NoneType</code>.</p>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="nb">int</span><span class="p">))</span>   <span class="c1"># prints: True</span>
+<span class="nb">print</span><span class="p">(</span><span class="kc">True</span> <span class="o">+</span> <span class="kc">True</span><span class="p">)</span>             <span class="c1"># prints: 2</span>
+<span class="nb">print</span><span class="p">(</span><span class="mf">0.1</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">==</span> <span class="mf">0.3</span><span class="p">)</span>        <span class="c1"># prints: False</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="mi">100</span><span class="p">)</span>                <span class="c1"># prints: 1267650600228229401496703205376</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Floats are binary approximations. Compare with <code>math.isclose(a, b)</code>, and use <code>decimal.Decimal</code> for money.
+Python ints never overflow, which is why hashing/bit tricks need explicit masks.</p>
+<p><strong>Interview</strong> "Is Python pass-by-value or pass-by-reference?" Neither: it is <em>pass-by-object-reference</em>
+(call by assignment). The parameter name is bound to the same object the caller passed.</p>
+</blockquote>
+<h2 id="type-conversion" data-topics="py.fundamentals.type_conversion">Type conversion</h2>
+<!-- topics: type_conversion -->
+
+<p>Python almost never converts implicitly (except numeric widening like <code>int + float</code>). You convert explicitly with the
+type's constructor: <code>int()</code>, <code>float()</code>, <code>str()</code>, <code>bool()</code>, <code>list()</code>, <code>tuple()</code>, <code>set()</code>, <code>dict()</code>.</p>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="s2">"42"</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="mf">3.9</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="o">-</span><span class="mf">3.9</span><span class="p">))</span>     <span class="c1"># prints: 42 3 -3</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="s2">"1e3"</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="mf">3.0</span><span class="p">),</span> <span class="nb">bool</span><span class="p">(</span><span class="s2">"0"</span><span class="p">))</span>  <span class="c1"># prints: 1000.0 3.0 True</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="s2">"ff"</span><span class="p">,</span> <span class="mi">16</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"0b101"</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>     <span class="c1"># prints: 255 5</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">),</span> <span class="nb">set</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]))</span>        <span class="c1"># prints: ['a', 'b', 'c'] {1, 2}</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">dict</span><span class="p">([(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mi">2</span><span class="p">)]))</span>         <span class="c1"># prints: {'a': 1, 'b': 2}</span>
+</code></pre></div>
+
+<p><code>int()</code> <strong>truncates toward zero</strong>; use <code>round()</code> (banker's rounding: <code>round(2.5) == 2</code>) or <code>math.floor/ceil</code> when you mean
+something else. <code>int("3.5")</code> and <code>int("")</code> raise <code>ValueError</code>; <code>int(None)</code> raises <code>TypeError</code>. Convert at the edges of
+your program (parsing env vars, CSV fields, JSON strings) and wrap with <code>try/except ValueError</code>.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_int</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">AttributeError</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">default</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">to_int</span><span class="p">(</span><span class="s2">" 8 "</span><span class="p">),</span> <span class="n">to_int</span><span class="p">(</span><span class="s2">"8.5"</span><span class="p">),</span> <span class="n">to_int</span><span class="p">(</span><span class="kc">None</span><span class="p">))</span>   <span class="c1"># prints: 8 0 0</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="mf">2.5</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="mf">3.5</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="mf">2.675</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>      <span class="c1"># prints: 2 4 2.67</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>bool("False")</code> is <code>True</code>: any non-empty string is truthy. Parse env flags explicitly:
+<code>os.environ.get("DEBUG", "").lower() in {"1", "true", "yes"}</code>.</p>
+<p><strong>AI use</strong> Env vars and CLI args are always strings. <code>MAX_TOKENS=1024</code> must be <code>int()</code>-ed before it reaches an API
+call, or the API rejects <code>"1024"</code>.</p>
+</blockquote>
+<h2 id="mutable-vs-immutable-objects" data-topics="py.fundamentals.mutability">Mutable vs immutable objects</h2>
+<!-- topics: mutability -->
+
+<p>An <strong>immutable</strong> object cannot change after creation: <code>int</code>, <code>float</code>, <code>bool</code>, <code>str</code>, <code>bytes</code>, <code>tuple</code>, <code>frozenset</code>,
+<code>None</code>. A <strong>mutable</strong> one can change in place: <code>list</code>, <code>dict</code>, <code>set</code>, <code>bytearray</code>, and most user-defined classes.
+"Changing" an immutable value really builds a new object and rebinds the name.</p>
+<div class="hl"><pre><span></span><code><span class="n">s</span> <span class="o">=</span> <span class="s2">"abc"</span>
+<span class="n">before</span> <span class="o">=</span> <span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+<span class="n">s</span> <span class="o">+=</span> <span class="s2">"d"</span>                        <span class="c1"># new str, name rebound</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">==</span> <span class="n">before</span><span class="p">)</span>          <span class="c1"># prints: False</span>
+
+<span class="n">lst</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">before</span> <span class="o">=</span> <span class="nb">id</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span>
+<span class="n">lst</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span>                      <span class="c1"># in-place extend, same object</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">==</span> <span class="n">before</span><span class="p">,</span> <span class="n">lst</span><span class="p">)</span>   <span class="c1"># prints: True [1, 2]</span>
+</code></pre></div>
+
+<p>Why it matters: <strong>aliasing</strong>. Two names for one mutable object means a mutation through either is visible through both.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add_tag</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[]):</span>      <span class="c1"># the default list is created ONCE at def time</span>
+    <span class="n">tags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tags</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">add_tag</span><span class="p">(</span><span class="s2">"a"</span><span class="p">))</span>             <span class="c1"># prints: ['a']</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">add_tag</span><span class="p">(</span><span class="s2">"b"</span><span class="p">))</span>             <span class="c1"># prints: ['a', 'b']</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">add_tag_ok</span><span class="p">(</span><span class="n">tag</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">tags</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">tags</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">tags</span>
+    <span class="n">tags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">tags</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">add_tag_ok</span><span class="p">(</span><span class="s2">"a"</span><span class="p">),</span> <span class="n">add_tag_ok</span><span class="p">(</span><span class="s2">"b"</span><span class="p">))</span>   <span class="c1"># prints: ['a'] ['b']</span>
+</code></pre></div>
+
+<p>Immutability is <strong>shallow</strong>: a tuple cannot change which objects it holds, but a list inside it can still change.</p>
+<div class="hl"><pre><span></span><code><span class="n">t</span> <span class="o">=</span> <span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">99</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>                        <span class="c1"># prints: ([1, 99], 2)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">5</span><span class="p">]</span>                 <span class="c1"># += mutates the list, THEN fails assigning to t[0]</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                    <span class="c1"># prints: 'tuple' object does not support item assignment</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>                        <span class="c1"># prints: ([1, 99, 5], 2)</span>
+</code></pre></div>
+
+<p>Copies: <code>b = a</code> aliases; <code>a.copy()</code>, <code>a[:]</code>, <code>list(a)</code> are <strong>shallow</strong> (inner objects shared); <code>copy.deepcopy(a)</code> clones
+the whole graph.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="n">a</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">]]</span>
+<span class="n">shallow</span><span class="p">,</span> <span class="n">deep</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"x"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">shallow</span><span class="p">,</span> <span class="n">deep</span><span class="p">)</span>            <span class="c1"># prints: [[1, 'x'], [2]] [[1], [2]]</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span>            <span class="c1"># TRAP: two references to the same inner list</span>
+<span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>                     <span class="c1"># prints: [[1, 0], [1, 0]]</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> Never use a mutable object as a default argument; never build a grid with <code>[[0]*n]*m</code>
+(use <code>[[0]*n for _ in range(m)]</code>).</p>
+</blockquote>
+<details>
+<summary>Check yourself: why does `t[0] += [5]` both raise and change the tuple?</summary>
+<p><code>+=</code> on a list calls <code>list.__iadd__</code>, which mutates in place and succeeds; then Python tries to store the result back into
+<code>t[0]</code>, which a tuple forbids, so <code>TypeError</code> fires after the mutation already happened.</p>
+</details>
+<h2 id="identity-vs-equality" data-topics="py.fundamentals.identity_equality">Identity vs equality</h2>
+<!-- topics: identity_equality -->
+
+<p><code>==</code> asks "do these have equal values?" (calls <code>__eq__</code>). <code>is</code> asks "are these the very same object?" (compares
+identity, cannot be overridden).</p>
+<div class="hl"><pre><span></span><code><span class="n">a</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">b</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">a</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">==</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="ow">is</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="ow">is</span> <span class="n">c</span><span class="p">)</span>   <span class="c1"># prints: True False True</span>
+</code></pre></div>
+
+<p>Use <code>is</code> for singletons: <code>x is None</code>, <code>x is True</code>, <code>x is NotImplemented</code>. Use <code>==</code> for everything else.</p>
+<p>CPython <strong>caches</strong> small ints (-5..256) and interns some strings, so <code>is</code> can look like it works on values and then
+break:</p>
+<div class="hl"><pre><span></span><code><span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"256"</span><span class="p">);</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"256"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="n">y</span><span class="p">)</span>                   <span class="c1"># prints: True   (cached small int)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"1000"</span><span class="p">);</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"1000"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="n">y</span><span class="p">)</span>                   <span class="c1"># prints: False  (two separate objects)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="o">==</span> <span class="n">y</span><span class="p">)</span>                   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>is</code> on numbers and strings is an implementation detail, not a language guarantee (and warns
+<code>SyntaxWarning</code> when used with a literal). Never rely on it. Also <code>float('nan') != float('nan')</code>, so
+<code>x == x</code> is not always <code>True</code>, but <code>[nan] == [nan]</code> can be, because list comparison checks identity first.</p>
+<p><strong>Interview</strong> "When would <code>a == b</code> be True but <code>a is b</code> False, and the reverse?" The first is common (equal lists).
+The reverse needs a weird <code>__eq__</code> (NaN or a class returning False). Say that <code>is None</code> is preferred because
+a class can override <code>==</code> to match <code>None</code>, but not <code>is</code>.</p>
+</blockquote>
+<h2 id="truthiness-and-none" data-topics="py.fundamentals.truthiness,py.fundamentals.none">Truthiness and None</h2>
+<!-- topics: truthiness, none -->
+
+<p>Every object has a boolean value. <strong>Falsy</strong>: <code>None</code>, <code>False</code>, zero (<code>0</code>, <code>0.0</code>, <code>0j</code>), and any <strong>empty</strong> container
+or string (<code>""</code>, <code>[]</code>, <code>()</code>, <code>{}</code>, <code>set()</code>, <code>range(0)</code>). Everything else is truthy, including <code>"0"</code>, <code>"False"</code>,
+<code>[0]</code> and <code>[None]</code>. Custom classes are truthy unless they define <code>__bool__</code> or <code>__len__</code>.</p>
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">([</span><span class="nb">bool</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="s2">" "</span><span class="p">,</span> <span class="p">[],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">{},</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"0"</span><span class="p">)])</span>
+<span class="c1"># prints: [False, False, False, True, False, True, False, False, True]</span>
+</code></pre></div>
+
+<p><code>None</code> is the single instance of <code>NoneType</code> and means "no value". A function without <code>return</code> returns <code>None</code>.
+Because <code>0</code>, <code>""</code> and <code>[]</code> are <em>also</em> falsy, <code>if not x</code> conflates "missing" with "empty or zero".</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">tokens_left</span><span class="p">(</span><span class="n">budget</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">budget</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>          <span class="c1"># distinguishes "not given" from 0</span>
+        <span class="k">return</span> <span class="s2">"unlimited"</span>
+    <span class="k">return</span> <span class="n">budget</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">tokens_left</span><span class="p">(),</span> <span class="n">tokens_left</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>   <span class="c1"># prints: unlimited 0</span>
+<span class="nb">print</span><span class="p">(</span><span class="kc">None</span> <span class="ow">or</span> <span class="s2">"fallback"</span><span class="p">,</span> <span class="mi">0</span> <span class="ow">or</span> <span class="mi">5</span><span class="p">,</span> <span class="p">[]</span> <span class="ow">or</span> <span class="s2">"x"</span><span class="p">)</span>   <span class="c1"># prints: fallback 5 x</span>
+</code></pre></div>
+
+<p><code>or</code>/<code>and</code> return one of their <strong>operands</strong>, not a bool (see operators below). In-place list methods such as
+<code>list.sort()</code>, <code>append</code>, <code>reverse</code> return <code>None</code>, so <code>x = x.sort()</code> silently sets <code>x</code> to <code>None</code>.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>temperature = cfg.get("temperature") or 0.7</code> turns an explicit <code>0.0</code> into <code>0.7</code>. Use <code>is None</code> checks
+when zero/empty is a valid value.</p>
+</blockquote>
+<h2 id="operators" data-topics="py.fundamentals.operators">Operators</h2>
+<!-- topics: operators -->
+
+<div class="hl"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="mi">7</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">7</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">7</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">7</span> <span class="o">%</span> <span class="mi">3</span><span class="p">,</span> <span class="o">-</span><span class="mi">7</span> <span class="o">%</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span> <span class="o">**</span> <span class="mi">10</span><span class="p">)</span>   <span class="c1"># prints: 3.5 3 -4 1 2 1024</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">divmod</span><span class="p">(</span><span class="mi">17</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>                                      <span class="c1"># prints: (3, 2)</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">1</span> <span class="o">&lt;</span> <span class="mi">2</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="mi">3</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">)</span>                               <span class="c1"># prints: True False</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">5</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="s2">"ab"</span> <span class="ow">in</span> <span class="s2">"cabd"</span><span class="p">,</span> <span class="mi">3</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">})</span>       <span class="c1"># prints: True True True</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">6</span> <span class="o">&amp;</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span> <span class="o">|</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span> <span class="o">^</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">4</span><span class="p">,</span> <span class="o">~</span><span class="mi">0</span><span class="p">)</span>                    <span class="c1"># prints: 2 7 5 16 -1</span>
+</code></pre></div>
+
+<p>Key points:</p>
+<ul>
+<li><code>/</code> is always true division (float). <code>//</code> floors toward negative infinity, so <code>-7 // 2 == -4</code>, and <code>%</code> has the sign of the
+  divisor so that <code>a == (a // b) * b + a % b</code> always holds.</li>
+<li><strong>Comparison chaining</strong>: <code>a &lt; b &lt; c</code> means <code>a &lt; b and b &lt; c</code>, with <code>b</code> evaluated once.</li>
+<li><strong>Short-circuit</strong>: <code>and</code>/<code>or</code> stop early and return an operand. <code>a and b</code> returns <code>a</code> if falsy else <code>b</code>; <code>a or b</code>
+  returns <code>a</code> if truthy else <code>b</code>.</li>
+<li><code>in</code> uses <code>__contains__</code>: O(1) for sets/dicts, O(n) for lists/strings.</li>
+<li>The walrus <code>:=</code> assigns inside an expression.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"user"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Ada"</span><span class="p">}}</span>
+<span class="n">name</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"user"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">"anon"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>                                   <span class="c1"># prints: Ada</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">n</span> <span class="o">:=</span> <span class="nb">len</span><span class="p">(</span><span class="s2">"hello"</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>                                  <span class="c1"># prints: 5</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">1</span> <span class="k">if</span> <span class="p">[]</span> <span class="k">else</span> <span class="mi">2</span><span class="p">)</span>                         <span class="c1"># prints: 2</span>
+</code></pre></div>
+
+<h2 id="conditionals" data-topics="py.fundamentals.conditionals">Conditionals</h2>
+<!-- topics: conditionals -->
+
+<p><code>if / elif / else</code> evaluates conditions top to bottom and runs the first truthy branch. The conditional expression is
+<code>a if cond else b</code>. Since 3.10, <code>match</code> does structural pattern matching, which is more than a switch: it can destructure.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">route</span><span class="p">(</span><span class="n">msg</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">match</span> <span class="n">msg</span><span class="p">:</span>
+        <span class="k">case</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"tool"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="n">name</span><span class="p">}:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">"tool:</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">case</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"assistant"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="nb">str</span><span class="p">()</span> <span class="k">as</span> <span class="n">text</span><span class="p">}</span> <span class="k">if</span> <span class="n">text</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">"assistant text"</span>
+        <span class="k">case</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">}:</span>
+            <span class="k">return</span> <span class="s2">"user"</span>
+        <span class="k">case</span><span class="w"> </span><span class="k">_</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">"unknown"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">route</span><span class="p">({</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"tool"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"search"</span><span class="p">}))</span>     <span class="c1"># prints: tool:search</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">route</span><span class="p">({</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"assistant"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">""</span><span class="p">}))</span>   <span class="c1"># prints: unknown</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">route</span><span class="p">({</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">"hi"</span><span class="p">}))</span>      <span class="c1"># prints: user</span>
+</code></pre></div>
+
+<p>Mapping patterns match if the listed keys exist (extra keys are fine). Prefer <strong>guard clauses</strong> (early return) over deep
+nesting, and a dict dispatch table (<code>{"add": add}[op]</code>) when branching only selects a function.</p>
+<h2 id="loops-and-loop-control" data-topics="py.fundamentals.loops,py.fundamentals.loop_control">Loops and loop control</h2>
+<!-- topics: loops, loop_control -->
+
+<p><code>for</code> iterates over any <strong>iterable</strong> by calling <code>iter()</code> and then <code>next()</code> until <code>StopIteration</code>. <code>while</code> repeats while a
+condition holds. Use <code>for</code> when you have a collection, <code>while</code> when you do not know the count.</p>
+<div class="hl"><pre><span></span><code><span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ch</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="s2">"ab"</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">ch</span><span class="p">)</span>                        <span class="c1"># prints: 1 a  then 2 b</span>
+<span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>                         <span class="c1"># prints: x 1</span>
+<span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="s2">"ab"</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                         <span class="c1"># prints: 1 a  then 2 b   (zip stops at the shortest)</span>
+</code></pre></div>
+
+<ul>
+<li><code>break</code> leaves the innermost loop; <code>continue</code> skips to the next iteration; <code>pass</code> is a no-op placeholder.</li>
+<li>A loop's <strong><code>else</code></strong> runs only if the loop finished without <code>break</code>.</li>
+<li>The loop variable <strong>survives</strong> after the loop and holds the last value.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">8</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">%</span> <span class="n">d</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">break</span>
+    <span class="k">else</span><span class="p">:</span>                               <span class="c1"># no break: n is prime</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">" "</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">()</span>                                 <span class="c1"># prints: 2 3 5 7</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>                                <span class="c1"># prints: 7</span>
+
+<span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+    <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">count</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">continue</span>
+    <span class="k">break</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>                            <span class="c1"># prints: 3</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Do not add or remove items of a list while iterating over it; items get skipped. Iterate over a copy
+(<code>for x in lst[:]</code>) or build a new list. Mutating a dict's size during iteration raises <code>RuntimeError</code>.</p>
+</blockquote>
+<h2 id="comprehensions-list-dict-set" data-topics="py.fundamentals.list_comprehensions,py.fundamentals.dict_comprehensions,py.fundamentals.set_comprehensions">Comprehensions: list, dict, set</h2>
+<!-- topics: list_comprehensions, dict_comprehensions, set_comprehensions -->
+
+<p>A comprehension builds a collection from an iterable in one expression: <code>[expr for x in it if cond]</code>.
+Read it as the loop it replaces; the <code>if</code> filters, a conditional <em>expression</em> before <code>for</code> transforms.</p>
+<div class="hl"><pre><span></span><code><span class="n">words</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"Apple"</span><span class="p">,</span> <span class="s2">"bob"</span><span class="p">,</span> <span class="s2">"Cat"</span><span class="p">,</span> <span class="s2">"apple"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">w</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">])</span>         <span class="c1"># prints: ['apple', 'apple']</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">w</span> <span class="k">if</span> <span class="n">w</span><span class="o">.</span><span class="n">istitle</span><span class="p">()</span> <span class="k">else</span> <span class="s2">"-"</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span><span class="p">])</span>       <span class="c1"># prints: ['Apple', '-', 'Cat', '-']</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">w</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span><span class="p">})</span>               <span class="c1"># prints: {'apple': 5, 'bob': 3, 'cat': 3}</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">w</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">words</span><span class="p">})</span>                       <span class="c1"># prints: {'apple', 'bob', 'cat'}  (order varies)</span>
+<span class="nb">print</span><span class="p">([(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="s2">"ab"</span><span class="p">])</span>         <span class="c1"># prints: [(0, 'a'), (0, 'b'), (1, 'a'), (1, 'b')]</span>
+</code></pre></div>
+
+<p>Dict comprehension: later duplicate keys overwrite earlier ones, so the example above keeps the last <code>apple</code> length.
+Two <code>for</code> clauses nest left to right, like nested loops.</p>
+<p>Scoping: the comprehension has its <strong>own scope</strong> (the loop variable does not leak, unlike a <code>for</code> statement).</p>
+<div class="hl"><pre><span></span><code><span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">NameError</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"i is not defined"</span><span class="p">)</span>            <span class="c1"># prints: i is not defined</span>
+<span class="n">inverted</span> <span class="o">=</span> <span class="p">{</span><span class="n">v</span><span class="p">:</span> <span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inverted</span><span class="p">)</span>                          <span class="c1"># prints: {1: 'a', 2: 'b'}</span>
+</code></pre></div>
+
+<p>When to use: a comprehension for simple map/filter into a new collection; a <code>for</code> loop when you need side effects,
+several statements, or <code>try/except</code>. If it needs more than one <code>for</code> plus a condition, a loop is more readable.
+Use a generator expression (parentheses) when you only need to iterate once (<code>sum(x for x in ...)</code>).</p>
+<h2 id="nested-data-structures" data-topics="py.fundamentals.nested_structures">Nested data structures</h2>
+<!-- topics: nested_structures -->
+
+<p>JSON from an LLM API is nested dicts and lists, and real responses have missing keys, <code>null</code>s and variant shapes.
+Chained indexing explodes on the first gap; defensive access does not.</p>
+<div class="hl"><pre><span></span><code><span class="n">resp</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"choices"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"message"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"content"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"tool_calls"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"function"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"search"</span><span class="p">}}]}}]}</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">resp</span><span class="p">[</span><span class="s2">"choices"</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">"message"</span><span class="p">][</span><span class="s2">"content"</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">AttributeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"null content:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>   <span class="c1"># prints: null content: 'NoneType' object has no attribute 'strip'</span>
+
+<span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"choices"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[{}])[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"message"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+<span class="n">calls</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"tool_calls"</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">c</span><span class="p">[</span><span class="s2">"function"</span><span class="p">][</span><span class="s2">"name"</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">calls</span><span class="p">])</span>   <span class="c1"># prints: ['search']</span>
+<span class="nb">print</span><span class="p">((</span><span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"content"</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">==</span> <span class="s2">""</span><span class="p">)</span> <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>Note <code>dict.get(k, {})</code> only helps for a <em>missing</em> key; if the key exists with value <code>None</code>, you get <code>None</code>, so use
+<code>.get(k) or {}</code>. A small helper makes the path explicit:</p>
+<div class="hl"><pre><span></span><code><span class="n">resp</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"choices"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"message"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"tool_calls"</span><span class="p">:</span> <span class="p">[{</span><span class="s2">"function"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"search"</span><span class="p">}}]}}]}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">dig</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="o">*</span><span class="n">path</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">path</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">obj</span> <span class="o">=</span> <span class="n">obj</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">KeyError</span><span class="p">,</span> <span class="ne">IndexError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">default</span>
+    <span class="k">return</span> <span class="n">default</span> <span class="k">if</span> <span class="n">obj</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">obj</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">dig</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">"choices"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"message"</span><span class="p">,</span> <span class="s2">"tool_calls"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"function"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">))</span>   <span class="c1"># prints: search</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">dig</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="s2">"choices"</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">"message"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"n/a"</span><span class="p">))</span>                         <span class="c1"># prints: n/a</span>
+</code></pre></div>
+
+<p>Merging nested config needs recursion; <code>dict.update</code> and <code>{**a, **b}</code> are <strong>shallow</strong> and replace whole subtrees.</p>
+<div class="hl"><pre><span></span><code><span class="n">base</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"llm"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"model"</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"temp"</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">},</span> <span class="s2">"retries"</span><span class="p">:</span> <span class="mi">3</span><span class="p">}</span>
+<span class="n">over</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"llm"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"temp"</span><span class="p">:</span> <span class="mf">0.9</span><span class="p">}}</span>
+<span class="nb">print</span><span class="p">({</span><span class="o">**</span><span class="n">base</span><span class="p">,</span> <span class="o">**</span><span class="n">over</span><span class="p">})</span>   <span class="c1"># prints: {'llm': {'temp': 0.9}, 'retries': 3}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">deep_merge</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">b</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">deep_merge</span><span class="p">(</span><span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">v</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">v</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">deep_merge</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">over</span><span class="p">))</span>   <span class="c1"># prints: {'llm': {'model': 'a', 'temp': 0.9}, 'retries': 3}</span>
+</code></pre></div>
+
+<h2 id="strings-and-f-strings" data-topics="py.fundamentals.strings,py.fundamentals.fstrings">Strings and f-strings</h2>
+<!-- topics: strings, fstrings -->
+
+<p><code>str</code> is an immutable sequence of Unicode code points. Every "modification" returns a new string, so build big
+strings with <code>"".join(parts)</code> rather than <code>+=</code> in a loop (quadratic in the worst case).</p>
+<div class="hl"><pre><span></span><code><span class="n">s</span> <span class="o">=</span> <span class="s2">"  Hello, World  "</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>                 <span class="c1"># prints: hello, world</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"a,b,,c"</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">","</span><span class="p">))</span>               <span class="c1"># prints: ['a', 'b', '', 'c']</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"a  b</span><span class="se">\n</span><span class="s2"> c"</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>                <span class="c1"># prints: ['a', 'b', 'c']</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"-"</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">]))</span>         <span class="c1"># prints: x-y-z</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"abc"</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">),</span> <span class="s2">"abc"</span><span class="o">.</span><span class="n">startswith</span><span class="p">((</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">)))</span>   <span class="c1"># prints: aBc True</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"k=v=w"</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">"="</span><span class="p">))</span>            <span class="c1"># prints: ('k', '=', 'v=w')</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Straße"</span><span class="o">.</span><span class="n">casefold</span><span class="p">(),</span> <span class="s2">"ß"</span><span class="o">.</span><span class="n">upper</span><span class="p">())</span>  <span class="c1"># prints: strasse SS</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"naïve"</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">))</span>           <span class="c1"># prints: b'na\xc3\xafve'</span>
+</code></pre></div>
+
+<p>Key facts: <code>.split()</code> with no argument splits on any whitespace and drops empties; <code>strip(chars)</code> removes any of the given
+<em>characters</em>, not a prefix (use <code>removeprefix</code>); <code>len("naïve")</code> counts code points, not bytes or tokens. <code>str</code> vs <code>bytes</code>:
+decode bytes at the boundary (<code>b.decode("utf-8")</code>), encode when sending.</p>
+<p><strong>f-strings</strong> evaluate expressions inline and accept a format spec after <code>:</code>.</p>
+<div class="hl"><pre><span></span><code><span class="n">name</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="s2">"Ada"</span><span class="p">,</span> <span class="mf">0.91234</span><span class="p">,</span> <span class="mi">1234567</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">n</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">n</span><span class="si">:</span><span class="s2">&gt;10</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="c1"># prints: 'Ada' 0.91 1,234,567    1234567 91.2%</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">=}</span><span class="s2">"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="mi">3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">4</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"</span><span class="se">{{</span><span class="s2">literal</span><span class="se">}}</span><span class="s2">"</span><span class="p">)</span>   <span class="c1"># prints: name='Ada' 7 {literal}</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="mi">5</span><span class="si">:</span><span class="s2">03d</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="mi">255</span><span class="si">:</span><span class="s2">#x</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="mi">255</span><span class="si">:</span><span class="s2">08b</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>             <span class="c1"># prints: 005 0xff 11111111</span>
+</code></pre></div>
+
+<p>Spec grammar: <code>[[fill]align][sign][#][0][width][,][.precision][type]</code>. <code>!r</code> calls <code>repr</code> (good for logs: shows quotes and
+escapes). <code>f"{x=}"</code> prints the expression and value, handy for debugging.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Do not build SQL or shell commands with f-strings (injection). For logging use
+<code>logger.info("x=%s", x)</code> so formatting is skipped when the level is off. In prompts, escape literal braces as <code>{{ }}</code>
+when you also call <code>.format()</code>.</p>
+<p><strong>AI use</strong> Prompt templates are just strings. Normalise first (<code>strip</code>, collapse whitespace, Unicode <code>casefold</code> or NFKC)
+before counting tokens or hashing for a cache key.</p>
+</blockquote>
+<h2 id="slicing-and-indexing" data-topics="py.fundamentals.slicing">Slicing and indexing</h2>
+<!-- topics: slicing -->
+
+<p>Indexing is zero-based; negative indices count from the end. A slice <code>seq[start:stop:step]</code> is <strong>half-open</strong>: it
+includes <code>start</code> and excludes <code>stop</code>, and <strong>never raises</strong> for out-of-range bounds (indexing does).</p>
+<div class="hl"><pre><span></span><code> index   0   1   2   3   4
+ value   a   b   c   d   e
+ neg    -5  -4  -3  -2  -1
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="n">s</span> <span class="o">=</span> <span class="s2">"abcde"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">],</span> <span class="n">s</span><span class="p">[:</span><span class="mi">2</span><span class="p">],</span> <span class="n">s</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:],</span> <span class="n">s</span><span class="p">[::</span><span class="mi">2</span><span class="p">],</span> <span class="n">s</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>   <span class="c1"># prints: bc ab de ace edcba</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="mi">10</span><span class="p">:],</span> <span class="n">s</span><span class="p">[</span><span class="o">-</span><span class="mi">100</span><span class="p">:</span><span class="mi">2</span><span class="p">])</span>                        <span class="c1"># prints:  ab   (first is an empty string)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">s</span><span class="p">[</span><span class="mi">10</span><span class="p">]</span>
+<span class="k">except</span> <span class="ne">IndexError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                                    <span class="c1"># prints: string index out of range</span>
+<span class="n">nums</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">nums</span><span class="p">[</span><span class="mi">2</span><span class="p">:</span><span class="mi">8</span><span class="p">:</span><span class="mi">3</span><span class="p">],</span> <span class="n">nums</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:])</span>                   <span class="c1"># prints: [2, 5] [7, 8, 9]</span>
+</code></pre></div>
+
+<p>A slice returns a <strong>new</strong> sequence (a shallow copy for lists), which is why <code>lst[:]</code> copies. Slice assignment can
+resize a list: <code>nums[2:4] = ["x"]</code>. Overlapping windows are the building block of chunking:</p>
+<div class="hl"><pre><span></span><code><span class="n">tokens</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<span class="n">size</span><span class="p">,</span> <span class="n">overlap</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">1</span>
+<span class="n">chunks</span> <span class="o">=</span> <span class="p">[</span><span class="n">tokens</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="n">size</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">),</span> <span class="n">size</span> <span class="o">-</span> <span class="n">overlap</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">chunks</span><span class="p">[:</span><span class="mi">3</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunks</span><span class="p">))</span>
+<span class="c1"># prints: [[0, 1, 2, 3], [3, 4, 5, 6], [6, 7, 8, 9]] 4</span>
+</code></pre></div>
+
+<p>The last chunk here is <code>[9]</code> (a tail fully covered by overlap); real chunkers decide whether to drop or keep it.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Slicing a string by characters may cut a multi-byte emoji sequence or a token. For LLM context limits, slice
+<em>token lists</em> produced by the tokenizer, not strings. Also <code>s[-0:]</code> is <code>s[0:]</code>, the whole string, not the last zero items.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Names bind to objects; assignment never copies. Mutating through one alias is visible through all.</li>
+<li>Immutable: int, float, str, tuple, frozenset, None. Tuple immutability is shallow.</li>
+<li>Mutable default arguments are created once at <code>def</code> time: default to <code>None</code>.</li>
+<li><code>==</code> compares values, <code>is</code> compares identity; use <code>is</code> only for <code>None</code>/singletons.</li>
+<li>Falsy: None, 0, empty containers/strings. <code>x or default</code> also replaces valid zeros; test <code>is None</code>.</li>
+<li><code>and</code>/<code>or</code> return operands; comparisons chain; <code>//</code> floors; <code>int()</code> truncates; <code>round</code> is banker's.</li>
+<li>Loop <code>else</code> runs only without <code>break</code>; a <code>for</code> statement's variable survives the loop, a comprehension's does not.</li>
+<li>Navigate nested JSON defensively (<code>.get(k) or {}</code>); merge config recursively, not with shallow <code>update</code>.</li>
+<li>Build strings with <code>join</code>; f-string specs: <code>:.2f</code>, <code>:,</code>, <code>:&gt;10</code>, <code>!r</code>, <code>=</code>.</li>
+<li>Slices are half-open, forgiving, and copy; <code>[::-1]</code> reverses.</li>
+</ul><div class="pn-bar"><span></span><a class="pn next" href="revise-py-data_structures.html">Python Data Structures &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

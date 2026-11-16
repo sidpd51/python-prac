@@ -1,0 +1,1442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asynchronous Programming notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.async">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Asynchronous Programming</p><div class="note-head"><div id="note-progress" data-module="py.async"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#sync-vs-async-blocking-io-bound" data-target="sync-vs-async-blocking-io-bound">Sync vs async, blocking, I/O-bound</a></li><li><a href="#async-def-await-coroutine-functions-and-objects" data-target="async-def-await-coroutine-functions-and-objects">async def, await, coroutine functions and objects</a></li><li><a href="#the-event-loop-asynciorun-suspension-and-resumption" data-target="the-event-loop-asynciorun-suspension-and-resumption">The event loop, asyncio.run, suspension and resumption</a></li><li><a href="#asynciosleep-vs-timesleep" data-target="asynciosleep-vs-timesleep">asyncio.sleep vs time.sleep</a></li><li><a href="#sequential-vs-concurrent-create_task-and-scheduling" data-target="sequential-vs-concurrent-create_task-and-scheduling">Sequential vs concurrent, create_task and scheduling</a></li><li><a href="#gather-results-ordering-exceptions" data-target="gather-results-ordering-exceptions">gather: results, ordering, exceptions</a></li><li><a href="#concurrent-execution-with-dependencies" data-target="concurrent-execution-with-dependencies">Concurrent execution with dependencies</a></li><li><a href="#cancellation-cancel-cancellederror-finally-done-and-cancelled" data-target="cancellation-cancel-cancellederror-finally-done-and-cancelled">Cancellation: cancel(), CancelledError, finally, done() and cancelled()</a></li><li><a href="#timeouts-wait_for-asynciotimeout-and-cancellation-on-timeout" data-target="timeouts-wait_for-asynciotimeout-and-cancellation-on-timeout">Timeouts: wait_for, asyncio.timeout, and cancellation on timeout</a></li><li><a href="#asynciowait-first_completed-all_completed-first_exception-done-and-pending" data-target="asynciowait-first_completed-all_completed-first_exception-done-and-pending">asyncio.wait: FIRST_COMPLETED, ALL_COMPLETED, FIRST_EXCEPTION, done and pending</a></li><li><a href="#as_completed-and-completion-order" data-target="as_completed-and-completion-order">as_completed and completion order</a></li><li><a href="#semaphore-and-lock" data-target="semaphore-and-lock">Semaphore and Lock</a></li><li><a href="#queue-producers-consumers-backpressure" data-target="queue-producers-consumers-backpressure">Queue: producers, consumers, backpressure</a></li><li><a href="#event-and-condition" data-target="event-and-condition">Event and Condition</a></li><li><a href="#asynciorun-shutdown-and-graceful-shutdown" data-target="asynciorun-shutdown-and-graceful-shutdown">asyncio.run shutdown and graceful shutdown</a></li><li><a href="#taskgroup-and-exceptiongroup-structured-concurrency" data-target="taskgroup-and-exceptiongroup-structured-concurrency">TaskGroup and ExceptionGroup (structured concurrency)</a></li><li><a href="#async-generators-iterators-async-for-and-comprehensions" data-target="async-generators-iterators-async-for-and-comprehensions">Async generators, iterators, async for and comprehensions</a></li><li><a href="#async-context-managers-async-with-and-resource-management" data-target="async-context-managers-async-with-and-resource-management">Async context managers, async with and resource management</a></li><li><a href="#blocking-code-to_thread-and-run_in_executor" data-target="blocking-code-to_thread-and-run_in_executor">Blocking code: to_thread and run_in_executor</a></li><li><a href="#traps-and-best-practices" data-target="traps-and-best-practices">Traps and best practices</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li><li><a href="#interview-angles" data-target="interview-angles">Interview angles</a></li></ol></nav><article class="prose notedoc"><h1 id="asynchronous-programming-asyncio">Asynchronous programming (asyncio)</h1>
+<p>asyncio lets one thread juggle many tasks that spend most of their time <em>waiting</em>: an LLM call, an
+embedding request, a vector-DB query, a token stream. While one coroutine waits, the event loop runs
+another, so 50 calls of 200 ms finish in about 200 ms instead of 10 s. It is the backbone of FastAPI
+services, agent frameworks and every "fan out N calls" pipeline. Interviewers probe whether you know
+<em>what actually runs when</em>, how cancellation and timeouts behave, and which mistakes silently stall a service.
+It builds directly on generators (see <code>08_generators.md</code>): a coroutine is a pausable frame that a loop resumes.</p>
+<h2 id="sync-vs-async-blocking-io-bound" data-topics="py.async.sync_vs_async,py.async.blocking,py.async.io_bound">Sync vs async, blocking, I/O-bound</h2>
+<!-- topics: sync_vs_async, blocking, io_bound -->
+
+<p><strong>Synchronous</strong> code does one thing at a time and the thread sits idle while waiting for the network.
+<strong>Asynchronous</strong> code lets the thread switch to other work during those waits. This is <em>concurrency on one
+thread</em>, not parallelism: at any instant exactly one piece of Python is executing.</p>
+<div class="hl"><pre><span></span><code>sync:   |--call A (waiting)--|--call B (waiting)--|--call C (waiting)--|        total = A+B+C
+async:  |--A wait-----------|
+         |--B wait----------|
+          |--C wait---------|                                                    total = max(A,B,C)
+</code></pre></div>
+
+<p>A <strong>blocking</strong> operation holds the thread and does not let anyone else run (<code>time.sleep</code>, <code>requests.get</code>,
+a sync DB driver, <code>open().read()</code> on a big file, a CPU loop). A <strong>non-blocking</strong> one says "wake me when ready"
+and hands control back (<code>await asyncio.sleep</code>, <code>await httpx_client.get</code>).</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Workload</th>
+<th>Examples</th>
+<th>asyncio helps?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>I/O-bound</strong> (time spent waiting)</td>
+<td>LLM/embedding APIs, DB queries, HTTP, streaming</td>
+<td>Yes, a lot</td>
+</tr>
+<tr>
+<td><strong>CPU-bound</strong> (time spent computing)</td>
+<td>tokenizing a corpus, local inference, parsing, hashing</td>
+<td>No. Use processes or native code that releases the GIL</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fake_call</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>       <span class="c1"># stands in for a 100 ms API call</span>
+    <span class="k">return</span> <span class="n">i</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">fake_call</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">20</span><span class="p">)))</span>
+    <span class="n">took</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">[:</span><span class="mi">3</span><span class="p">],</span> <span class="n">took</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">)</span>  <span class="c1"># prints: [0, 1, 2] True   (20 calls, ~0.1 s, not 2 s)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> async makes waiting overlap. It does nothing for computation. One blocking call freezes
+<em>every</em> coroutine in the process.</p>
+<p><strong>Interview</strong> "When does async not help?" CPU-bound work, a single sequential call chain with nothing to overlap,
+and any code path where a blocking library call sits on the hot path (it cancels out the benefit).</p>
+</blockquote>
+<h2 id="async-def-await-coroutine-functions-and-objects" data-topics="py.async.async_keyword,py.async.await,py.async.coroutine_functions,py.async.coroutine_objects">async def, await, coroutine functions and objects</h2>
+<!-- topics: async_keyword, await, coroutine_functions, coroutine_objects -->
+
+<p>Three different things, often confused:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Thing</th>
+<th>What it is</th>
+<th>Runs code?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>coroutine function</strong></td>
+<td><code>async def f(): ...</code> (the function)</td>
+<td>no</td>
+</tr>
+<tr>
+<td><strong>coroutine object</strong></td>
+<td>what <code>f()</code> returns</td>
+<td><strong>not yet</strong>: paused before line 1</td>
+</tr>
+<tr>
+<td><strong>task</strong></td>
+<td>a coroutine wrapped and scheduled on the loop</td>
+<td>yes, soon, on its own</td>
+</tr>
+</tbody>
+</table></div>
+<p>Calling an <code>async def</code> function never runs its body. It builds a coroutine object, exactly like calling a
+generator function builds a generator.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">inspect</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"body runs"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="mi">42</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">iscoroutinefunction</span><span class="p">(</span><span class="n">fetch</span><span class="p">))</span>        <span class="c1"># prints: True</span>
+<span class="n">coro</span> <span class="o">=</span> <span class="n">fetch</span><span class="p">()</span>                                   <span class="c1"># nothing printed</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">coro</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">inspect</span><span class="o">.</span><span class="n">getcoroutinestate</span><span class="p">(</span><span class="n">coro</span><span class="p">))</span>  <span class="c1"># prints: coroutine CORO_CREATED</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">coro</span><span class="p">)</span>                            <span class="c1"># prints: body runs, then 42</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">getcoroutinestate</span><span class="p">(</span><span class="n">coro</span><span class="p">))</span>           <span class="c1"># prints: CORO_CLOSED</span>
+</code></pre></div>
+
+<p><code>await x</code> does two things: it <strong>runs the awaitable <code>x</code> to completion</strong> (inline, in the current task), and if
+<code>x</code> has to wait, it <strong>suspends the current coroutine and hands control back to the event loop</strong>. Only
+the keyword <code>await</code> may suspend; a plain function call never does. <code>await</code> is legal only inside <code>async def</code>.</p>
+<p>A coroutine really is a generator-like object. You can drive one by hand, which is what the loop does:</p>
+<div class="hl"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">():</span>
+    <span class="k">return</span> <span class="mi">7</span>
+
+<span class="n">c</span> <span class="o">=</span> <span class="n">f</span><span class="p">()</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>          <span class="c1"># run it to its first suspension (here: to the end)</span>
+<span class="k">except</span> <span class="ne">StopIteration</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>        <span class="c1"># prints: 7   (the return value rides on StopIteration, as with generators)</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>await coro_fn()</code> is <em>not</em> concurrent. It runs the callee to completion before the next line.
+Concurrency needs a task (<code>create_task</code>, <code>gather</code>, <code>TaskGroup</code>).</p>
+</blockquote>
+<details>
+<summary>Check yourself: `x = fetch()` on a line by itself. What happens?</summary>
+<p>A coroutine object is created and nothing else: the body never runs. If you drop it, Python warns
+<code>coroutine 'fetch' was never awaited</code>.</p>
+</details>
+<h2 id="the-event-loop-asynciorun-suspension-and-resumption" data-topics="py.async.event_loop,py.async.asyncio_run,py.async.suspension">The event loop, asyncio.run, suspension and resumption</h2>
+<!-- topics: event_loop, asyncio_run, suspension -->
+
+<p>The <strong>event loop</strong> is a single-threaded scheduler: a queue of ready callbacks plus a selector (epoll) watching
+sockets and timers. It repeats: pop a ready task, run it <em>until its next <code>await</code> that cannot complete
+immediately</em>, then pick the next. Nothing preempts a task; tasks cooperate by awaiting.</p>
+<div class="hl"><pre><span></span><code>loop:  run ready tasks -&gt; poll sockets/timers -&gt; mark waiters ready -&gt; run ready tasks -&gt; ...
+task:  run ... await (suspend) ......................... resume here ... await (suspend) ...
+</code></pre></div>
+
+<p><code>asyncio.run(main())</code> is the entry point: create a fresh loop, run <code>main()</code> as the top task, then cancel leftover
+tasks, shut down async generators and the default executor, and close the loop. Call it <strong>once</strong>, at the top
+of a program. Calling it inside a running loop raises <code>RuntimeError</code> (in Jupyter use <code>await</code> directly).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>    <span class="c1"># suspend once, let others run, resume next iteration</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">worker</span><span class="p">(</span><span class="s2">"A"</span><span class="p">),</span> <span class="n">worker</span><span class="p">(</span><span class="s2">"B"</span><span class="p">))</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: A 0</span>
+<span class="c1"># prints: B 0</span>
+<span class="c1"># prints: A 1</span>
+<span class="c1"># prints: B 1</span>
+</code></pre></div>
+
+<p>Each <code>await</code> that suspends is a <strong>suspension point</strong>; the line after it is the <strong>resumption</strong>. Local variables
+live in the paused frame and survive, like generator locals. Between two awaits your code runs atomically
+with respect to other tasks, which is why many races cannot happen in asyncio (but see Lock below).</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">other</span><span class="p">():</span>
+    <span class="k">return</span> <span class="mi">1</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">other</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>            <span class="c1"># a loop is already running in this thread</span>
+    <span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>                  <span class="c1"># prints: asyncio.run() cannot be called from a running event loop</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>asyncio.run</code> once at the top; everywhere else just <code>await</code>. Never nest it.</p>
+</blockquote>
+<h2 id="asynciosleep-vs-timesleep" data-topics="py.async.asyncio_sleep,py.async.sleep_vs_sleep">asyncio.sleep vs time.sleep</h2>
+<!-- topics: asyncio_sleep, sleep_vs_sleep -->
+
+<p><code>await asyncio.sleep(d)</code> registers a timer and suspends the task; the loop runs others and wakes it after <code>d</code>
+seconds. <code>time.sleep(d)</code> freezes the <strong>whole thread</strong>, so the loop, and every task on it, stops. <code>asyncio.sleep(0)</code>
+is the idiom for "yield to the loop once".</p>
+<p>A background heartbeat makes the difference visible:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ticker</span><span class="p">(</span><span class="n">log</span><span class="p">):</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"tick"</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="n">sleeper</span><span class="p">):</span>
+    <span class="n">log</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">ticker</span><span class="p">(</span><span class="n">log</span><span class="p">))</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>       <span class="c1"># let the ticker start: log == ["tick"]</span>
+    <span class="n">sleeper</span><span class="p">()</span>                    <span class="c1"># pretend to "wait" for 0.18 s</span>
+    <span class="n">n_blocking</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">log</span><span class="p">)</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">n_blocking</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># blocking: the ticker cannot run at all while time.sleep holds the thread</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"time.sleep ticks:"</span><span class="p">,</span> <span class="k">await</span> <span class="n">run</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.18</span><span class="p">)))</span>   <span class="c1"># prints: time.sleep ticks: 1</span>
+
+    <span class="n">log</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">ticker</span><span class="p">(</span><span class="n">log</span><span class="p">))</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.18</span><span class="p">)</span>    <span class="c1"># non-blocking: the ticker keeps ticking (0, .05, .10, .15)</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"asyncio.sleep ticks:"</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">log</span><span class="p">))</span>                           <span class="c1"># prints: asyncio.sleep ticks: 4</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>time.sleep</code>, <code>requests.get</code>, <code>sqlite3</code>, <code>subprocess.run</code>, heavy <code>json.loads</code> and CPU loops inside
+<code>async def</code> all block the loop. Symptoms: every request in the service gets slow together, timeouts misfire,
+health checks fail. Run <code>asyncio.run(main(), debug=True)</code> to get "Executing ... took 0.3 seconds" warnings.</p>
+</blockquote>
+<h2 id="sequential-vs-concurrent-create_task-and-scheduling" data-topics="py.async.sequential_vs_concurrent,py.async.create_task,py.async.scheduling">Sequential vs concurrent, create_task and scheduling</h2>
+<!-- topics: sequential_vs_concurrent, create_task, scheduling -->
+
+<p>Awaiting coroutines one after another is <strong>sequential</strong> even though it is async. For concurrency you must create
+<strong>tasks</strong>: <code>asyncio.create_task(coro)</code> wraps the coroutine in a <code>Task</code> and schedules it on the loop right away. It
+starts running the next time the current task suspends.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"start"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"-- sequential"</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">call</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">call</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"-- concurrent"</span><span class="p">)</span>
+    <span class="n">ta</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">call</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+    <span class="n">tb</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">call</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">))</span>
+    <span class="k">await</span> <span class="n">ta</span>
+    <span class="k">await</span> <span class="n">tb</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: -- sequential / start a / done a / start b / done b</span>
+<span class="c1"># prints: -- concurrent / start a / start b / done b / done a</span>
+</code></pre></div>
+
+<p><strong>Scheduling order.</strong> <code>create_task</code> does <em>not</em> run the task immediately. The task is put on the ready queue and
+runs when the creator yields to the loop:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">job</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"job runs"</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"job ends"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">job</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"created"</span><span class="p">)</span>            <span class="c1"># job has NOT started yet</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>      <span class="c1"># yield: the ready queue runs job up to its first real wait</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"main resumed"</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">t</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: created / job runs / main resumed / job ends</span>
+</code></pre></div>
+
+<p>Tasks are scheduled FIFO. Without a suspension point, a task never gives anyone else a turn.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> The loop keeps only a <em>weak</em> reference to tasks. If you drop the reference to a fire-and-forget
+task it can be garbage-collected mid-flight and silently vanish. Keep a strong reference.</p>
+</blockquote>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="n">background</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">Task</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">spawn</span><span class="p">(</span><span class="n">coro</span><span class="p">):</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">coro</span><span class="p">)</span>
+    <span class="n">background</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>                       <span class="c1"># strong reference while it runs</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">add_done_callback</span><span class="p">(</span><span class="n">background</span><span class="o">.</span><span class="n">discard</span><span class="p">)</span> <span class="c1"># and let go when it finishes</span>
+    <span class="k">return</span> <span class="n">t</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">audit_log</span><span class="p">():</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"logged"</span><span class="p">)</span>
+    <span class="n">spawn</span><span class="p">(</span><span class="n">audit_log</span><span class="p">())</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">background</span><span class="p">))</span>                  <span class="c1"># prints: logged / 0</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Fire-and-forget tasks (usage logging, tracing, cache write-back after the response is sent) need
+this pattern, plus error handling inside the coroutine: an unhandled exception in a task nobody awaits only
+surfaces as a "Task exception was never retrieved" log line.</p>
+</blockquote>
+<h2 id="gather-results-ordering-exceptions" data-topics="py.async.gather,py.async.gather_ordering,py.async.gather_exceptions,py.async.return_exceptions">gather: results, ordering, exceptions</h2>
+<!-- topics: gather, gather_ordering, gather_exceptions, return_exceptions -->
+
+<p><code>await asyncio.gather(*aws)</code> runs awaitables concurrently (wrapping coroutines in tasks) and returns a list of
+results <strong>in argument order, not completion order</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">delay</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"finished"</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">embed</span><span class="p">(</span><span class="s2">"slow"</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">),</span> <span class="n">embed</span><span class="p">(</span><span class="s2">"fast"</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">),</span> <span class="n">embed</span><span class="p">(</span><span class="s2">"mid"</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: finished fast / finished mid / finished slow</span>
+<span class="c1"># prints: [4, 4, 3]</span>
+</code></pre></div>
+
+<p><strong>Exceptions.</strong> By default the <em>first</em> exception raised by any child propagates out of <code>gather</code>, but the <strong>other
+children are not cancelled</strong>: they keep running in the background.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ok</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"finished"</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">n</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">bad</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"boom"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">ok</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">bad</span><span class="p">())</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"caught"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"after gather"</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>     <span class="c1"># give the orphan time to finish</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: caught boom / after gather / finished 1</span>
+</code></pre></div>
+
+<p>With <code>return_exceptions=True</code> nothing propagates; failures come back <strong>as values</strong> in their slot, so one bad
+item does not lose the rest:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"bad input"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">10</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">embed</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)),</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>                        <span class="c1"># prints: [0, ValueError('bad input'), 20]</span>
+    <span class="n">ok</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="ne">BaseException</span><span class="p">)]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">ok</span><span class="p">)</span>                             <span class="c1"># prints: [0, 20]</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> With <code>return_exceptions=True</code>, a child's <code>CancelledError</code> also comes back as a value (it is a
+<code>BaseException</code>). Check <code>isinstance(r, Exception)</code> for item errors and re-raise anything else; never report
+cancellation as "one item failed". Also: if the task <em>running gather</em> is cancelled, the children are cancelled.</p>
+<p><strong>Interview</strong> "gather vs TaskGroup?" gather: results as a list, first error propagates, siblings keep running,
+no scope. TaskGroup: structured scope, first error cancels siblings, all errors arrive as an <code>ExceptionGroup</code>.</p>
+</blockquote>
+<details>
+<summary>Check yourself: why do you still want `return_exceptions=True` for 100 embedding calls?</summary>
+<p>Without it one rate-limit error aborts your view of the batch and you lose 99 good results (they still run,
+but you cannot collect them). With it you get a result-or-exception per item and can retry only the failures.</p>
+</details>
+<h2 id="concurrent-execution-with-dependencies" data-topics="py.async.dependencies">Concurrent execution with dependencies</h2>
+<!-- topics: dependencies -->
+
+<p>Real work is a DAG: some steps are independent, others need earlier results. Rule: run independent steps
+concurrently, <code>await</code> a result only when you need it.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.03</span><span class="p">);</span> <span class="k">return</span> <span class="s2">"ada"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_docs</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">);</span> <span class="k">return</span> <span class="p">[</span><span class="s2">"d1"</span><span class="p">,</span> <span class="s2">"d2"</span><span class="p">]</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">llm</span><span class="p">(</span><span class="n">prompt</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">);</span> <span class="k">return</span> <span class="sa">f</span><span class="s2">"answer(</span><span class="si">{</span><span class="n">prompt</span><span class="si">}</span><span class="s2">)"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">user</span><span class="p">,</span> <span class="n">docs</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">get_user</span><span class="p">(),</span> <span class="n">get_docs</span><span class="p">())</span>     <span class="c1"># independent: together</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">llm</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">user</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">docs</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">))</span>                        <span class="c1"># depends on both: after</span>
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: answer(ada:2)</span>
+</code></pre></div>
+
+<p>For irregular graphs, make each node a task that awaits the tasks it depends on; the loop sorts out the order:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">node</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">delay</span><span class="p">,</span> <span class="o">*</span><span class="n">deps</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">deps</span><span class="p">)</span>           <span class="c1"># wait for dependency tasks</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">name</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">node</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">node</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="n">a</span><span class="p">))</span>        <span class="c1"># b needs a</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">node</span><span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="mf">0.12</span><span class="p">))</span>           <span class="c1"># c is independent</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">node</span><span class="p">(</span><span class="s2">"d"</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">))</span>     <span class="c1"># d needs b and c</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">d</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: done a / done b / done c / done d / d</span>
+</code></pre></div>
+
+<p>Here <code>c</code> runs alongside <code>a</code> and <code>b</code> instead of waiting for them. (For failure handling prefer a TaskGroup; see below.)</p>
+<h2 id="cancellation-cancel-cancellederror-finally-done-and-cancelled" data-topics="py.async.cancellation,py.async.task_cancel,py.async.cancellederror,py.async.cleanup_finally,py.async.task_done,py.async.task_cancelled">Cancellation: cancel(), CancelledError, finally, done() and cancelled()</h2>
+<!-- topics: cancellation, task_cancel, cancellederror, cleanup_finally, task_done, task_cancelled -->
+
+<p><code>task.cancel()</code> does not kill a task. It <em>requests</em> cancellation: at the task's next suspension point the loop
+raises <code>asyncio.CancelledError</code> <strong>inside</strong> it. The task can run <code>finally</code> blocks, then the exception unwinds and
+the task ends in the <em>cancelled</em> state.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"working"</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"cancelled: cleaning up"</span><span class="p">)</span>
+        <span class="k">raise</span>                                   <span class="c1"># MUST re-raise</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"finally runs"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">worker</span><span class="p">())</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>                      <span class="c1"># let it start</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done before cancel:"</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">done</span><span class="p">())</span>      <span class="c1"># prints: done before cancel: False</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"cancel() -&gt;"</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">cancel</span><span class="p">())</span>            <span class="c1"># prints: cancel() -&gt; True (request accepted)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">t</span>
+    <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"main saw CancelledError"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">done</span><span class="p">(),</span> <span class="n">t</span><span class="o">.</span><span class="n">cancelled</span><span class="p">())</span>              <span class="c1"># prints: True True</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: working / done before cancel: False / cancel() -&gt; True / cancelled: cleaning up</span>
+<span class="c1"># prints: finally runs / main saw CancelledError / True True</span>
+</code></pre></div>
+
+<p>State methods: <code>t.done()</code> is True when finished <em>for any reason</em> (result, exception, cancelled);
+<code>t.cancelled()</code> is True only when it ended by cancellation. <code>t.result()</code> / <code>t.exception()</code> on a cancelled task
+raise <code>CancelledError</code>. <code>cancel()</code> returns <code>False</code> if the task is already done.</p>
+<p><code>CancelledError</code> derives from <code>BaseException</code> (not <code>Exception</code>) precisely so that a lazy <code>except Exception</code>
+does not eat it. <strong>Swallowing it is the classic bug</strong>: the task then finishes "normally" and the canceller's
+intent is lost.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">swallower</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">CancelledError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"swallowed"</span><span class="p">)</span>                      <span class="c1"># no re-raise</span>
+    <span class="k">return</span> <span class="s2">"finished normally"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">swallower</span><span class="p">())</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">t</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">cancelled</span><span class="p">())</span>               <span class="c1"># prints: swallowed / finished normally False</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Rules: catch <code>CancelledError</code> only to clean up, then <strong>re-raise</strong>. Put cleanup in <code>finally</code> so it runs on success,
+error and cancellation alike. Awaiting inside cleanup is allowed, but a second cancellation can interrupt it;
+wrap must-finish cleanup in <code>asyncio.shield</code>.</p>
+<p><strong>shield</strong> protects an inner task from the <em>outer</em> cancellation: the outer await is cancelled, the inner keeps going.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"saved"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">inner</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">save</span><span class="p">())</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">shield</span><span class="p">(</span><span class="n">inner</span><span class="p">),</span> <span class="mf">0.01</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TimeoutError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"caller gave up, inner done:"</span><span class="p">,</span> <span class="n">inner</span><span class="o">.</span><span class="n">done</span><span class="p">())</span>   <span class="c1"># prints: caller gave up, inner done: False</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">inner</span><span class="p">)</span>                                       <span class="c1"># prints: saved</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Cancelling a task that never started means its body never runs (so its <code>finally</code> never runs
+either). Cancelling does not interrupt blocking code or a thread started by <code>to_thread</code>; it only acts at an <code>await</code>.</p>
+<p><strong>Interview</strong> "What happens on <code>task.cancel()</code>?" CancelledError is thrown into the coroutine at its
+current await; <code>finally</code> runs; if re-raised the task is <code>cancelled()</code>; if swallowed the task continues. Cancel is a
+request, and cancelling then not awaiting the task leaves its cleanup unfinished.</p>
+</blockquote>
+<details>
+<summary>Check yourself: after `t.cancel()` and `await t` in a try/except, why is it important to await?</summary>
+<p><code>cancel()</code> only schedules the CancelledError. The task's cleanup runs when the loop next runs it; awaiting the task
+(it raises CancelledError) guarantees the cleanup finished before you move on.</p>
+</details>
+<h2 id="timeouts-wait_for-asynciotimeout-and-cancellation-on-timeout" data-topics="py.async.wait_for,py.async.timeouts,py.async.timeout_cancellation,py.async.asyncio_timeout">Timeouts: wait_for, asyncio.timeout, and cancellation on timeout</h2>
+<!-- topics: wait_for, timeouts, timeout_cancellation, asyncio_timeout -->
+
+<p>Every network call needs a timeout. Both tools implement a timeout the same way: after the deadline they
+<strong>cancel</strong> the inner work, wait for it to finish unwinding, and raise <code>TimeoutError</code>
+(<code>asyncio.TimeoutError</code> is just an alias of the builtin since 3.11).</p>
+<p><code>asyncio.wait_for(aw, timeout)</code> bounds a single awaitable:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">slow_llm</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">"text"</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"slow_llm cancelled"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">slow_llm</span><span class="p">(),</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TimeoutError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"timed out"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: slow_llm cancelled / timed out</span>
+</code></pre></div>
+
+<p><code>async with asyncio.timeout(seconds)</code> bounds a whole <strong>block</strong>, so several steps share one budget. That is what
+you want for "this RAG request must answer within 2 s", where retrieval and generation each take part of it.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.04</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"step"</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">timeout</span><span class="p">(</span><span class="mf">0.1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">):</span>
+                <span class="k">await</span> <span class="n">step</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TimeoutError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"budget exhausted"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: step 1 / step 2 / budget exhausted</span>
+</code></pre></div>
+
+<p>How it works: a timer calls <code>task.cancel()</code> on the current task; on leaving the block the context manager turns
+that <code>CancelledError</code> into <code>TimeoutError</code>. Corollaries:</p>
+<ul>
+<li><code>except Exception</code> inside the block is safe (CancelledError is not an Exception); a bare <code>except:</code> or
+  <code>except BaseException</code> that does not re-raise <strong>breaks timeouts</strong>: the work continues and no <code>TimeoutError</code> is raised.</li>
+<li>Catch <code>TimeoutError</code> <em>outside</em> the block, never inside.</li>
+<li><code>cm.expired()</code> tells you whether the deadline fired; <code>cm.reschedule(new_deadline)</code> moves it.</li>
+</ul>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">timeout</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span> <span class="k">as</span> <span class="n">cm</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TimeoutError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"expired:"</span><span class="p">,</span> <span class="n">cm</span><span class="o">.</span><span class="n">expired</span><span class="p">())</span>          <span class="c1"># prints: expired: True</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>wait_for(aw, t)</code></th>
+<th><code>timeout(t)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scope</td>
+<td>one awaitable</td>
+<td>a block of awaits</td>
+</tr>
+<tr>
+<td>Shared budget</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>all</td>
+<td>3.11+</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A timeout does not stop <em>non-cooperative</em> work: a thread behind <code>to_thread</code> or a blocking call
+keeps running; you merely stop waiting. Also, a timeout is a cancel, so the callee's <code>finally</code> blocks must be fast.</p>
+<p><strong>AI use</strong> Timeouts on LLM calls: set a per-attempt timeout with <code>wait_for</code>, a total budget with <code>timeout()</code>,
+and a fallback (cached answer, smaller model) on <code>TimeoutError</code>. Retry only idempotent calls, with backoff.</p>
+</blockquote>
+<h2 id="asynciowait-first_completed-all_completed-first_exception-done-and-pending" data-topics="py.async.wait,py.async.all_completed,py.async.first_completed,py.async.first_exception,py.async.done_pending">asyncio.wait: FIRST_COMPLETED, ALL_COMPLETED, FIRST_EXCEPTION, done and pending</h2>
+<!-- topics: wait, all_completed, first_completed, first_exception, done_pending -->
+
+<p><code>asyncio.wait(tasks, return_when=..., timeout=...)</code> is the low-level tool when you need to react to <em>progress</em>.
+It returns two sets, <code>(done, pending)</code>, and:</p>
+<ul>
+<li>takes <strong>tasks/futures only</strong> (passing bare coroutines is a <code>TypeError</code> since 3.11),</li>
+<li><strong>never cancels</strong> the pending ones and <strong>never raises</strong> the tasks' exceptions: you inspect them,</li>
+<li>on <code>timeout</code> simply returns what has finished so far (no <code>TimeoutError</code>),</li>
+<li>returns <strong>unordered sets</strong>.</li>
+</ul>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th><code>return_when</code></th>
+<th>Returns when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ALL_COMPLETED</code> (default)</td>
+<td>every task is done</td>
+</tr>
+<tr>
+<td><code>FIRST_COMPLETED</code></td>
+<td>any task finishes (success, error or cancelled)</td>
+</tr>
+<tr>
+<td><code>FIRST_EXCEPTION</code></td>
+<td>any task raises (or all done if none raises)</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">replica</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">name</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">tasks</span> <span class="o">=</span> <span class="p">{</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">replica</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">),</span> <span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">),</span> <span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)]}</span>
+    <span class="n">done</span><span class="p">,</span> <span class="n">pending</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">tasks</span><span class="p">,</span> <span class="n">return_when</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">FIRST_COMPLETED</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">([</span><span class="n">t</span><span class="o">.</span><span class="n">result</span><span class="p">()</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">done</span><span class="p">])</span>            <span class="c1"># prints: ['b']</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">get_name</span><span class="p">()</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">pending</span><span class="p">))</span> <span class="c1"># prints: ['a', 'c']</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">pending</span><span class="p">:</span>
+        <span class="n">t</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>                               <span class="c1"># losers are NOT cancelled for you</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">pending</span><span class="p">,</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># wait for their cleanup</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">boom</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"fail fast"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">long</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">t1</span><span class="p">,</span> <span class="n">t2</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">boom</span><span class="p">()),</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">long</span><span class="p">())</span>
+    <span class="n">done</span><span class="p">,</span> <span class="n">pending</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">({</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">},</span> <span class="n">return_when</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">FIRST_EXCEPTION</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">done</span> <span class="o">==</span> <span class="p">{</span><span class="n">t1</span><span class="p">},</span> <span class="n">pending</span> <span class="o">==</span> <span class="p">{</span><span class="n">t2</span><span class="p">})</span>         <span class="c1"># prints: True True</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">t1</span><span class="o">.</span><span class="n">exception</span><span class="p">()))</span>                  <span class="c1"># prints: RuntimeError('fail fast')</span>
+    <span class="n">t2</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">t2</span><span class="p">,</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Typical uses: racing replicas, the "first answer wins" pattern, deadline collection
+(<code>wait(..., timeout=d)</code> then cancel <code>pending</code>), and a manual loop of FIRST_COMPLETED to process results as they land.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> If you never retrieve a failed task's exception you get "Task exception was never retrieved" at GC time.
+Look at <code>t.exception()</code> / <code>t.result()</code> for every task in <code>done</code>.</p>
+</blockquote>
+<p>Hedged request (tail-latency hedging): if the first attempt has not answered after a delay, start a second
+and take whichever finishes first.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">call_replica</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.2</span> <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.02</span><span class="p">)</span>   <span class="c1"># replica 0 is having a bad day</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"replica </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">hedged</span><span class="p">(</span><span class="n">hedge_after</span><span class="p">):</span>
+    <span class="n">first</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">call_replica</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+    <span class="n">done</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">({</span><span class="n">first</span><span class="p">},</span> <span class="n">timeout</span><span class="o">=</span><span class="n">hedge_after</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">done</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">first</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+    <span class="n">second</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">call_replica</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">done</span><span class="p">,</span> <span class="n">pending</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait</span><span class="p">({</span><span class="n">first</span><span class="p">,</span> <span class="n">second</span><span class="p">},</span> <span class="n">return_when</span><span class="o">=</span><span class="n">asyncio</span><span class="o">.</span><span class="n">FIRST_COMPLETED</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">pending</span><span class="p">:</span>
+        <span class="n">p</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">pending</span><span class="p">,</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">done</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">hedged</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)))</span>      <span class="c1"># prints: replica 1</span>
+</code></pre></div>
+
+<h2 id="as_completed-and-completion-order" data-topics="py.async.as_completed,py.async.completion_order">as_completed and completion order</h2>
+<!-- topics: as_completed, completion_order -->
+
+<p><code>gather</code> gives results in <strong>input order</strong> but only after <em>all</em> finish. <code>as_completed</code> yields each result in
+<strong>completion order</strong>, as soon as it is ready: the right tool for streaming partial results to a user, early exit, or
+processing a big batch while the rest is in flight.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">work</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">i</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">coros</span> <span class="o">=</span> <span class="p">[</span><span class="n">work</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.08</span><span class="p">),</span> <span class="n">work</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">),</span> <span class="n">work</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">)]</span>
+    <span class="k">for</span> <span class="n">next_done</span> <span class="ow">in</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">as_completed</span><span class="p">(</span><span class="n">coros</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"got"</span><span class="p">,</span> <span class="k">await</span> <span class="n">next_done</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: got 1 / got 2 / got 0</span>
+</code></pre></div>
+
+<p>The loop variable is an awaitable, not the result, and you do not know <em>which input</em> it came from. Tag the result
+yourself. Since 3.13 the object also supports <code>async for</code> (it yields the finished futures, which you still <code>await</code>):</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">tagged</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">i</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"vec</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">coros</span> <span class="o">=</span> <span class="p">[</span><span class="n">tagged</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.08</span><span class="p">),</span> <span class="n">tagged</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">),</span> <span class="n">tagged</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">)]</span>
+    <span class="k">async</span> <span class="k">for</span> <span class="n">fut</span> <span class="ow">in</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">as_completed</span><span class="p">(</span><span class="n">coros</span><span class="p">):</span>         <span class="c1"># 3.13+; on 3.12 use the plain for loop</span>
+        <span class="n">i</span><span class="p">,</span> <span class="n">vec</span> <span class="o">=</span> <span class="k">await</span> <span class="n">fut</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">vec</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: 1 vec1 / 2 vec2 / 0 vec0</span>
+</code></pre></div>
+
+<p><code>as_completed(coros, timeout=t)</code> raises <code>TimeoutError</code> when the deadline passes with results missing, and does
+<strong>not</strong> cancel the rest (cancel them yourself). Exceptions surface at <code>await next_done</code> for the failing item.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> completion order is for latency and streaming; input order (gather) is for aligning results with inputs.
+Use gather when you must zip results back to inputs, as_completed (with tags) when you want the earliest ones first.</p>
+</blockquote>
+<h2 id="semaphore-and-lock" data-topics="py.async.semaphore,py.async.lock">Semaphore and Lock</h2>
+<!-- topics: semaphore, lock -->
+
+<p><strong><code>asyncio.Semaphore(n)</code></strong> allows at most <code>n</code> holders at once. It is how you cap <strong>concurrency</strong>: provider
+rate limits, DB pool size, file descriptors. Without it, <code>gather</code> over 10 000 items opens 10 000 requests at once.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="n">active</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">peak</span> <span class="o">=</span> <span class="mi">0</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">sem</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">active</span><span class="p">,</span> <span class="n">peak</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">sem</span><span class="p">:</span>                      <span class="c1"># at most 3 inside</span>
+        <span class="n">active</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">peak</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">peak</span><span class="p">,</span> <span class="n">active</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+        <span class="n">active</span> <span class="o">-=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">i</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">sem</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Semaphore</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">call</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">sem</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>                           <span class="c1"># prints: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"peak in flight:"</span><span class="p">,</span> <span class="n">peak</span><span class="p">)</span>       <span class="c1"># prints: peak in flight: 3</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p><code>BoundedSemaphore</code> additionally raises if you release more than you acquired. Always use <code>async with sem:</code> so the
+slot is freed on error or cancellation. A semaphore limits <em>running</em>, not <em>created</em> tasks: 100 000 tasks all waiting
+on a semaphore still cost memory. For huge inputs use a bounded queue with N workers (next sections).</p>
+<p><strong><code>asyncio.Lock</code></strong> gives mutual exclusion across awaits. Single-threaded does not mean race-free: any shared
+read-modify-write that spans an <code>await</code> can interleave.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="n">state</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">inc</span><span class="p">(</span><span class="n">lock</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">body</span><span class="p">():</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>           <span class="c1"># another task runs here</span>
+        <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">lock</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">lock</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">body</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">body</span><span class="p">()</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">inc</span><span class="p">()</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"no lock:"</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">])</span>        <span class="c1"># prints: no lock: 1   (lost updates)</span>
+    <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">lock</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">inc</span><span class="p">(</span><span class="n">lock</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"lock:"</span><span class="p">,</span> <span class="n">state</span><span class="p">[</span><span class="s2">"n"</span><span class="p">])</span>           <span class="c1"># prints: lock: 10</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A Lock is not reentrant (acquiring twice in one task deadlocks), and not thread-safe; it is for
+coroutines on one loop. Waiters are served FIFO. Keep critical sections short and never <code>await</code> slow I/O while holding one unless you must.</p>
+<p><strong>AI use</strong> Semaphore = "at most 8 concurrent embedding calls". Lock = "only one coroutine refreshes the auth
+token / rebuilds the cache; the rest wait". Token-bucket rate limiters combine a Lock with <code>asyncio.sleep</code>.</p>
+</blockquote>
+<h2 id="queue-producers-consumers-backpressure" data-topics="py.async.queue">Queue: producers, consumers, backpressure</h2>
+<!-- topics: queue -->
+
+<p><code>asyncio.Queue(maxsize)</code> hands work between coroutines. <code>await q.put(x)</code> suspends when the queue is full and
+<code>await q.get()</code> suspends when empty, so a bounded queue gives <strong>backpressure</strong>: a fast producer is slowed to the
+consumers' pace and memory stays bounded.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">producer</span><span class="p">(</span><span class="n">q</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+        <span class="k">await</span> <span class="n">q</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"put"</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">q</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>                    <span class="c1"># sentinel: no more work</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">consumer</span><span class="p">(</span><span class="n">q</span><span class="p">):</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">item</span> <span class="o">:=</span> <span class="k">await</span> <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">())</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"got"</span><span class="p">,</span> <span class="n">item</span><span class="p">)</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">producer</span><span class="p">(</span><span class="n">q</span><span class="p">),</span> <span class="n">consumer</span><span class="p">(</span><span class="n">q</span><span class="p">))</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>put 0
+put 1
+got 0
+put 2
+got 1
+put 3
+got 2
+got 3
+</code></pre></div>
+
+<p>The producer fills the queue (2 slots), then <code>put 2</code> blocks until the consumer's <code>get</code> frees a slot. The producer
+can never be more than <code>maxsize</code> items ahead.</p>
+<p>For worker pools use <code>task_done()</code> and <code>join()</code>: each <code>get()</code> must be paired with a <code>task_done()</code>; <code>await q.join()</code>
+returns when every item put has been marked done.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">results</span><span class="p">):</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="k">await</span> <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">q</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span>               <span class="c1"># always, even on error, or join() hangs</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">q</span><span class="p">,</span> <span class="n">results</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(),</span> <span class="p">[]</span>
+    <span class="n">workers</span> <span class="o">=</span> <span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">worker</span><span class="p">(</span><span class="sa">f</span><span class="s2">"w</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">results</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">):</span>
+        <span class="n">q</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">q</span><span class="o">.</span><span class="n">join</span><span class="p">()</span>                      <span class="c1"># all 6 processed</span>
+    <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">workers</span><span class="p">:</span>
+        <span class="n">w</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>                      <span class="c1"># workers loop forever: cancel them</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">workers</span><span class="p">,</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">results</span><span class="p">))</span>              <span class="c1"># prints: [0, 2, 4, 6, 8, 10]</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Also: <code>get_nowait()</code> raises <code>QueueEmpty</code>, <code>put_nowait</code> raises <code>QueueFull</code>; <code>PriorityQueue</code> and <code>LifoQueue</code> exist.
+Python 3.13 added <code>q.shutdown()</code> (consumers get <code>QueueShutDown</code> once drained), a built-in alternative to sentinels.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Forgetting <code>task_done()</code> makes <code>join()</code> wait forever. An unbounded queue (default <code>maxsize=0</code>) removes
+backpressure and can eat all memory. Sentinel-per-worker is needed if several workers must each be told to stop.</p>
+<p><strong>AI use</strong> Ingestion pipeline: a bounded queue between a reader (streaming documents) and N embedding workers
+keeps memory flat and lets you cap concurrent API calls without creating a task per document.</p>
+</blockquote>
+<h2 id="event-and-condition" data-topics="py.async.event,py.async.condition">Event and Condition</h2>
+<!-- topics: event, condition -->
+
+<p><strong><code>asyncio.Event</code></strong> is a one-bit flag coroutines can wait for. <code>await ev.wait()</code> suspends until some other code
+calls <code>ev.set()</code>, which wakes <em>all</em> waiters; <code>clear()</code> resets. Use it instead of polling a flag with <code>sleep</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ready</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">ready</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>                  <span class="c1"># no busy loop</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"worker"</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="s2">"go"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">ready</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+    <span class="n">tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">worker</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">ready</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">)]</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"model loaded"</span><span class="p">)</span>
+    <span class="n">ready</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">tasks</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: model loaded / worker 0 go / worker 1 go</span>
+</code></pre></div>
+
+<p><strong><code>asyncio.Condition</code></strong> combines a lock with "wait until some state becomes true". The pattern: hold the
+lock, check a predicate, <code>wait()</code> (releases the lock while suspended, re-acquires on wake), and mutators
+call <code>notify()</code> / <code>notify_all()</code> after changing state. <code>wait_for(predicate)</code> does the check loop for you.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">consumer</span><span class="p">(</span><span class="n">cond</span><span class="p">,</span> <span class="n">items</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">cond</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">cond</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">)</span>   <span class="c1"># releases lock while waiting</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"batch ready:"</span><span class="p">,</span> <span class="n">items</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">producer</span><span class="p">(</span><span class="n">cond</span><span class="p">,</span> <span class="n">items</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">cond</span><span class="p">:</span>
+            <span class="n">items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="n">cond</span><span class="o">.</span><span class="n">notify_all</span><span class="p">()</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">cond</span><span class="p">,</span> <span class="n">items</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Condition</span><span class="p">(),</span> <span class="p">[]</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">consumer</span><span class="p">(</span><span class="n">cond</span><span class="p">,</span> <span class="n">items</span><span class="p">),</span> <span class="n">producer</span><span class="p">(</span><span class="n">cond</span><span class="p">,</span> <span class="n">items</span><span class="p">))</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: batch ready: [0, 1]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Always re-check the condition in a loop (or use <code>wait_for</code>): a wakeup does not guarantee the state is still
+true. <code>wait()</code> and <code>notify()</code> must be called while holding the condition's lock, else <code>RuntimeError</code>.</p>
+<p><strong>AI use</strong> A micro-batcher: callers append their text to a pending list and <code>notify()</code>; one flusher task waits on
+the condition until <code>len(pending) &gt;= max_batch</code> or <code>max_wait</code> elapses, then sends <strong>one</strong> batched embedding call
+and resolves a <code>Future</code> per caller. Batch calls are far cheaper per text than single calls.</p>
+</blockquote>
+<h2 id="asynciorun-shutdown-and-graceful-shutdown" data-topics="py.async.run_shutdown,py.async.graceful_shutdown">asyncio.run shutdown and graceful shutdown</h2>
+<!-- topics: run_shutdown, graceful_shutdown -->
+
+<p>When <code>main()</code> returns, <code>asyncio.run</code> does not just close the loop. It: (1) cancels every task still pending and
+waits for them (so their <code>finally</code> blocks run), (2) shuts down async generators, (3) shuts down the default
+thread executor, (4) closes the loop.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">background</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"background cleaned up"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">background</span><span class="p">())</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"main returns"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: main returns / background cleaned up</span>
+</code></pre></div>
+
+<p>That is a safety net, not a design. <strong>Graceful shutdown</strong> means: stop accepting new work, let in-flight work finish
+(bounded by a deadline), release resources, then exit. The usual shape:</p>
+<div class="hl"><pre><span></span><code>signal (SIGTERM) -&gt; set stop flag / close intake -&gt; drain queue -&gt; wait for workers (with timeout)
+                 -&gt; cancel stragglers -&gt; await them -&gt; close clients
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">worker</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">done</span><span class="p">):</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">item</span> <span class="o">:=</span> <span class="k">await</span> <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">())</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.005</span><span class="p">)</span>
+        <span class="n">done</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">q</span><span class="p">,</span> <span class="n">done</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Queue</span><span class="p">(),</span> <span class="p">[]</span>
+    <span class="n">workers</span> <span class="o">=</span> <span class="p">[</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">worker</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">done</span><span class="p">))</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">)]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">):</span>
+        <span class="n">q</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>                       <span class="c1"># work accepted before shutdown</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">workers</span><span class="p">:</span>
+        <span class="n">q</span><span class="o">.</span><span class="n">put_nowait</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>                    <span class="c1"># stop intake: one sentinel per worker (after the real items)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">workers</span><span class="p">),</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>   <span class="c1"># drain with a deadline</span>
+    <span class="k">except</span> <span class="ne">TimeoutError</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">workers</span><span class="p">:</span>
+            <span class="n">w</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>                        <span class="c1"># stragglers: force</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="n">workers</span><span class="p">,</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">done</span><span class="p">))</span>                       <span class="c1"># prints: [0, 1, 2, 3, 4, 5]</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Wiring a signal to this on Linux/macOS:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">signal</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">serve</span><span class="p">():</span>
+    <span class="n">stop</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+    <span class="n">loop</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">sig</span> <span class="ow">in</span> <span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGINT</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">):</span>
+        <span class="n">loop</span><span class="o">.</span><span class="n">add_signal_handler</span><span class="p">(</span><span class="n">sig</span><span class="p">,</span> <span class="n">stop</span><span class="o">.</span><span class="n">set</span><span class="p">)</span>   <span class="c1"># not available on Windows</span>
+    <span class="o">...</span><span class="n">start</span> <span class="n">workers</span><span class="o">...</span>
+    <span class="k">await</span> <span class="n">stop</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+    <span class="o">...</span><span class="n">drain</span><span class="p">,</span> <span class="n">cancel</span><span class="p">,</span> <span class="n">close</span> <span class="n">clients</span><span class="o">...</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Ctrl-C under <code>asyncio.run</code> cancels the main task, so a <code>finally</code> in <code>main</code> still runs; but cleanup that
+itself awaits can be cancelled again, so shield what must finish. Never <code>sys.exit()</code> from inside a task.</p>
+<p><strong>Interview</strong> "How do you shut an LLM worker down on SIGTERM?" Stop intake, drain with a deadline (Kubernetes
+gives ~30 s), cancel what is left and <em>await</em> it, flush buffers and close HTTP clients. Idempotent, bounded in time.</p>
+</blockquote>
+<h2 id="taskgroup-and-exceptiongroup-structured-concurrency" data-topics="py.async.taskgroup">TaskGroup and ExceptionGroup (structured concurrency)</h2>
+<!-- topics: taskgroup -->
+
+<p><code>asyncio.TaskGroup</code> (3.11+) is <strong>structured concurrency</strong>: tasks are children of an <code>async with</code> block, and
+the block does not exit until all of them finish. No orphan tasks, no lost exceptions.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">name</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TaskGroup</span><span class="p">()</span> <span class="k">as</span> <span class="n">tg</span><span class="p">:</span>
+        <span class="n">t1</span> <span class="o">=</span> <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">fetch</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">))</span>
+        <span class="n">t2</span> <span class="o">=</span> <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">fetch</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">t1</span><span class="o">.</span><span class="n">result</span><span class="p">(),</span> <span class="n">t2</span><span class="o">.</span><span class="n">result</span><span class="p">())</span>       <span class="c1"># prints: a b   (block exits only when both are done)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Failure semantics differ from <code>gather</code>: when any child fails, the group <strong>cancels all siblings</strong>, waits for them,
+then raises an <strong><code>ExceptionGroup</code></strong> bundling every failure. Catch it with <code>except*</code>, which matches by type
+inside the group:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">ok</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"sibling cancelled"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">bad</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TaskGroup</span><span class="p">()</span> <span class="k">as</span> <span class="n">tg</span><span class="p">:</span>
+            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">ok</span><span class="p">())</span>
+            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">bad</span><span class="p">(</span><span class="s2">"first"</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">))</span>
+            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">bad</span><span class="p">(</span><span class="s2">"second"</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">))</span>
+    <span class="k">except</span><span class="o">*</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">eg</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">])</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: sibling cancelled</span>
+<span class="c1"># prints: ExceptionGroup ['first', 'second']</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A single failing child still arrives wrapped: <code>except ValueError:</code> does <strong>not</strong> catch it; you need
+<code>except* ValueError:</code> (or catch <code>ExceptionGroup</code>). Exceptions inside a child that you want handled per item must be
+caught inside the child. Cancelling the parent cancels the whole group.</p>
+</blockquote>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>gather</code></th>
+<th><code>TaskGroup</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Result</td>
+<td>list in order</td>
+<td>read <code>task.result()</code> after the block</td>
+</tr>
+<tr>
+<td>First failure</td>
+<td>propagates; siblings keep running</td>
+<td>siblings <strong>cancelled</strong></td>
+</tr>
+<tr>
+<td>Multiple failures</td>
+<td>only first propagates (rest lost)</td>
+<td>all in <code>ExceptionGroup</code></td>
+</tr>
+<tr>
+<td>Scope</td>
+<td>none</td>
+<td>tasks cannot outlive the block</td>
+</tr>
+<tr>
+<td>Partial results</td>
+<td><code>return_exceptions=True</code></td>
+<td>catch inside children</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Why prefer TaskGroup in new code?" Structured lifetimes, automatic sibling cancellation on
+failure, no swallowed errors. Use gather(return_exceptions=True) when you explicitly want partial results.</p>
+</blockquote>
+<h2 id="async-generators-iterators-async-for-and-comprehensions" data-topics="py.async.async_generators,py.async.async_iterators,py.async.async_for,py.async.async_comprehensions">Async generators, iterators, async for and comprehensions</h2>
+<!-- topics: async_generators, async_iterators, async_for, async_comprehensions -->
+
+<p>An <strong>async iterator</strong> implements <code>__aiter__</code> and <code>__anext__</code> (an awaitable that raises <code>StopAsyncIteration</code> at the end).
+An <strong>async generator</strong> is an <code>async def</code> containing <code>yield</code>: the easy way to write one. <code>async for</code> awaits <code>__anext__</code>
+each round, so the loop can suspend between items. This is exactly the shape of a streamed LLM response.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">tokens</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">text</span><span class="o">.</span><span class="n">split</span><span class="p">():</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.005</span><span class="p">)</span>       <span class="c1"># waiting on the network</span>
+        <span class="k">yield</span> <span class="n">word</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">tokens</span><span class="p">(</span><span class="s2">"the quick brown fox"</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">tok</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">" "</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">()</span>
+    <span class="c1"># prints: the quick brown fox</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>A hand-written async iterator, e.g. a paginated API where each page is an awaited fetch:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Pages</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">i</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__aiter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__anext__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">StopAsyncIteration</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.001</span><span class="p">)</span>       <span class="c1"># fetch next page</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"page</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">([</span><span class="n">p</span> <span class="k">async</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">Pages</span><span class="p">(</span><span class="mi">3</span><span class="p">)])</span>   <span class="c1"># prints: ['page1', 'page2', 'page3']</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p><strong>Async comprehensions</strong>: <code>[x async for x in aiter]</code> and <code>{k: v async for ...}</code> work only inside <code>async def</code>.
+<code>await</code> is allowed inside the expression too, but it runs <strong>sequentially</strong>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">texts</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"bb"</span><span class="p">,</span> <span class="s2">"ccc"</span><span class="p">]</span>
+    <span class="n">seq</span> <span class="o">=</span> <span class="p">[</span><span class="k">await</span> <span class="n">embed</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">]</span>                  <span class="c1"># one after another (~3 x 0.01)</span>
+    <span class="n">con</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">embed</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">))</span> <span class="c1"># together (~0.01)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">seq</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>                                        <span class="c1"># prints: [1, 2, 3] [1, 2, 3]</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p><strong>Closing early.</strong> If you <code>break</code> out of an async generator, its <code>finally</code> has not necessarily run yet; it runs when
+the loop finalises the generator later. Close deterministically with <code>aclose()</code> or <code>contextlib.aclosing</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">aclosing</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">stream</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="s2">"a b c d"</span><span class="o">.</span><span class="n">split</span><span class="p">():</span>
+            <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.001</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">w</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"stream closed"</span><span class="p">)</span>           <span class="c1"># release the HTTP response here</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">aclosing</span><span class="p">(</span><span class="n">stream</span><span class="p">())</span> <span class="k">as</span> <span class="n">s</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">s</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">w</span> <span class="o">==</span> <span class="s2">"b"</span><span class="p">:</span>                 <span class="c1"># e.g. a stop sequence matched</span>
+                <span class="k">break</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"after block"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: a / b / stream closed / after block</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> You cannot <code>yield</code> and <code>return value</code> in an async generator, and <code>async for</code> is a <code>SyntaxError</code>
+outside <code>async def</code>. An async generator that is garbage-collected un-exhausted relies on the loop's finalizer; do not count on timing.</p>
+<p><strong>AI use</strong> Streaming completions: <code>async for chunk in client.stream(...)</code> yields deltas; forward them to the user
+via SSE, check stop sequences, and <code>aclose()</code> the stream on client disconnect so the provider stops generating (and billing).</p>
+</blockquote>
+<h2 id="async-context-managers-async-with-and-resource-management" data-topics="py.async.async_context_managers,py.async.async_with,py.async.resource_management">Async context managers, async with and resource management</h2>
+<!-- topics: async_context_managers, async_with, resource_management -->
+
+<p><code>async with</code> is <code>with</code> where entering and leaving may await: implement <code>__aenter__</code> / <code>__aexit__</code> (both <code>async def</code>).
+Use it for anything whose setup or teardown does I/O: opening a connection, acquiring a pool slot, a lock, a
+transaction, an HTTP client session.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Conn</span><span class="p">:</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__aenter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.001</span><span class="p">)</span>       <span class="c1"># connect</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"open"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__aexit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.001</span><span class="p">)</span>       <span class="c1"># close</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"close"</span><span class="p">,</span> <span class="n">exc_type</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">if</span> <span class="n">exc_type</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>                     <span class="c1"># do not swallow exceptions</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">Conn</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"using"</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"oops"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"caught"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: open / using / close ValueError / caught</span>
+</code></pre></div>
+
+<p>The generator-based shortcut is <code>@asynccontextmanager</code>; teardown goes in <code>finally</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">asynccontextmanager</span><span class="p">,</span> <span class="n">AsyncExitStack</span>
+
+<span class="nd">@asynccontextmanager</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">client</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"open"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">name</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"close"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">AsyncExitStack</span><span class="p">()</span> <span class="k">as</span> <span class="n">stack</span><span class="p">:</span>          <span class="c1"># a dynamic number of resources</span>
+        <span class="n">llm</span> <span class="o">=</span> <span class="k">await</span> <span class="n">stack</span><span class="o">.</span><span class="n">enter_async_context</span><span class="p">(</span><span class="n">client</span><span class="p">(</span><span class="s2">"llm"</span><span class="p">))</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="k">await</span> <span class="n">stack</span><span class="o">.</span><span class="n">enter_async_context</span><span class="p">(</span><span class="n">client</span><span class="p">(</span><span class="s2">"db"</span><span class="p">))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"using"</span><span class="p">,</span> <span class="n">llm</span><span class="p">,</span> <span class="n">db</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+<span class="c1"># prints: open llm / open db / using LLM DB / close db / close llm</span>
+</code></pre></div>
+
+<p>Resource rules: acquire in <code>async with</code>, never in a bare <code>await open()</code> you might forget to close; resources
+close in reverse order (LIFO); create <strong>one</strong> long-lived client (HTTP connection pool) per process and reuse it
+instead of one per request; make <code>__aexit__</code> quick and robust because it also runs on cancellation, and shield
+cleanup that must complete.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Using <code>with</code> on an async resource (or <code>async with</code> on a sync one) is a <code>TypeError</code>/<code>AttributeError</code>.
+<code>asyncio.Lock</code>, <code>Semaphore</code>, <code>TaskGroup</code>, <code>timeout()</code> are all async context managers.</p>
+</blockquote>
+<h2 id="blocking-code-to_thread-and-run_in_executor" data-topics="py.async.blocking">Blocking code: to_thread and run_in_executor</h2>
+<!-- topics: blocking -->
+
+<p>You cannot always avoid blocking code (a sync SDK, <code>pandas</code>, file I/O, a CPU-heavy tokenizer). Move it off the
+loop's thread: <code>await asyncio.to_thread(fn, *args)</code> runs <code>fn</code> in the default thread pool and suspends only the
+caller. The loop stays responsive.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span><span class="o">,</span><span class="w"> </span><span class="nn">threading</span><span class="o">,</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">blocking_embed</span><span class="p">(</span><span class="n">text</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>                     <span class="c1"># sync SDK call, would freeze the loop</span>
+    <span class="k">return</span> <span class="n">threading</span><span class="o">.</span><span class="n">get_ident</span><span class="p">()</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">log</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">heartbeat</span><span class="p">():</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"tick"</span><span class="p">)</span>               <span class="c1"># runs while the thread is busy</span>
+    <span class="n">hb</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">heartbeat</span><span class="p">())</span>
+    <span class="n">worker_thread</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">to_thread</span><span class="p">(</span><span class="n">blocking_embed</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">hb</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">worker_thread</span> <span class="o">!=</span> <span class="n">threading</span><span class="o">.</span><span class="n">get_ident</span><span class="p">(),</span> <span class="n">log</span><span class="p">)</span>   <span class="c1"># prints: True ['tick']</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Work</th>
+<th>Tool</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sync I/O (legacy SDK, files)</td>
+<td><code>asyncio.to_thread</code> / <code>loop.run_in_executor(None, fn)</code></td>
+</tr>
+<tr>
+<td>CPU-bound pure Python</td>
+<td><code>loop.run_in_executor(ProcessPoolExecutor(), fn)</code> (threads do not help: the GIL)</td>
+</tr>
+<tr>
+<td>C code releasing the GIL (numpy, hashing, some tokenizers)</td>
+<td>threads are enough</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Threads cannot be cancelled: cancelling the awaiting task abandons the wait but the thread runs to the
+end. The default pool is small (<code>min(32, cpu+4)</code>), so thousands of <code>to_thread</code> calls queue up. Code in the thread
+must not touch the loop or asyncio objects (use <code>asyncio.run_coroutine_threadsafe</code> to call back). On free-threaded
+Python 3.14 builds threads can run Python in parallel, but the same loop rules apply.</p>
+</blockquote>
+<h2 id="traps-and-best-practices" data-topics="py.async.best_practices">Traps and best practices</h2>
+<!-- topics: best_practices -->
+
+<p><strong>Forgotten <code>await</code></strong> is the most common bug: you get a coroutine object, the work never happens, and a truthy value
+sneaks into conditions.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">is_ready</span><span class="p">():</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">is_ready</span><span class="p">()</span>                 <span class="c1"># forgot await</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="nb">bool</span><span class="p">(</span><span class="n">c</span><span class="p">))</span>   <span class="c1"># prints: coroutine True   (an `if is_ready():` is always taken!)</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>                      <span class="c1"># silence "never awaited"</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">is_ready</span><span class="p">())</span>        <span class="c1"># prints: False</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div>
+
+<p>Checklist of traps and what to do:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Trap</th>
+<th>Effect</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>missing <code>await</code></td>
+<td>work skipped, <code>RuntimeWarning: coroutine ... never awaited</code></td>
+<td>await it; lint (ruff <code>RUF006</code>, <code>ASYNC</code> rules)</td>
+</tr>
+<tr>
+<td>dropped task reference</td>
+<td>task GC'd mid-run</td>
+<td>hold a set of tasks, or use a TaskGroup</td>
+</tr>
+<tr>
+<td>blocking call in <code>async def</code></td>
+<td>whole service stalls</td>
+<td>async library or <code>to_thread</code>; debug mode shows slow callbacks</td>
+</tr>
+<tr>
+<td>unbounded fan-out (<code>gather</code> of 100k)</td>
+<td>rate limits, OOM, thousands of sockets</td>
+<td>Semaphore / worker pool on a bounded Queue</td>
+</tr>
+<tr>
+<td>swallowing <code>CancelledError</code></td>
+<td>cancel and timeout stop working</td>
+<td>re-raise; <code>except Exception</code> is fine</td>
+</tr>
+<tr>
+<td><code>asyncio.run</code> inside a loop</td>
+<td><code>RuntimeError</code></td>
+<td><code>await</code> instead</td>
+</tr>
+<tr>
+<td>unretrieved task exception</td>
+<td>lost errors</td>
+<td>await tasks, or <code>add_done_callback</code> that logs</td>
+</tr>
+<tr>
+<td>timeout without cancel safety</td>
+<td>half-written state</td>
+<td>idempotent steps, cleanup in <code>finally</code></td>
+</tr>
+<tr>
+<td>shared state across awaits</td>
+<td>lost updates</td>
+<td>Lock, or make updates await-free</td>
+</tr>
+</tbody>
+</table></div>
+<p>Best-practice summary for cancellation and timeouts:</p>
+<ul>
+<li>Every external call has a timeout; use <code>timeout()</code> for a shared budget, <code>wait_for</code> for one call.</li>
+<li>Own your tasks: await them, or put them in a TaskGroup; after <code>cancel()</code> always await the task.</li>
+<li>Let <code>CancelledError</code> propagate; do cleanup in <code>finally</code> and keep it short and bounded.</li>
+<li>Bound concurrency (semaphore or workers) and queues (<code>maxsize</code>) so overload turns into waiting, not a crash.</li>
+<li>Do not share one client across event loops; create long-lived clients inside the running loop.</li>
+<li>Retry only idempotent operations, with a per-attempt timeout and jittered exponential backoff, and a total budget.</li>
+</ul>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Your async FastAPI endpoint is slow under load though CPU is idle. Debug?" Look for blocking calls
+on the loop (sync SDK, <code>requests</code>, big <code>json</code>/pandas, <code>time.sleep</code>): use debug mode / <code>loop.slow_callback_duration</code>,
+py-spy, then offload with <code>to_thread</code> or switch to an async client. Check for unbounded fan-out hitting provider rate limits.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Async = concurrency on one thread by overlapping <em>waiting</em>; useless for CPU-bound work, and one blocking call freezes everything.</li>
+<li><code>async def</code> call -&gt; coroutine object (nothing ran); <code>await</code> runs it inline and may suspend; a <em>task</em> runs on its own.</li>
+<li><code>await coro()</code> is sequential; use <code>create_task</code> / <code>gather</code> / <code>TaskGroup</code> for concurrency. Tasks start when the creator next yields.</li>
+<li><code>asyncio.run</code> once at the top; it cancels leftovers and closes the loop. <code>time.sleep</code> blocks, <code>asyncio.sleep</code> yields.</li>
+<li><code>gather</code>: results in input order; first exception propagates, siblings keep running; <code>return_exceptions=True</code> returns errors as values.</li>
+<li><code>cancel()</code> throws <code>CancelledError</code> at the next await: clean up in <code>finally</code>, re-raise, await the task; <code>shield</code> protects inner work.</li>
+<li><code>wait_for</code> = one awaitable; <code>timeout()</code> = shared budget for a block; both cancel on expiry and raise <code>TimeoutError</code>.</li>
+<li><code>asyncio.wait</code> takes tasks, returns <code>(done, pending)</code> sets, never cancels or raises; modes ALL_COMPLETED / FIRST_COMPLETED / FIRST_EXCEPTION.</li>
+<li><code>as_completed</code> = completion order (tag results); <code>gather</code> = input order.</li>
+<li>Semaphore caps concurrency, Lock guards read-modify-write across awaits, Queue gives backpressure (<code>task_done</code> + <code>join</code>), Event = flag, Condition = wait-for-state.</li>
+<li>TaskGroup: structured scope, siblings cancelled on failure, errors as <code>ExceptionGroup</code> (<code>except*</code>).</li>
+<li>Async generators/iterators power streaming; close them with <code>aclosing</code>. <code>await</code> inside a comprehension is sequential.</li>
+<li><code>async with</code> for async setup/teardown; <code>AsyncExitStack</code> for dynamic sets. Offload blocking code with <code>to_thread</code>.</li>
+<li>Traps: forgotten await, dropped task refs, swallowed cancel, unbounded fan-out, nested <code>asyncio.run</code>.</li>
+</ul>
+<h2 id="interview-angles" data-topics="">Interview angles</h2>
+<ul>
+<li>"Coroutine vs task vs future?" Coroutine: a pausable function call. Task: a coroutine scheduled on the loop. Future: a low-level placeholder for a result that a task (or callback code) completes.</li>
+<li>"Is asyncio multi-threaded / parallel?" No: one thread, cooperative switching at <code>await</code>. Parallelism needs processes or GIL-free code.</li>
+<li>"Walk me through what happens when two tasks <code>await asyncio.sleep</code>." Each registers a timer and yields; the loop's selector sleeps until the earliest timer, then resumes that task.</li>
+<li>"How do you cap concurrent LLM calls, and limit requests per second?" Semaphore for in-flight count; token bucket (Lock + sleep) for rate; both inside a retry-with-backoff wrapper.</li>
+<li>"Design a hedged request / fallback." <code>wait(FIRST_COMPLETED)</code> with a delayed second attempt, cancel and await the loser; or <code>wait_for</code> with a cached fallback.</li>
+<li>"gather vs TaskGroup vs wait vs as_completed?" Ordered all-results; scoped fail-fast; low-level sets and modes; stream in completion order.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-pydantic.html">&larr; Pydantic</a><a class="pn next" href="revise-py-http.html">Async HTTP and API Integration &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

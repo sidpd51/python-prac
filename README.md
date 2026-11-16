@@ -1,35 +1,44 @@
 # AI Engineering Prep
 
-Practice material and a tracker to get you interview-ready for AI engineering (Python, LLMs, RAG, agents).
-It tells you what you're weak at, what to revise today, and gives you exercises and questions to do it.
+Revise the concepts, practise interview questions and coding exercises, and see what you're weak at.
+Everything runs in your browser. No terminal needed.
 
-## Start in 3 steps
+## Open it
 
-1. Install [uv](https://docs.astral.sh/uv/) once: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. In this folder run: `./study.sh`
-3. Rate yourself on the topics you've studied (about 10 minutes). Done.
+Double-click **`docs/site/index.html`**. On Windows with WSL, the same files are copied to
+`Documents\AI-Prep-Notes`, so double-click `index.html` there.
 
-The first run sets everything up by itself. (Windows: use WSL.)
+It works offline, and your progress is saved in that browser. (Use **My topics → Export progress** to back it up
+or move it to another browser.)
 
 ## Every day
 
-Run `./study.sh` and do what it says. It's usually three things:
+1. **Today**: press *Start today's 10 questions*. Answer each out loud, reveal the key points, grade yourself 0 to 5.
+2. **Revise**: open the note for a topic you're weak on, read one section, tick it as revised, press *Quiz me on this*.
+3. **Exercises**: do one. Write it in your editor, then compare with the reference solution and rate how it went.
 
-| Do this | Command | Time |
-|---|---|---|
-| Answer a few interview questions | `./study.sh quiz --due` | 15 min |
-| Solve one exercise (open the file it names, write the code) | `./study.sh test <module>` | 45 min |
-| Note anything you got wrong | `./study.sh mistake "what I got wrong" -t <topic>` | 2 min |
+First time: open **My topics** and rate what you already know (about 10 minutes, be honest). That's what lets the
+app show you what to work on.
 
-Grade yourself honestly (0 to 5). Topics you do badly on come back sooner.
+## What's inside
 
-## Read the notes in your browser
+| Page | What it's for |
+|------|---------------|
+| **Today** | what to do now: due reviews, weakest topics, one-click session |
+| **Revise** | a theory note for every module, with runnable examples, traps and interview angles |
+| **Quiz** | interview questions at three levels, spaced repetition decides what comes back |
+| **Exercises** | coding problems with starter code and a reference solution |
+| **My topics** | rate every topic, see mastery, back up your progress |
+| **Explainers** | small interactive demos (lazy pipelines, async, retries) |
+| **Guide** | the capstone project (DocMind), how the system works, how to add content |
 
-`./study.sh notes` opens an interactive guide with diagrams and small demos. It works offline.
-On Windows (WSL) it also copies the notes to `Documents\AI-Prep-Notes`, so you can double-click `index.html` there any time.
+## Optional: terminal helper
 
-## Want more?
+You don't need it. It adds two things: automatic test runs for exercises, and rebuilding the pages after you edit a
+note or question file.
 
-- Every command, how scoring works, adding new topics: `docs/REFERENCE.md` (also in the notes)
-- The project you build step by step (DocMind): `capstone/ROADMAP.md`
-- Stuck or something broke? Run `./study.sh --help`, or see Troubleshooting in `docs/REFERENCE.md`.
+```bash
+./study.sh test generators     # run the tests for one module
+./study.sh notes               # rebuild the pages and refresh the Windows copy
+```
+Setup and every command are in `docs/REFERENCE.md` (also under **Guide**).

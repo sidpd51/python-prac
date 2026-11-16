@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decorators notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.decorators">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Decorators</p><div class="note-head"><div id="note-progress" data-module="py.decorators"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#functions-are-first-class-objects" data-target="functions-are-first-class-objects">Functions are first-class objects</a></li><li><a href="#writing-a-wrapper" data-target="writing-a-wrapper">Writing a wrapper</a></li><li><a href="#the-syntax-and-when-things-run" data-target="the-syntax-and-when-things-run">The @ syntax and when things run</a></li><li><a href="#functoolswraps-and-metadata" data-target="functoolswraps-and-metadata">functools.wraps and metadata</a></li><li><a href="#a-timing-decorator" data-target="a-timing-decorator">A timing decorator</a></li><li><a href="#decorators-with-arguments" data-target="decorators-with-arguments">Decorators with arguments</a></li><li><a href="#stacking-decorators" data-target="stacking-decorators">Stacking decorators</a></li><li><a href="#class-based-decorators" data-target="class-based-decorators">Class-based decorators</a></li><li><a href="#decorators-you-already-use" data-target="decorators-you-already-use">Decorators you already use</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="decorators">Decorators</h1>
+<p>A decorator is a function that takes a function and returns a replacement for it, usually one that
+does the same thing plus something extra: timing, retrying, caching, logging, access control. The
+<code>@</code> line is only syntax sugar. Decorators are everywhere in AI engineering code: <code>@retry</code> around flaky
+provider calls, <code>@timed</code> and <code>@observe</code> for tracing, <code>@lru_cache</code> on embeddings, <code>@tool</code> to register
+functions for an agent, <code>@app.post</code> in FastAPI. Interviewers ask you to write one from scratch and
+then probe <code>functools.wraps</code>, decorators with arguments, and stacking order. This note builds on
+closures (see the closures note): every wrapper below is a closure over the decorated function.</p>
+<h2 id="functions-are-first-class-objects" data-topics="py.decorators.first_class,py.decorators.higher_order">Functions are first-class objects</h2>
+<!-- topics: first_class, higher_order -->
+
+<p>In Python a function is an ordinary object: you can bind it to a name, put it in a list or dict, pass it
+as an argument, return it from another function and attach attributes to it.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">shout</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">s</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="o">+</span> <span class="s2">"!"</span>
+
+<span class="n">handlers</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"loud"</span><span class="p">:</span> <span class="n">shout</span><span class="p">,</span> <span class="s2">"len"</span><span class="p">:</span> <span class="nb">len</span><span class="p">}</span>      <span class="c1"># stored in a dict</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">handlers</span><span class="p">[</span><span class="s2">"loud"</span><span class="p">](</span><span class="s2">"hi"</span><span class="p">))</span>               <span class="c1"># prints: HI!</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">apply</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>                       <span class="c1"># passed as an argument</span>
+    <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">apply</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">title</span><span class="p">,</span> <span class="s2">"hello world"</span><span class="p">))</span>      <span class="c1"># prints: Hello World</span>
+
+<span class="n">shout</span><span class="o">.</span><span class="n">calls</span> <span class="o">=</span> <span class="mi">0</span>                             <span class="c1"># attributes on a function object</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">shout</span><span class="o">.</span><span class="n">calls</span><span class="p">)</span>                          <span class="c1"># prints: 0</span>
+</code></pre></div>
+
+<p>A <strong>higher-order function</strong> takes functions and/or returns functions. <code>map</code>, <code>sorted(key=...)</code>,
+<code>functools.reduce</code> take functions; factories like <code>make_multiplier</code> return them. A decorator is exactly
+a higher-order function that takes one function and returns another. Without first-class functions there
+would be no decorators.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> <code>f</code> (the name) is the function object, <code>f()</code> is a call. Decorating is about passing around
+and replacing the <em>object</em>, so forgetting or adding parentheses is the most common decorator bug.</p>
+</blockquote>
+<h2 id="writing-a-wrapper" data-topics="py.decorators.wrappers,py.decorators.wrapping,py.decorators.args_kwargs">Writing a wrapper</h2>
+<!-- topics: wrappers, wrapping, args_kwargs -->
+
+<p>The pattern has three parts: an outer function that receives the target, an inner <strong>wrapper</strong> that runs
+around the call, and a return of the wrapper. The wrapper is a closure over <code>func</code>.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">log_calls</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"calling </span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> with </span><span class="si">{</span><span class="n">args</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">kwargs</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> returned </span><span class="si">{</span><span class="n">result</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span>
+
+<span class="n">add</span> <span class="o">=</span> <span class="n">log_calls</span><span class="p">(</span><span class="n">add</span><span class="p">)</span>      <span class="c1"># manual decoration</span>
+<span class="n">add</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">b</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="c1"># prints: calling add with (2,) {'b': 3}</span>
+<span class="c1"># prints: add returned 5</span>
+</code></pre></div>
+
+<p>Why <code>*args, **kwargs</code>? The wrapper does not know the signature of what it wraps, so it accepts anything and
+forwards it unchanged. If you write <code>def wrapper(x):</code> the decorator breaks every function that takes a
+different number of arguments, or keyword arguments:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">bad</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="nd">@bad</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">power</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">exp</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">base</span> <span class="o">**</span> <span class="n">exp</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">power</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">exp</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>   <span class="c1"># prints: bad.&lt;locals&gt;.wrapper() got an unexpected keyword argument 'exp'</span>
+</code></pre></div>
+
+<p>Three habits of a correct wrapper: take <code>*args, **kwargs</code>, forward them untouched, and <strong>return the
+result</strong> (forgetting <code>return</code> makes every decorated function return <code>None</code>).</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> After decoration the name <code>add</code> refers to <code>wrapper</code>, not the original. Anything you
+do not forward (return value, exceptions, arguments) is changed for all callers.</p>
+</blockquote>
+<h2 id="the-syntax-and-when-things-run" data-topics="py.decorators.syntax">The @ syntax and when things run</h2>
+<!-- topics: syntax -->
+
+<p>This:</p>
+<div class="hl"><pre><span></span><code><span class="nd">@decorator</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">():</span> <span class="o">...</span>
+</code></pre></div>
+
+<p>is exactly this:</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">():</span> <span class="o">...</span>
+<span class="n">f</span> <span class="o">=</span> <span class="n">decorator</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</code></pre></div>
+
+<p>The decorator expression runs <strong>once, when the <code>def</code> statement executes</strong> (import time for a module
+level function). The wrapper runs <strong>on every call</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">announce</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"decorating </span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>      <span class="c1"># runs at definition time</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"calling </span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>     <span class="c1"># runs at call time</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="nd">@announce</span>                                     <span class="c1"># prints: decorating hello</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">hello</span><span class="p">():</span>
+    <span class="k">return</span> <span class="s2">"hi"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"defined"</span><span class="p">)</span>                              <span class="c1"># prints: defined</span>
+<span class="n">hello</span><span class="p">()</span>                                       <span class="c1"># prints: calling hello</span>
+<span class="n">hello</span><span class="p">()</span>                                       <span class="c1"># prints: calling hello</span>
+</code></pre></div>
+
+<p>Because of this, any expensive setup in the decorator body (reading config, opening a client) happens at
+import time, and a decorator with a side effect such as registering the function runs even if the function
+is never called. That is how <code>@tool</code> and <code>@app.get(...)</code> registries work: the decorator stores <code>func</code> in a dict
+and often returns it unchanged.</p>
+<div class="hl"><pre><span></span><code><span class="n">TOOLS</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">tool</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="n">TOOLS</span><span class="p">[</span><span class="n">func</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]</span> <span class="o">=</span> <span class="n">func</span>     <span class="c1"># register, return the original unchanged</span>
+    <span class="k">return</span> <span class="n">func</span>
+
+<span class="nd">@tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">search</span><span class="p">(</span><span class="n">q</span><span class="p">):</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"results for </span><span class="si">{</span><span class="n">q</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">TOOLS</span><span class="p">),</span> <span class="n">TOOLS</span><span class="p">[</span><span class="s2">"search"</span><span class="p">](</span><span class="s2">"cats"</span><span class="p">))</span>   <span class="c1"># prints: ['search'] results for cats</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> "What does <code>@decorator</code> do and when does it run?" It rebinds the name to
+<code>decorator(func)</code> at definition time; the returned wrapper replaces the function, and runs per call.</p>
+</blockquote>
+<h2 id="functoolswraps-and-metadata" data-topics="py.decorators.wraps,py.decorators.metadata">functools.wraps and metadata</h2>
+<!-- topics: wraps, metadata -->
+
+<p>A plain wrapper hides the original: <code>__name__</code>, <code>__doc__</code>, annotations and the signature all become the
+wrapper's. That breaks debugging, logs, <code>help()</code>, pytest, and frameworks that introspect (FastAPI,
+tool-calling schemas generated from a function's signature and docstring).</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">plain</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="nd">@plain</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return an embedding."""</span>
+    <span class="k">return</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">embed</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">embed</span><span class="o">.</span><span class="vm">__doc__</span><span class="p">)</span>   <span class="c1"># prints: wrapper None</span>
+</code></pre></div>
+
+<p><code>functools.wraps(func)</code> is itself a decorator that copies <code>__module__</code>, <code>__name__</code>, <code>__qualname__</code>,
+<code>__doc__</code>, <code>__annotations__</code> (and updates <code>__dict__</code>) from the original onto the wrapper, and sets
+<code>wrapper.__wrapped__ = func</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">good</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="nd">@good</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return an embedding."""</span>
+    <span class="k">return</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span> <span class="o">*</span> <span class="n">dim</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">embed</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">embed</span><span class="o">.</span><span class="vm">__doc__</span><span class="p">)</span>   <span class="c1"># prints: embed Return an embedding.</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">embed</span><span class="o">.</span><span class="n">__wrapped__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>      <span class="c1"># prints: embed</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">embed</span><span class="p">))</span>        <span class="c1"># prints: (text: str, dim: int = 3) -&gt; list[float]</span>
+</code></pre></div>
+
+<p><code>inspect.signature</code> follows <code>__wrapped__</code>, so tools see the <em>original</em> parameters even though the real
+callable takes <code>*args, **kwargs</code>. That is why <code>wraps</code> matters for frameworks: they build request
+validation or an LLM tool schema from the signature. <code>embed.__wrapped__</code> also lets you reach the
+undecorated function in tests, bypassing e.g. a cache or retry.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>wraps</code> copies metadata, it does not make the wrapper's real signature match; calling with
+wrong arguments still fails inside the wrapper or the original. Also, <code>__wrapped__</code> is how
+<code>inspect.unwrap</code> peels stacked decorators.</p>
+</blockquote>
+<details>
+<summary>Check yourself: what does `embed.__name__` return without `@wraps`?</summary>
+<p><code>"wrapper"</code>. The name <code>embed</code> points at the wrapper function object, which has its own <code>__name__</code>.
+Logs, tracebacks and registries then all say "wrapper".</p>
+</details>
+<h2 id="a-timing-decorator" data-topics="py.decorators.timing">A timing decorator</h2>
+<!-- topics: timing -->
+
+<p>The standard exercise. Details that interviewers look for: use <code>time.perf_counter</code> (monotonic,
+high resolution) rather than <code>time.time</code> (wall clock, can jump when NTP adjusts it), measure in a
+<code>try/finally</code> so failures are timed too (slow timeouts matter most), and use <code>wraps</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">timed</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">last_duration</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">func</span><span class="o">.</span><span class="vm">__qualname__</span><span class="si">}</span><span class="s2"> finished"</span><span class="p">)</span>   <span class="c1"># a real one would log the duration</span>
+    <span class="n">wrapper</span><span class="o">.</span><span class="n">last_duration</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">return</span> <span class="n">wrapper</span>
+
+<span class="nd">@timed</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">fake_llm_call</span><span class="p">(</span><span class="n">prompt</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"echo: </span><span class="si">{</span><span class="n">prompt</span><span class="si">}</span><span class="s2">"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">fake_llm_call</span><span class="p">(</span><span class="s2">"hi"</span><span class="p">))</span>
+<span class="c1"># prints: fake_llm_call finished</span>
+<span class="c1"># prints: echo: hi</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fake_llm_call</span><span class="o">.</span><span class="n">last_duration</span> <span class="o">&gt;=</span> <span class="mf">0.05</span><span class="p">)</span>   <span class="c1"># prints: True</span>
+</code></pre></div>
+
+<p>An <code>async def</code> function needs an
+<code>async</code> wrapper that <code>await</code>s the call; a sync wrapper around a coroutine function would time only the
+creation of the coroutine object, not the work.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Production LLM code logs latency, token counts, model name and error type per call. An
+<code>@observe</code>-style decorator does this: it should record in <code>finally</code>, never swallow exceptions, avoid
+logging full prompts (PII, size), and be safe for both sync and async functions.</p>
+</blockquote>
+<h2 id="decorators-with-arguments" data-topics="py.decorators.with_arguments">Decorators with arguments</h2>
+<!-- topics: with_arguments -->
+
+<p><code>@retry(times=3)</code> does not fit the one-level pattern: <code>retry(times=3)</code> runs first and must <em>return the
+decorator</em>. So there are three levels:</p>
+<div class="hl"><pre><span></span><code>retry(times=3)      -&gt; decorator       (level 1: takes the configuration)
+decorator(func)     -&gt; wrapper         (level 2: takes the function)
+wrapper(*a, **kw)   -&gt; result          (level 3: runs on each call)
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">retry</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">exceptions</span><span class="o">=</span><span class="p">(</span><span class="ne">Exception</span><span class="p">,)):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+        <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">times</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">exceptions</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"attempt </span><span class="si">{</span><span class="n">attempt</span><span class="si">}</span><span class="s2"> failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">attempt</span> <span class="o">==</span> <span class="n">times</span><span class="p">:</span>
+                        <span class="k">raise</span>
+        <span class="k">return</span> <span class="n">wrapper</span>
+    <span class="k">return</span> <span class="n">decorator</span>
+
+<span class="n">calls</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"n"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+
+<span class="nd">@retry</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">exceptions</span><span class="o">=</span><span class="p">(</span><span class="ne">ConnectionError</span><span class="p">,))</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">flaky</span><span class="p">():</span>
+    <span class="n">calls</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">calls</span><span class="p">[</span><span class="s2">"n"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ConnectionError</span><span class="p">(</span><span class="s2">"boom"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"ok"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">flaky</span><span class="p">())</span>
+<span class="c1"># prints: attempt 1 failed: boom</span>
+<span class="c1"># prints: attempt 2 failed: boom</span>
+<span class="c1"># prints: ok</span>
+</code></pre></div>
+
+<p><code>@retry(times=3)</code> desugars to <code>flaky = retry(times=3)(flaky)</code>. The classic bug is forgetting the
+parentheses: <code>@retry</code> alone passes <code>flaky</code> as <code>times</code>, and you get a decorator back instead of a function.</p>
+<p>To allow both <code>@retry</code> and <code>@retry(times=3)</code>, accept an optional function first:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">log</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="s2">"INFO"</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+        <span class="nd">@functools</span><span class="o">.</span><span class="n">wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">level</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wrapper</span>
+    <span class="k">if</span> <span class="n">func</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>          <span class="c1"># used bare: @log</span>
+        <span class="k">return</span> <span class="n">decorator</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">decorator</span>              <span class="c1"># used with arguments: @log(level="DEBUG")</span>
+
+<span class="nd">@log</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">a</span><span class="p">():</span> <span class="k">pass</span>
+
+<span class="nd">@log</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="s2">"DEBUG"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">b</span><span class="p">():</span> <span class="k">pass</span>
+
+<span class="n">a</span><span class="p">();</span> <span class="n">b</span><span class="p">()</span>
+<span class="c1"># prints: [INFO] a</span>
+<span class="c1"># prints: [DEBUG] b</span>
+</code></pre></div>
+
+<blockquote class="co co-interview"><p><strong>Interview</strong> Real retry decorators: only retry <em>transient</em> errors (timeouts, 429, 5xx), not
+programming errors or 4xx; use exponential backoff with jitter; cap total time; make the
+operation idempotent first, since retrying a non-idempotent call can double-charge or double-send.</p>
+</blockquote>
+<details>
+<summary>Check yourself: why are there three nested functions in `@retry(times=3)`?</summary>
+<p><code>retry(times=3)</code> is evaluated first and must return the real decorator. The decorator then receives the
+function and returns the wrapper. Config, function and call arguments each need their own level.</p>
+</details>
+<h2 id="stacking-decorators" data-topics="py.decorators.stacking">Stacking decorators</h2>
+<!-- topics: stacking -->
+
+<p>Multiple decorators apply <strong>bottom to top</strong> (closest to the <code>def</code> first), so the top one is the
+outermost layer. At call time the outermost wrapper runs first.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">tag</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"decorate with </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">wrapper</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> before"</span><span class="p">)</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">k</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> after"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">result</span>
+        <span class="k">return</span> <span class="n">wrapper</span>
+    <span class="k">return</span> <span class="n">decorator</span>
+
+<span class="nd">@tag</span><span class="p">(</span><span class="s2">"A"</span><span class="p">)</span>
+<span class="nd">@tag</span><span class="p">(</span><span class="s2">"B"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">work</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"work"</span><span class="p">)</span>
+
+<span class="n">work</span><span class="p">()</span>
+<span class="c1"># prints: decorate with B</span>
+<span class="c1"># prints: decorate with A</span>
+<span class="c1"># prints: A before</span>
+<span class="c1"># prints: B before</span>
+<span class="c1"># prints: work</span>
+<span class="c1"># prints: B after</span>
+<span class="c1"># prints: A after</span>
+</code></pre></div>
+
+<p><code>@A @B def f</code> means <code>f = A(B(f))</code>. Think of onion layers: calls travel inward A -&gt; B -&gt; f and results come
+back outward.</p>
+<p>Order is a design decision, not a style choice. For an LLM client:</p>
+<div class="hl"><pre><span></span><code>@rate_limited      outermost: reject or queue before doing any work
+@retry             re-runs everything below it on a transient failure
+@timed             measures each individual attempt (above @retry it would time the total)
+@cache             innermost: a cache hit skips the call; never cache failures
+def call_llm(...)
+</code></pre></div>
+
+<p>Typical reasoning: put <code>cache</code> <em>inside</em> <code>retry</code> (retry only the real network call, a hit never retries),
+put <code>rate_limited</code> <em>outside</em> <code>retry</code> if retries should consume quota (inside if you want each retry
+throttled). If <code>@timed</code> is above <code>@retry</code> you measure total latency including backoff; below it you
+measure one attempt. State which one your dashboard needs.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Order matters with built-in descriptor decorators too: <code>@staticmethod</code> / <code>@classmethod</code> /
+<code>@property</code> should normally be the <em>outermost</em> (top) decorator, because they expect a plain function
+beneath them, and a custom wrapper placed above them receives a descriptor object that is not callable the
+same way.</p>
+</blockquote>
+<h2 id="class-based-decorators" data-topics="py.decorators.class_based">Class-based decorators</h2>
+<!-- topics: class_based -->
+
+<p>A class works as a decorator if instances are callable (<code>__call__</code>). The class receives the function in
+<code>__init__</code> and acts as the wrapper in <code>__call__</code>. The big win is <strong>natural, inspectable state</strong>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">CountCalls</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">):</span>
+        <span class="n">functools</span><span class="o">.</span><span class="n">update_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">)</span>   <span class="c1"># like @wraps, for an instance</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">func</span> <span class="o">=</span> <span class="n">func</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calls</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calls</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<span class="nd">@CountCalls</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">ping</span><span class="p">():</span>
+    <span class="k">return</span> <span class="s2">"pong"</span>
+
+<span class="n">ping</span><span class="p">();</span> <span class="n">ping</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ping</span><span class="o">.</span><span class="n">calls</span><span class="p">,</span> <span class="n">ping</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">ping</span><span class="p">())</span>   <span class="c1"># prints: 2 ping pong</span>
+</code></pre></div>
+
+<p>Choose a class when the decorator holds meaningful state (call counts, a cache, a token bucket), needs
+extra methods (<code>ping.reset()</code>), or has a lot of configuration. Choose a function otherwise; it is
+shorter.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> A class-based decorator on a <em>method</em> breaks: instances of your class are not functions, so
+they have no <code>__get__</code> and do not bind <code>self</code>. Methods get called without the instance. Either
+implement <code>__get__</code> or use a function decorator for methods. With arguments, <code>__init__</code> takes the
+config and <code>__call__(self, func)</code> returns the wrapper.</p>
+</blockquote>
+<h2 id="decorators-you-already-use" data-topics="py.decorators.higher_order,py.decorators.syntax">Decorators you already use</h2>
+<!-- topics: higher_order, syntax -->
+
+<p><code>@property</code>, <code>@staticmethod</code>, <code>@classmethod</code> and <code>@functools.cached_property</code> are decorators too, but
+they return <strong>descriptor objects</strong> rather than function wrappers (see the OOP note). <code>@functools.lru_cache</code>
+and <code>@functools.cache</code> return a wrapper object with <code>.cache_info()</code> and <code>.cache_clear()</code>:</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+
+<span class="nd">@functools</span><span class="o">.</span><span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">square</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"computing"</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">n</span> <span class="o">*</span> <span class="n">n</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">square</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">square</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>   <span class="c1"># prints: 9 9   (after a single 'computing 3' line)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">square</span><span class="o">.</span><span class="n">cache_info</span><span class="p">())</span>    <span class="c1"># prints: CacheInfo(hits=1, misses=1, maxsize=2, currsize=1)</span>
+</code></pre></div>
+
+<p><code>lru_cache</code> requires hashable arguments, and on methods it caches on <code>self</code> too and so keeps instances
+alive (a memory leak trap). Decorators can also decorate classes (<code>@dataclass</code>): the decorator receives
+the class and returns a class.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Cache embeddings by text hash with a bounded cache; never <code>@cache</code> an LLM completion
+function whose temperature is above 0 unless you really want the same answer back.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Functions are objects: pass, return, store and attach attributes to them. A decorator is a higher-order function.</li>
+<li><code>@d def f</code> is <code>f = d(f)</code>, executed once at definition; the wrapper runs every call.</li>
+<li>Wrapper = closure; use <code>*args, **kwargs</code>, forward everything, return the result.</li>
+<li>Always <code>@functools.wraps(func)</code>: keeps <code>__name__</code>/<code>__doc__</code>, sets <code>__wrapped__</code>, lets <code>inspect.signature</code> see the real parameters.</li>
+<li>Timing: <code>perf_counter</code>, <code>try/finally</code>, handle async separately.</li>
+<li>Decorators with arguments are three levels (<code>config -&gt; decorator -&gt; wrapper</code>); <code>@retry</code> without parentheses is the classic bug.</li>
+<li>Stacking applies bottom to top, calls run top to bottom (<code>@A @B f</code> is <code>A(B(f))</code>); choose order deliberately (rate limit, retry, timing, cache).</li>
+<li>Class-based decorators suit stateful or multi-method wrappers but need <code>__get__</code> to work on methods.</li>
+<li><code>property</code>, <code>classmethod</code>, <code>staticmethod</code>, <code>lru_cache</code> are decorators too.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-closures.html">&larr; Closures and Scope</a><a class="pn next" href="revise-py-iterators.html">Iterators &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

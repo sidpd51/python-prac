@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Type Hints notes - AI Eng Prep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="note" data-module="py.type_hints">
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html" aria-current="page">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html">Guide</a></nav>
+</header>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="revise.html">Revise</a> / Python Type Hints</p><div class="note-head"><div id="note-progress" data-module="py.type_hints"></div></div><div class="layout"><nav class="toc" aria-label="In this note"><p class="toc-h">In this note</p><ol><li><a href="#basic-annotations" data-target="basic-annotations">Basic annotations</a></li><li><a href="#function-annotations-and-returns" data-target="function-annotations-and-returns">Function annotations and returns</a></li><li><a href="#optional-and-union" data-target="optional-and-union">Optional and Union</a></li><li><a href="#collections-list-dict-tuple-set" data-target="collections-list-dict-tuple-set">Collections: list, dict, tuple, set</a></li><li><a href="#any-versus-object" data-target="any-versus-object">Any versus object</a></li><li><a href="#callable" data-target="callable">Callable</a></li><li><a href="#typevar-and-generics" data-target="typevar-and-generics">TypeVar and generics</a></li><li><a href="#protocol-structural-typing" data-target="protocol-structural-typing">Protocol (structural typing)</a></li><li><a href="#typeddict" data-target="typeddict">TypedDict</a></li><li><a href="#literal" data-target="literal">Literal</a></li><li><a href="#type-aliases" data-target="type-aliases">Type aliases</a></li><li><a href="#static-type-checking" data-target="static-type-checking">Static type checking</a></li><li><a href="#mypy-and-pyright" data-target="mypy-and-pyright">mypy and Pyright</a></li><li><a href="#quick-recap" data-target="quick-recap">Quick recap</a></li></ol></nav><article class="prose notedoc"><h1 id="type-hints">Type hints</h1>
+<p>Type hints are annotations that say what types a value is meant to have. Python itself <strong>ignores them at runtime</strong>:
+they are metadata for humans, editors and static checkers such as mypy and Pyright. Used well they catch bugs before
+you run the code, make large codebases navigable, and are the foundation of pydantic, FastAPI and the typed message
+and tool schemas of LLM SDKs. Interviews check that you know they are not enforced, can read generics, <code>Protocol</code>,
+<code>TypedDict</code>, <code>Optional</code>, and can explain what a type checker actually does.</p>
+<h2 id="basic-annotations" data-topics="py.type_hints.basic">Basic annotations</h2>
+<!-- topics: basic -->
+
+<p>Syntax: <code>name: type = value</code> for variables, <code>def f(x: type) -&gt; type:</code> for functions. Python stores the annotation
+and does nothing else with it.</p>
+<div class="hl"><pre><span></span><code><span class="n">count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+<span class="n">ratio</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
+
+<span class="n">x</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="s2">"not an int"</span>          <span class="c1"># no error at runtime!</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>                       <span class="c1"># prints: not an int</span>
+<span class="nb">print</span><span class="p">(</span><span class="vm">__annotations__</span><span class="p">)</span>         <span class="c1"># prints: {'count': &lt;class 'int'&gt;, 'name': &lt;class 'str'&gt;, 'ratio': &lt;class 'float'&gt;, 'x': &lt;class 'int'&gt;}</span>
+</code></pre></div>
+
+<p><code>name: str</code> with no value only records the annotation; the variable still does not exist. The checker (mypy) would
+flag <code>x: int = "..."</code>, the interpreter does not.</p>
+<blockquote class="co co-remember"><p><strong>Remember</strong> Annotations are not validation. If you want runtime enforcement, use pydantic or explicit checks.
+Static typing finds bugs in code paths <em>before</em> they run; it cannot see the data that arrives from JSON or an LLM.</p>
+</blockquote>
+<p>Basic types: <code>int</code>, <code>float</code>, <code>str</code>, <code>bool</code>, <code>bytes</code>, <code>None</code>. Note <code>bool</code> is a subclass of <code>int</code>, and mypy accepts an
+<code>int</code> where <code>float</code> is expected (the numeric tower shortcut), but not the reverse.</p>
+<p><strong>Python 3.14 (PEP 649/749):</strong> annotations are no longer evaluated eagerly at definition time; they are evaluated
+lazily on first access. This makes forward references (a class naming itself) work without quotes.</p>
+<div class="hl"><pre><span></span><code><span class="c1"># On 3.14 this works, on 3.13 it raises NameError at definition time:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">clone</span><span class="p">(</span><span class="n">node</span><span class="p">:</span> <span class="n">Node</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Node</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Node</span><span class="p">:</span> <span class="o">...</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">annotationlib</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">annotationlib</span><span class="o">.</span><span class="n">get_annotations</span><span class="p">(</span><span class="n">clone</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="n">annotationlib</span><span class="o">.</span><span class="n">Format</span><span class="o">.</span><span class="n">STRING</span><span class="p">))</span>
+<span class="c1"># 3.14 prints: {'node': 'Node', 'return': 'Node'}</span>
+</code></pre></div>
+
+<p>On 3.13 and earlier use a quoted <code>"Node"</code> or <code>from __future__ import annotations</code> (which stores every annotation as a
+string). That import still works on 3.14 but is no longer needed.</p>
+<h2 id="function-annotations-and-returns" data-topics="py.type_hints.functions,py.type_hints.returns">Function annotations and returns</h2>
+<!-- topics: functions, returns -->
+
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">chunk</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">overlap</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">step</span> <span class="o">=</span> <span class="n">size</span> <span class="o">-</span> <span class="n">overlap</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">text</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="n">size</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">step</span><span class="p">)]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="p">(</span><span class="s2">"abcdef"</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="n">overlap</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>     <span class="c1"># prints: ['abcd', 'def']</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">chunk</span><span class="o">.</span><span class="vm">__annotations__</span><span class="p">)</span>
+<span class="c1"># prints: {'text': &lt;class 'str'&gt;, 'size': &lt;class 'int'&gt;, 'overlap': &lt;class 'int'&gt;, 'return': list[str]}</span>
+</code></pre></div>
+
+<p>Annotate parameters and the return type. <code>*args: int</code> means each extra positional is an <code>int</code> (the tuple itself is
+<code>tuple[int, ...]</code>); <code>**kwargs: str</code> means each value is a <code>str</code>. Default values go after the annotation with spaces
+around <code>=</code>.</p>
+<p><strong>Return types</strong>
+* <code>-&gt; None</code> for functions that return nothing. A function with no <code>return</code> and no annotation is "unchecked" by
+  default in mypy, so annotate <code>-&gt; None</code> explicitly.
+* <code>-&gt; NoReturn</code> (or <code>Never</code>) for functions that never return normally (always raise or <code>sys.exit</code>).
+* Generators: <code>-&gt; Iterator[int]</code> or <code>Generator[YieldType, SendType, ReturnType]</code>; async: <code>async def f() -&gt; int</code>
+  (the coroutine type is implied; do not write <code>Coroutine</code>).
+* Methods returning the instance: <code>-&gt; Self</code> (3.11+, <code>typing.Self</code>) rather than naming the class.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterator</span><span class="p">,</span> <span class="n">NoReturn</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">countdown</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="k">while</span> <span class="n">n</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="n">n</span>
+        <span class="n">n</span> <span class="o">-=</span> <span class="mi">1</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">fail</span><span class="p">(</span><span class="n">msg</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NoReturn</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">countdown</span><span class="p">(</span><span class="mi">3</span><span class="p">)))</span>    <span class="c1"># prints: [3, 2, 1]</span>
+</code></pre></div>
+
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> Mutable defaults are still a bug with hints: <code>def f(xs: list[int] = [])</code>. Use <code>xs: list[int] | None = None</code>.</p>
+</blockquote>
+<h2 id="optional-and-union" data-topics="py.type_hints.optional,py.type_hints.union">Optional and Union</h2>
+<!-- topics: optional, union -->
+
+<p><code>X | Y</code> (3.10+) means "either type". <code>Optional[X]</code> is exactly <code>X | None</code>. The name is misleading: it does <strong>not</strong>
+mean the <em>argument</em> is optional (that is a default value), it means the <em>value</em> may be <code>None</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">find</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>          <span class="c1"># modern spelling of Optional[str]</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="s2">"x"</span><span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span> <span class="o">...</span>        <span class="c1"># equal to int | None</span>
+<span class="k">assert</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">==</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">==</span> <span class="p">(</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">find</span><span class="p">(</span><span class="s2">"b"</span><span class="p">))</span>                           <span class="c1"># prints: None</span>
+</code></pre></div>
+
+<p>The checker's job: it forces you to <strong>narrow</strong> before using the value, which removes a whole class of
+<code>AttributeError: 'NoneType' ...</code> bugs.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">shout</span><span class="p">(</span><span class="n">s</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">""</span>
+    <span class="k">return</span> <span class="n">s</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>        <span class="c1"># here the checker knows s is str</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">size</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>  <span class="c1"># isinstance narrows unions</span>
+        <span class="k">return</span> <span class="n">x</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">shout</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="s2">""</span><span class="p">,</span> <span class="n">size</span><span class="p">(</span><span class="s2">"abc"</span><span class="p">))</span>   <span class="c1"># prints: True 3</span>
+</code></pre></div>
+
+<p>Narrowing works with <code>is None</code>, <code>isinstance</code>, truthiness, <code>in</code>, and <code>Literal</code> comparisons. Without narrowing, mypy
+errors on <code>s.upper()</code> because <code>None</code> has no <code>upper</code>.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "What is <code>Optional</code>?" Shorthand for <code>X | None</code>, not "has a default". Pair it with narrowing.
+Returning <code>None</code> as an error signal is a common source of unhandled <code>Optional</code>s; consider raising instead.</p>
+</blockquote>
+<h2 id="collections-list-dict-tuple-set" data-topics="py.type_hints.collections">Collections: list, dict, tuple, set</h2>
+<!-- topics: collections -->
+
+<p>Since 3.9 use the built-in types directly, subscripted. The old <code>typing.List</code>, <code>Dict</code>, <code>Tuple</code>, <code>Set</code> are deprecated
+aliases. Prefer abstract types in <strong>parameters</strong> (<code>Sequence</code>, <code>Mapping</code>, <code>Iterable</code>) and concrete types in returns.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
+
+<span class="n">scores</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">]</span>
+<span class="n">index</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]}</span>
+<span class="n">point</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>        <span class="c1"># exactly two floats</span>
+<span class="n">vec</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>               <span class="c1"># any length, all int</span>
+<span class="n">tags</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"x"</span><span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">total</span><span class="p">(</span><span class="n">xs</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>       <span class="c1"># accepts list, tuple, generator, set...</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">xs</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">lookup</span><span class="p">(</span><span class="n">m</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">k</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>   <span class="c1"># read-only view; accepts dict, MappingProxy...</span>
+    <span class="k">return</span> <span class="n">m</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">total</span><span class="p">(</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)),</span> <span class="n">lookup</span><span class="p">({</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span> <span class="s2">"a"</span><span class="p">))</span>   <span class="c1"># prints: 3.0 1</span>
+</code></pre></div>
+
+<p>Why <code>Iterable</code> in parameters: it tells callers "any iterable works", while <code>list[float]</code> needlessly rejects tuples
+and generators. Why <code>tuple[int, ...]</code>: a plain <code>tuple[int]</code> means a tuple of exactly one int. Invariance trap:
+<code>list[int]</code> is <strong>not</strong> a <code>list[float]</code> (you could append a float to it), so a function taking <code>list[float]</code> rejects a
+<code>list[int]</code>; <code>Sequence[float]</code> (read-only, covariant) accepts it.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> <code>list[dict[str, str]]</code> for chat messages is common, but a <code>TypedDict</code> (below) catches key typos.
+Embeddings are <code>list[float]</code> or <code>numpy.typing.NDArray[np.float32]</code>.</p>
+</blockquote>
+<h2 id="any-versus-object" data-topics="py.type_hints.any_vs_object">Any versus object</h2>
+<!-- topics: any_vs_object -->
+
+<p>Both accept anything, but they mean opposite things to the checker.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>Any</code></th>
+<th><code>object</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Assignable <em>from</em></td>
+<td>everything</td>
+<td>everything</td>
+</tr>
+<tr>
+<td>What you may <em>do</em> with it</td>
+<td><strong>everything</strong> (checker turns itself off)</td>
+<td>only what every object supports</td>
+</tr>
+<tr>
+<td>Use</td>
+<td>escape hatch, untyped third-party data</td>
+<td>"anything, but I will check first"</td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">x</span><span class="o">.</span><span class="n">foo</span><span class="p">()</span>               <span class="c1"># checker allows it: Any is unchecked (fails at runtime)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">g</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="c1"># x.foo()  &lt;- mypy error: "object" has no attribute "foo"</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>  <span class="c1"># narrowed to str, safe</span>
+    <span class="k">return</span> <span class="nb">repr</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">g</span><span class="p">(</span><span class="s2">"hi"</span><span class="p">),</span> <span class="n">g</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>      <span class="c1"># prints: HI 3</span>
+</code></pre></div>
+
+<p><code>Any</code> is contagious: a value of type <code>Any</code> flows through and silences checks downstream. Use <code>object</code> (plus
+narrowing) or a union when you are really accepting arbitrary input, and keep <code>Any</code> for genuinely dynamic
+spots such as <code>json.loads</code> results, ideally narrowed or validated right away. Unannotated parameters are
+implicitly <code>Any</code>, which is why partially typed code gives weaker guarantees.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "<code>Any</code> vs <code>object</code>?" <code>Any</code> opts out of checking in both directions; <code>object</code> is the top type
+and forces you to narrow before use.</p>
+</blockquote>
+<h2 id="callable" data-topics="py.type_hints.callable">Callable</h2>
+<!-- topics: callable -->
+
+<p><code>Callable[[ArgTypes], ReturnType]</code> types a function parameter. Import from <code>collections.abc</code>.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">apply</span><span class="p">(</span><span class="n">fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="nb">int</span><span class="p">],</span> <span class="n">a</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">make_handler</span><span class="p">(</span><span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">]:</span>    <span class="c1"># returns a function</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="n">prefix</span> <span class="o">+</span> <span class="n">s</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>    <span class="c1"># prints: 5</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">make_handler</span><span class="p">(</span><span class="s2">"&gt; "</span><span class="p">)(</span><span class="s2">"hi"</span><span class="p">))</span>           <span class="c1"># prints: &gt; hi</span>
+</code></pre></div>
+
+<ul>
+<li><code>Callable[..., int]</code>: any arguments, returns <code>int</code>.</li>
+<li><code>Callable[[], None]</code>: no arguments (a callback).</li>
+<li>It cannot express keyword arguments or defaults; for that use a <strong>callback <code>Protocol</code></strong> with <code>__call__</code>, or
+  <code>ParamSpec</code> when writing decorators that preserve the wrapped function's signature.</li>
+<li>Async callbacks: <code>Callable[[str], Awaitable[str]]</code>.</li>
+</ul>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Tool registries for LLM agents map names to <code>Callable[..., Any]</code>; typed decorators with <code>ParamSpec</code>
+keep IDE autocompletion on the decorated tool.</p>
+</blockquote>
+<h2 id="typevar-and-generics" data-topics="py.type_hints.typevar,py.type_hints.generics">TypeVar and generics</h2>
+<!-- topics: typevar, generics -->
+
+<p>A <strong>TypeVar</strong> links types together: "whatever type goes in comes out". It lets a function or class be generic
+without losing information (which <code>Any</code> would lose).</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TypeVar</span>
+
+<span class="n">T</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">"T"</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">first</span><span class="p">(</span><span class="n">xs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">T</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">T</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">xs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<span class="n">a</span> <span class="o">=</span> <span class="n">first</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>        <span class="c1"># checker infers int</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">first</span><span class="p">([</span><span class="s2">"x"</span><span class="p">])</span>         <span class="c1"># checker infers str</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>              <span class="c1"># prints: 1 x</span>
+</code></pre></div>
+
+<p>With <code>Any</code> the return type would be unknown; with <code>T</code> it is exactly the element type. Constrain with
+<code>TypeVar("N", int, float)</code> (one of these exactly) or a <strong>bound</strong>, <code>TypeVar("C", bound=Comparable)</code> (this type or
+a subtype).</p>
+<p><strong>Generic classes</strong> parametrise a container by type. Python 3.12+ has the compact syntax (PEP 695):</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Box</span><span class="p">[</span><span class="n">T</span><span class="p">]:</span>                       <span class="c1"># 3.12+: no TypeVar declaration needed</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">T</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">item</span> <span class="o">=</span> <span class="n">item</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">T</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">item</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">pair</span><span class="p">[</span><span class="n">K</span><span class="p">,</span> <span class="n">V</span><span class="p">](</span><span class="n">k</span><span class="p">:</span> <span class="n">K</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="n">V</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">K</span><span class="p">,</span> <span class="n">V</span><span class="p">]:</span>      <span class="c1"># generic function, 3.12+</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Box</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(),</span> <span class="n">pair</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>   <span class="c1"># prints: 3 ('a', 1)</span>
+</code></pre></div>
+
+<p>Older equivalent: <code>class Box(Generic[T])</code> with <code>T = TypeVar("T")</code>. Reading <code>Box[int]</code> in an annotation means
+"a Box holding ints". At runtime generics are <strong>erased</strong>: <code>Box[int]()</code> is just <code>Box()</code>, and <code>list[int]</code> does not
+check its elements.</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Box</span><span class="p">[</span><span class="n">T</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">T</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">item</span> <span class="o">=</span> <span class="n">item</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">Box</span><span class="p">[</span><span class="nb">int</span><span class="p">](</span><span class="mi">3</span><span class="p">))</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>        <span class="c1"># prints: Box   (Box[int] is just Box at runtime)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">Box</span><span class="p">[</span><span class="nb">bytes</span><span class="p">](</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>  <span class="c1"># prints: Box   (nothing checked)</span>
+</code></pre></div>
+
+<p>Variance in one line: producers (<code>Sequence[T]</code>, read-only) are covariant, consumers are contravariant, mutable
+containers (<code>list[T]</code>) are invariant.</p>
+<details>
+<summary>Check yourself: why is `def first(xs: list[Any]) -&gt; Any` worse than the TypeVar version?</summary>
+<p>The checker loses the connection between input and output: callers get <code>Any</code> back and every later use of the result
+goes unchecked. With <code>T</code>, <code>first([1, 2])</code> is known to be <code>int</code>.</p>
+</details>
+<h2 id="protocol-structural-typing" data-topics="py.type_hints.protocol">Protocol (structural typing)</h2>
+<!-- topics: protocol -->
+
+<p>Normal classes use <strong>nominal</strong> typing: B is an A only if it inherits from A. A <strong>Protocol</strong> uses <strong>structural</strong>
+typing ("duck typing, checked statically"): anything with the right methods qualifies, no inheritance needed.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Protocol</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Embedder</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span> <span class="o">...</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">FakeEmbedder</span><span class="p">:</span>                    <span class="c1"># does NOT inherit from Embedder</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">))]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">index</span><span class="p">(</span><span class="n">docs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">model</span><span class="p">:</span> <span class="n">Embedder</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">model</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">docs</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">index</span><span class="p">([</span><span class="s2">"ab"</span><span class="p">,</span> <span class="s2">"abc"</span><span class="p">],</span> <span class="n">FakeEmbedder</span><span class="p">()))</span>   <span class="c1"># prints: [[2.0], [3.0]]</span>
+</code></pre></div>
+
+<p>The checker accepts <code>FakeEmbedder</code> because its shape matches. That makes dependency injection and test doubles easy
+and decouples you from third-party class hierarchies. Compare with an ABC, which forces inheritance and is checked
+at instantiation time at runtime.</p>
+<p>At runtime a plain <code>Protocol</code> does nothing; add <code>@runtime_checkable</code> to allow <code>isinstance(x, Embedder)</code>, which only
+checks that the <em>method names exist</em> (not their signatures).</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "Protocol vs ABC?" Protocol: structural, static, no inheritance. ABC: nominal, runtime-enforced,
+can share implementation. Use Protocols for "anything that can embed/retrieve/call".</p>
+</blockquote>
+<h2 id="typeddict" data-topics="py.type_hints.typeddict">TypedDict</h2>
+<!-- topics: typeddict -->
+
+<p><code>TypedDict</code> types a <strong>dict with fixed string keys</strong> and a type per key, the shape of JSON and LLM API payloads.
+At runtime it is a plain <code>dict</code>; the checking is static only.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TypedDict</span><span class="p">,</span> <span class="n">NotRequired</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">(</span><span class="n">TypedDict</span><span class="p">):</span>
+    <span class="n">role</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">content</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">name</span><span class="p">:</span> <span class="n">NotRequired</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>          <span class="c1"># key may be absent</span>
+
+<span class="n">m</span><span class="p">:</span> <span class="n">Message</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="s2">"hi"</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">m</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>          <span class="c1"># prints: {'role': 'user', 'content': 'hi'} dict</span>
+
+<span class="n">bad</span><span class="p">:</span> <span class="n">Message</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="s2">"user"</span><span class="p">}</span>     <span class="c1"># no error at runtime; mypy: missing key "content"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">bad</span><span class="p">)</span>                          <span class="c1"># prints: {'role': 'user'}</span>
+</code></pre></div>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Use</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TypedDict</code></td>
+<td>data already is a dict (JSON in/out), zero conversion cost, static help only</td>
+</tr>
+<tr>
+<td><code>dataclass</code></td>
+<td>internal objects with behaviour; attribute access</td>
+</tr>
+<tr>
+<td>pydantic <code>BaseModel</code></td>
+<td>untrusted input that needs <strong>runtime validation</strong> and parsing</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>total=False</code> makes all keys optional; <code>Required</code>/<code>NotRequired</code> mark individual keys; <code>ReadOnly</code> (3.13) forbids
+mutation. Typo'd keys (<code>m["rol"]</code>) become checker errors instead of <code>KeyError</code>s in production.</p>
+<blockquote class="co co-aiuse"><p><strong>AI use</strong> Messages lists <code>list[Message]</code> and tool-call JSON schemas are classic TypedDicts. The Anthropic and
+OpenAI SDK request params are TypedDicts for exactly this reason.</p>
+</blockquote>
+<h2 id="literal" data-topics="py.type_hints.literal">Literal</h2>
+<!-- topics: literal -->
+
+<p><code>Literal["a", "b"]</code> restricts a value to specific constants. It is the lightweight enum for string options.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">get_args</span>
+
+<span class="n">Role</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"system"</span><span class="p">,</span> <span class="s2">"user"</span><span class="p">,</span> <span class="s2">"assistant"</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">make</span><span class="p">(</span><span class="n">role</span><span class="p">:</span> <span class="n">Role</span><span class="p">,</span> <span class="n">content</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="n">role</span><span class="p">,</span> <span class="s2">"content"</span><span class="p">:</span> <span class="n">content</span><span class="p">}</span>
+
+<span class="n">make</span><span class="p">(</span><span class="s2">"user"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">)</span>
+<span class="n">make</span><span class="p">(</span><span class="s2">"bot"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">)</span>                    <span class="c1"># runs fine, but mypy: Argument 1 has incompatible type</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get_args</span><span class="p">(</span><span class="n">Role</span><span class="p">))</span>                <span class="c1"># prints: ('system', 'user', 'assistant')</span>
+</code></pre></div>
+
+<p>The checker narrows on equality and supports exhaustiveness: with a chain of <code>if role == "..."</code> covering every
+literal, <code>assert_never(role)</code> in the <code>else</code> fails type-checking if you add a new option and forget a branch. Use it
+for model names, roles, modes, <code>Literal[True]</code>/<code>Literal[False]</code> overloads. Pair with <code>get_args</code> to reuse the list of
+allowed values at runtime. For richer sets with behaviour, use <code>enum.Enum</code>.</p>
+<h2 id="type-aliases" data-topics="py.type_hints.aliases">Type aliases</h2>
+<!-- topics: aliases -->
+
+<p>An alias gives a long type a name. Use it to keep signatures readable and give one definition to reuse.</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TypeAlias</span>
+
+<span class="n">Vector</span><span class="p">:</span> <span class="n">TypeAlias</span> <span class="o">=</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>                 <span class="c1"># works on all 3.10+</span>
+<span class="n">Messages</span> <span class="o">=</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span>                 <span class="c1"># simple assignment also works</span>
+<span class="n">JSON</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="s2">"JSON"</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="s2">"JSON"</span><span class="p">]</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span>   <span class="c1"># recursive</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">norm</span><span class="p">(</span><span class="n">v</span><span class="p">:</span> <span class="n">Vector</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">v</span><span class="p">)</span> <span class="o">**</span> <span class="mf">0.5</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">norm</span><span class="p">([</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]))</span>                          <span class="c1"># prints: 5.0</span>
+</code></pre></div>
+
+<p>3.12+ has the <code>type</code> statement (PEP 695), which is lazily evaluated and so supports recursion cleanly:</p>
+<div class="hl"><pre><span></span><code><span class="nb">type</span> <span class="n">Json</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Json</span><span class="p">]</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">Json</span><span class="p">]</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span>
+<span class="nb">type</span> <span class="n">Vector</span> <span class="o">=</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Vector</span><span class="p">)</span>                    <span class="c1"># prints: Vector</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Vector</span><span class="o">.</span><span class="n">__value__</span><span class="p">)</span>          <span class="c1"># prints: list[float]</span>
+</code></pre></div>
+
+<p>Distinguish alias from <code>NewType("UserId", int)</code>, which creates a <strong>distinct</strong> type for the checker (an <code>int</code> is not
+a <code>UserId</code>) with zero runtime cost (it is just a function returning its argument). Use <code>NewType</code> to stop mixing up
+<code>DocId</code> and <code>ChunkId</code>.</p>
+<h2 id="static-type-checking" data-topics="py.type_hints.static_checking">Static type checking</h2>
+<!-- topics: static_checking -->
+
+<p><strong>Static</strong> means "without running the code". A checker reads source, builds the type of every expression and
+reports mismatches. It never imports your modules into a running program and never sees runtime values.</p>
+<div class="hl"><pre><span></span><code>source -&gt; parse -&gt; infer &amp; check types per annotations -&gt; report errors
+                                                          (no code executed)
+</code></pre></div>
+
+<p>What it <strong>can</strong> catch: calling with wrong argument types, forgetting to handle <code>None</code>, misspelled attributes, wrong
+return types, missing <code>TypedDict</code> keys, non-exhaustive branches.
+What it <strong>cannot</strong> catch: bad runtime data (a JSON field of the wrong type), logic errors, anything hidden behind
+<code>Any</code> or <code># type: ignore</code>, dynamic attribute magic.</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">add_one</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">add_one</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>              <span class="c1"># prints: 6</span>
+<span class="k">if</span> <span class="kc">False</span><span class="p">:</span>
+    <span class="n">add_one</span><span class="p">(</span><span class="s2">"5"</span><span class="p">)</span>               <span class="c1"># mypy reports this line; Python never runs it, so no error</span>
+</code></pre></div>
+
+<p>Gradual typing: untyped code is allowed, so you adopt types incrementally and tighten over time (<code>--strict</code>).
+Common escape hatches: <code># type: ignore[code]</code>, <code>cast(T, x)</code> (a lie the checker believes; no runtime check), <code>Any</code>.
+Prefer fixing the types; justify every ignore.</p>
+<blockquote class="co co-gotcha"><p><strong>Gotcha</strong> <code>cast</code> and <code># type: ignore</code> do not change runtime behaviour or verify anything. The bug just moves to
+runtime. Use <code>isinstance</code> narrowing or validate with pydantic at the boundary instead.</p>
+<p><strong>Remember</strong> Types describe what your code <em>expects</em>. Validate what the outside world <em>sends</em>.</p>
+</blockquote>
+<h2 id="mypy-and-pyright" data-topics="py.type_hints.mypy_pyright">mypy and Pyright</h2>
+<!-- topics: mypy_pyright -->
+
+<p>The two main checkers. Both read <code>pyproject.toml</code> config and understand the same typing PEPs.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>mypy</th>
+<th>Pyright</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Written in</td>
+<td>Python</td>
+<td>TypeScript (Node)</td>
+</tr>
+<tr>
+<td>Speed</td>
+<td>slower, has an incremental cache and daemon</td>
+<td>fast</td>
+</tr>
+<tr>
+<td>Editor</td>
+<td>plugin or <code>dmypy</code></td>
+<td>powers <strong>Pylance</strong> in VS Code</td>
+</tr>
+<tr>
+<td>Inference</td>
+<td>more conservative about unannotated code</td>
+<td>stronger inference and narrowing</td>
+</tr>
+<tr>
+<td>Strictness</td>
+<td><code>--strict</code></td>
+<td><code>strict</code> mode / <code>basic</code> / <code>standard</code></td>
+</tr>
+</tbody>
+</table></div>
+<div class="hl"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>mypy<span class="w"> </span>src/<span class="w">             </span><span class="c1"># run on a directory</span>
+python<span class="w"> </span>-m<span class="w"> </span>mypy<span class="w"> </span>--strict<span class="w"> </span>src/<span class="w">    </span><span class="c1"># enable the strict flag bundle</span>
+pyright<span class="w"> </span>src/
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="k">[tool.mypy]</span>
+<span class="n">python_version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"3.12"</span>
+<span class="n">strict</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">ignore_missing_imports</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">      </span><span class="c1"># for libs without type information</span>
+
+<span class="k">[tool.pyright]</span>
+<span class="n">typeCheckingMode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"standard"</span>
+</code></pre></div>
+
+<p>Libraries ship types via inline annotations plus a <code>py.typed</code> marker file (PEP 561), or as separate <code>types-*</code> stub
+packages (<code>types-requests</code>). Run the checker in CI and your pre-commit hook; a typed project with a green checker
+turns refactors from guesswork into mechanical edits. Newer entrants (Astral's <code>ty</code>, Meta's <code>pyrefly</code>) exist and
+are fast, but mypy and Pyright are what interviewers name.</p>
+<blockquote class="co co-interview"><p><strong>Interview</strong> "What does mypy do at runtime?" Nothing: it is not involved when your program runs, and the
+interpreter ignores annotations. Which is why you still need tests and runtime validation.</p>
+</blockquote>
+<h2 id="quick-recap" data-topics="">Quick recap</h2>
+<ul>
+<li>Annotations are metadata ignored by the interpreter; checkers and tools like pydantic use them.</li>
+<li>Annotate parameters and returns; <code>-&gt; None</code>, <code>NoReturn</code>, <code>Iterator[T]</code>, <code>Self</code> for common cases.</li>
+<li><code>Optional[X]</code> is <code>X | None</code>; narrow with <code>is None</code> / <code>isinstance</code> before use.</li>
+<li>Use built-in generics (<code>list[int]</code>); take abstract types (<code>Iterable</code>, <code>Mapping</code>) and return concrete ones.</li>
+<li><code>Any</code> turns checking off; <code>object</code> is the safe top type that forces narrowing.</li>
+<li><code>Callable[[Args], Ret]</code> for function params; use a callback Protocol or <code>ParamSpec</code> for richer signatures.</li>
+<li><code>TypeVar</code> links input and output types; <code>class Box[T]</code> is the 3.12+ syntax; generics are erased at runtime.</li>
+<li><code>Protocol</code> is structural (no inheritance); <code>TypedDict</code> types dict payloads (static only); <code>Literal</code> restricts values.</li>
+<li>Aliases name types (<code>type X = ...</code> on 3.12+); <code>NewType</code> makes distinct types.</li>
+<li>mypy and Pyright check statically (no code runs); they cannot validate runtime data.</li>
+<li>3.14 evaluates annotations lazily (PEP 649), so forward references work unquoted.</li>
+</ul><div class="pn-bar"><a class="pn prev" href="revise-py-packaging.html">&larr; Python Modules and Packages</a><a class="pn next" href="revise-py-pydantic.html">Pydantic &rarr;</a></div></article></div>
+</div>
+<script src="data.js"></script>
+<script src="site.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

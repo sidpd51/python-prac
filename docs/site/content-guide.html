@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Content guide - AI Eng Prep Notes</title>
+<title>Content guide - AI Eng Prep</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page="doc" >
 <div class="wrap">
 <header class="top">
-  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
-  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="reference.html">Reference</a><a class="tab" href="content-guide.html" aria-current="page">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+  <div class="brand"><a href="index.html">AI Engineering Prep</a><span>revise · practise · track</span></div>
+  <nav class="tabs" aria-label="Sections"><a class="tab" href="index.html">Today</a><a class="tab" href="revise.html">Revise</a><a class="tab" href="quiz.html">Quiz</a><a class="tab" href="exercises.html">Exercises</a><a class="tab" href="topics.html">My topics</a><a class="tab" href="explainers.html">Explainers</a><a class="tab" href="guide.html" aria-current="page">Guide</a></nav>
 </header>
-<p class="src">docs/CONTENT_GUIDE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#workflow-for-a-module">Workflow for a module</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#question-bank-questionstracknn_moduletoml">Question bank (questions/&amp;lt;track&amp;gt;/&amp;lt;NN_module&amp;gt;.toml)</a></li><li><a href="#python-version">Python version</a></li><li><a href="#notes-site">Notes site</a></li></ol></nav><article class="prose"><h1 id="content-guide-how-a-modules-practice-material-is-built">Content guide - how a module's practice material is built</h1>
+<div class="banner" id="storage-warning" hidden>This browser is blocking storage, so your progress cannot be saved. Open the page in a normal (not private) window.</div>
+<p class="crumb"><a href="guide.html">Guide</a> / Content guide</p><p class="src">docs/CONTENT_GUIDE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#workflow-for-a-module">Workflow for a module</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#question-bank-questionstracknn_moduletoml">Question bank (questions/&amp;lt;track&amp;gt;/&amp;lt;NN_module&amp;gt;.toml)</a></li><li><a href="#python-version">Python version</a></li><li><a href="#notes-site">Notes site</a></li></ol></nav><article class="prose"><h1 id="content-guide-how-a-modules-practice-material-is-built">Content guide - how a module's practice material is built</h1>
 <p>Use this when adding exercises/questions for any module (now or for future tracks:
 ML, LLM, RAG, agents, prod...). The reference module is <strong><code>py.generators</code></strong>:</p>
 <ul>
@@ -260,6 +261,8 @@ both when behaviour could differ, and say so in the answer.</p>
 headings by generated id (see <code>INSERTS</code> in <code>study/site.py</code>). If you rename a heading that has a
 widget, the build stops with "heading id not found": update the id in <code>INSERTS</code> to match.</p></article></div>
 </div>
+<script src="data.js"></script>
 <script src="site.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
