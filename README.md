@@ -16,9 +16,33 @@ reviews with spaced repetition (SM-2). So you always know **what's weak** and **
 
 ---
 
-## Setup (once)
+## Read these notes in a browser (interactive)
+
+Open **`docs/site/index.html`** in any browser: double-click it, or run
+`xdg-open docs/site/index.html` (Linux), `open docs/site/index.html` (macOS), `explorer.exe docs\site\index.html` (Windows/WSL).
+It works offline, on any machine that has this repo, with no server and no install.
+
+| Page | What's interactive |
+|------|--------------------|
+| **Start here** | clickable system map, 90-minute day, spaced-repetition + mastery explorer, searchable command list |
+| **Content guide** | module workflow diagram, one real exercise as spec / solution / stub / test, "spot the bad test" quiz |
+| **Capstone roadmap** | clickable DocMind architecture, chunker playground, milestone tracker (ticks are saved in that browser only) |
+| **Visual explainers** | lazy-pipeline stepper, async timeline, retry-backoff visualiser, predict-the-output deck from the question banks |
+| **Decision log** | a form that writes the markdown entry for you |
+
+The pages are generated from the markdown files (`README.md`, `docs/CONTENT_GUIDE.md`,
+`capstone/ROADMAP.md`, `journal/decisions.md`) and your question banks. **After editing any of them, run
+`study site`** to refresh the HTML. Widgets live in `study/site_assets/widgets/`, styles and behaviour in
+`study/site_assets/style.css` and `site.js`; they are plain HTML/CSS/JS with no dependencies.
+
+---
+
+## Setup (once, on each machine)
+
+You need Python 3.12+ and [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ```bash
+git clone <your repo url> ~/python-pract   # or copy the folder
 cd ~/python-pract
 uv sync --all-packages              # creates .venv with everything
 source .venv/bin/activate           # now `study`, `pytest`, `docmind` are on PATH
@@ -28,6 +52,9 @@ study report                        # your first strengths/weaknesses map
 ```
 
 (Without activating, prefix commands with `uv run`, e.g. `uv run study today`.)
+
+Your progress lives in `progress/progress.json` and `journal/`. Commit them, or copy them to the
+other machine, to carry your history with you. Reading the HTML notes needs none of this setup.
 
 ## The daily loop (60-120 min)
 
@@ -85,6 +112,25 @@ Topic/module refs can be short: `generators.send`, `send` (if unique), `async`, 
 when a review is overdue. **≥80 strong · 60-79 ok · <60 weak · ? = no evidence** (no evidence
 also counts as a weakness: you haven't proven it yet).
 
+## Working on the DocMind capstone
+
+DocMind is the project you build alongside the exercises. Milestone specs are the docstrings at the
+top of each stub file in `capstone/src/docmind/`; the order and later phases are in `capstone/ROADMAP.md`.
+
+```bash
+study test capstone                 # all milestone tests (unfinished ones show as TODO)
+pytest capstone/tests/test_m02_loaders.py   # one milestone
+docmind ingest ./some_docs          # after M0.7: the real CLI (also `python -m docmind.cli`)
+docmind search "your question" -k 5
+```
+
+1. Pick the next unchecked milestone (tick it on the roadmap page when done).
+2. Implement it; `models.py` and `interfaces.py` are given, so read `interfaces.py` first.
+3. Stuck 30+ minutes? Compare with `solutions/capstone/src/docmind/...`, close it, redo it tomorrow.
+4. Log what you chose and rejected in `journal/decisions.md` (the Decision log page has a form).
+
+Don't run `study stubs capstone --force`: it overwrites your capstone code. Plain `study stubs` is always safe.
+
 ## Adding future topics (ML, LLMs, RAG, agents, ...)
 
 All future tracks are already in `curriculum/` as `planned`, so they don't pollute your stats.
@@ -114,8 +160,17 @@ journal/           mistakes.md, decisions.md, quiz_log.jsonl (your typed answers
 progress/          progress.json: commit it and watch yourself improve
 study/             the tracker itself (CLI, pytest plugin, SM-2, mastery)
 docs/              CONTENT_GUIDE.md (how to write exercises/questions)
-                   site/ = these notes as offline HTML (open index.html; rebuild with `study site`)
+                   site/ = these notes as interactive offline HTML (open index.html; rebuild with `study site`)
 ```
+
+## Troubleshooting
+
+- **`study: command not found`**: activate the venv (`source .venv/bin/activate`) or use `uv run study ...`.
+- **A test shows as skipped / TODO**: expected for unsolved stubs. It turns into pass or fail once you replace the `raise NotImplementedError`.
+- **`study site` says a module is missing**: run `uv sync --all-packages` (installs `markdown` and `pygments`).
+- **HTML pages look stale**: you edited a markdown file or question bank; run `study site`.
+- **Python version**: the venv uses CPython 3.13 here; a few questions note 3.14 differences.
+- **Reset your progress**: delete `progress/progress.json` and `journal/quiz_log.jsonl`.
 
 ## What "3-4 years of experience" actually means in interviews
 

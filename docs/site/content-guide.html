@@ -12,7 +12,7 @@
   <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
   <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="content-guide.html" aria-current="page">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
 </header>
-<p class="src">docs/CONTENT_GUIDE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#workflow-for-a-module">Workflow for a module</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#question-bank-questionstracknn_moduletoml">Question bank (questions/&amp;lt;track&amp;gt;/&amp;lt;NN_module&amp;gt;.toml)</a></li><li><a href="#python-version">Python version</a></li></ol></nav><article class="prose"><h1 id="content-guide-how-a-modules-practice-material-is-built">Content guide - how a module's practice material is built</h1>
+<p class="src">docs/CONTENT_GUIDE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#workflow-for-a-module">Workflow for a module</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#question-bank-questionstracknn_moduletoml">Question bank (questions/&amp;lt;track&amp;gt;/&amp;lt;NN_module&amp;gt;.toml)</a></li><li><a href="#python-version">Python version</a></li><li><a href="#notes-site">Notes site</a></li></ol></nav><article class="prose"><h1 id="content-guide-how-a-modules-practice-material-is-built">Content guide - how a module's practice material is built</h1>
 <p>Use this when adding exercises/questions for any module (now or for future tracks:
 ML, LLM, RAG, agents, prod...). The reference module is <strong><code>py.generators</code></strong>:</p>
 <ul>
@@ -254,7 +254,11 @@ output. Use <code>'''</code> for q/a strings that contain <code>"""</code>.</p>
 <p>Together, exercises + questions should touch <strong>every topic</strong> in the module (<code>study check</code>).</p>
 <h2 id="python-version">Python version</h2>
 <p>The venv runs CPython 3.13; <code>/usr/bin/python3.14</code> exists separately. Run <code>predict</code> snippets on
-both when behaviour could differ, and say so in the answer.</p></article></div>
+both when behaviour could differ, and say so in the answer.</p>
+<h2 id="notes-site">Notes site</h2>
+<p><code>study site</code> builds <code>docs/site/</code> from the markdown notes. Interactive widgets are attached to
+headings by generated id (see <code>INSERTS</code> in <code>study/site.py</code>). If you rename a heading that has a
+widget, the build stops with "heading id not found": update the id in <code>INSERTS</code> to match.</p></article></div>
 </div>
 <script src="site.js"></script>
 </body>

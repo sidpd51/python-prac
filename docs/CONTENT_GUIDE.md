@@ -110,3 +110,9 @@ Together, exercises + questions should touch **every topic** in the module (`stu
 
 The venv runs CPython 3.13; `/usr/bin/python3.14` exists separately. Run `predict` snippets on
 both when behaviour could differ, and say so in the answer.
+
+## Notes site
+
+`study site` builds `docs/site/` from the markdown notes. Interactive widgets are attached to
+headings by generated id (see `INSERTS` in `study/site.py`). If you rename a heading that has a
+widget, the build stops with "heading id not found": update the id in `INSERTS` to match.

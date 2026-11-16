@@ -12,7 +12,7 @@
   <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
   <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html" aria-current="page">Start here</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
 </header>
-<p class="src">README.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#setup-once">Setup (once)</a></li><li><a href="#the-daily-loop-60-120-min">The daily loop (60-120 min)</a></li><li><a href="#commands">Commands</a></li><li><a href="#adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</a></li><li><a href="#layout">Layout</a></li><li><a href="#what-3-4-years-of-experience-actually-means-in-interviews">What &quot;3-4 years of experience&quot; actually means in interviews</a></li></ol></nav><article class="prose"><h1 id="ai-engineering-prep-learn-practise-prove-revise">AI Engineering Prep: learn → practise → prove → revise</h1>
+<p class="src">README.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#read-these-notes-in-a-browser-interactive">Read these notes in a browser (interactive)</a></li><li><a href="#setup-once-on-each-machine">Setup (once, on each machine)</a></li><li><a href="#the-daily-loop-60-120-min">The daily loop (60-120 min)</a></li><li><a href="#commands">Commands</a></li><li><a href="#working-on-the-docmind-capstone">Working on the DocMind capstone</a></li><li><a href="#adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</a></li><li><a href="#layout">Layout</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#what-3-4-years-of-experience-actually-means-in-interviews">What &quot;3-4 years of experience&quot; actually means in interviews</a></li></ol></nav><article class="prose"><h1 id="ai-engineering-prep-learn-practise-prove-revise">AI Engineering Prep: learn → practise → prove → revise</h1>
 <p>A personal system for going from "I've covered the syllabus" to "I can do this in an interview
 for a 3-4 YOE AI-engineer role". It has four parts:</p>
 <div class="tablewrap"><table>
@@ -85,8 +85,49 @@ reviews with spaced repetition (SM-2). So you always know <strong>what's weak</s
   <div class="panel" data-panel aria-live="polite"><strong>Pick a box.</strong> <span>Everything feeds one progress file, so you always know what to revise.</span></div>
 </div>
 
-<h2 id="setup-once">Setup (once)</h2>
-<div class="hl"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>~/python-pract
+<h2 id="read-these-notes-in-a-browser-interactive">Read these notes in a browser (interactive)</h2>
+<p>Open <strong><code>docs/site/index.html</code></strong> in any browser: double-click it, or run
+<code>xdg-open docs/site/index.html</code> (Linux), <code>open docs/site/index.html</code> (macOS), <code>explorer.exe docs\site\index.html</code> (Windows/WSL).
+It works offline, on any machine that has this repo, with no server and no install.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What's interactive</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Start here</strong></td>
+<td>clickable system map, 90-minute day, spaced-repetition + mastery explorer, searchable command list</td>
+</tr>
+<tr>
+<td><strong>Content guide</strong></td>
+<td>module workflow diagram, one real exercise as spec / solution / stub / test, "spot the bad test" quiz</td>
+</tr>
+<tr>
+<td><strong>Capstone roadmap</strong></td>
+<td>clickable DocMind architecture, chunker playground, milestone tracker (ticks are saved in that browser only)</td>
+</tr>
+<tr>
+<td><strong>Visual explainers</strong></td>
+<td>lazy-pipeline stepper, async timeline, retry-backoff visualiser, predict-the-output deck from the question banks</td>
+</tr>
+<tr>
+<td><strong>Decision log</strong></td>
+<td>a form that writes the markdown entry for you</td>
+</tr>
+</tbody>
+</table></div>
+<p>The pages are generated from the markdown files (<code>README.md</code>, <code>docs/CONTENT_GUIDE.md</code>,
+<code>capstone/ROADMAP.md</code>, <code>journal/decisions.md</code>) and your question banks. <strong>After editing any of them, run
+<code>study site</code></strong> to refresh the HTML. Widgets live in <code>study/site_assets/widgets/</code>, styles and behaviour in
+<code>study/site_assets/style.css</code> and <code>site.js</code>; they are plain HTML/CSS/JS with no dependencies.</p>
+<hr />
+<h2 id="setup-once-on-each-machine">Setup (once, on each machine)</h2>
+<p>You need Python 3.12+ and <a href="https://docs.astral.sh/uv/">uv</a> (<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>).</p>
+<div class="hl"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>&lt;your<span class="w"> </span>repo<span class="w"> </span>url&gt;<span class="w"> </span>~/python-pract<span class="w">   </span><span class="c1"># or copy the folder</span>
+<span class="nb">cd</span><span class="w"> </span>~/python-pract
 uv<span class="w"> </span>sync<span class="w"> </span>--all-packages<span class="w">              </span><span class="c1"># creates .venv with everything</span>
 <span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">           </span><span class="c1"># now `study`, `pytest`, `docmind` are on PATH</span>
 study<span class="w"> </span><span class="nb">test</span><span class="w">                          </span><span class="c1"># registers all exercises (they show as TODO)</span>
@@ -95,6 +136,8 @@ study<span class="w"> </span>report<span class="w">                        </spa
 </code></pre></div>
 
 <p>(Without activating, prefix commands with <code>uv run</code>, e.g. <code>uv run study today</code>.)</p>
+<p>Your progress lives in <code>progress/progress.json</code> and <code>journal/</code>. Commit them, or copy them to the
+other machine, to carry your history with you. Reading the HTML notes needs none of this setup.</p>
 <h2 id="the-daily-loop-60-120-min">The daily loop (60-120 min)</h2>
 <div class="widget" data-widget="daily-loop">
   <h3 class="w-title">A 90-minute day</h3>
@@ -184,6 +227,22 @@ study stubs [MODULE|capstone]     regenerate missing stubs from solutions (never
 <p><strong>Mastery</strong> (0-100) = average of (recent self/quiz grades) and (exercise pass rate), decayed
 when a review is overdue. <strong>≥80 strong · 60-79 ok · &lt;60 weak · ? = no evidence</strong> (no evidence
 also counts as a weakness: you haven't proven it yet).</p>
+<h2 id="working-on-the-docmind-capstone">Working on the DocMind capstone</h2>
+<p>DocMind is the project you build alongside the exercises. Milestone specs are the docstrings at the
+top of each stub file in <code>capstone/src/docmind/</code>; the order and later phases are in <code>capstone/ROADMAP.md</code>.</p>
+<div class="hl"><pre><span></span><code>study<span class="w"> </span><span class="nb">test</span><span class="w"> </span>capstone<span class="w">                 </span><span class="c1"># all milestone tests (unfinished ones show as TODO)</span>
+pytest<span class="w"> </span>capstone/tests/test_m02_loaders.py<span class="w">   </span><span class="c1"># one milestone</span>
+docmind<span class="w"> </span>ingest<span class="w"> </span>./some_docs<span class="w">          </span><span class="c1"># after M0.7: the real CLI (also `python -m docmind.cli`)</span>
+docmind<span class="w"> </span>search<span class="w"> </span><span class="s2">"your question"</span><span class="w"> </span>-k<span class="w"> </span><span class="m">5</span>
+</code></pre></div>
+
+<ol>
+<li>Pick the next unchecked milestone (tick it on the roadmap page when done).</li>
+<li>Implement it; <code>models.py</code> and <code>interfaces.py</code> are given, so read <code>interfaces.py</code> first.</li>
+<li>Stuck 30+ minutes? Compare with <code>solutions/capstone/src/docmind/...</code>, close it, redo it tomorrow.</li>
+<li>Log what you chose and rejected in <code>journal/decisions.md</code> (the Decision log page has a form).</li>
+</ol>
+<p>Don't run <code>study stubs capstone --force</code>: it overwrites your capstone code. Plain <code>study stubs</code> is always safe.</p>
 <h2 id="adding-future-topics-ml-llms-rag-agents">Adding future topics (ML, LLMs, RAG, agents, ...)</h2>
 <p>All future tracks are already in <code>curriculum/</code> as <code>planned</code>, so they don't pollute your stats.
 When you start one:</p>
@@ -207,9 +266,18 @@ journal/           mistakes.md, decisions.md, quiz_log.jsonl (your typed answers
 progress/          progress.json: commit it and watch yourself improve
 study/             the tracker itself (CLI, pytest plugin, SM-2, mastery)
 docs/              CONTENT_GUIDE.md (how to write exercises/questions)
-                   site/ = these notes as offline HTML (open index.html; rebuild with `study site`)
+                   site/ = these notes as interactive offline HTML (open index.html; rebuild with `study site`)
 </code></pre></div>
 
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li><strong><code>study: command not found</code></strong>: activate the venv (<code>source .venv/bin/activate</code>) or use <code>uv run study ...</code>.</li>
+<li><strong>A test shows as skipped / TODO</strong>: expected for unsolved stubs. It turns into pass or fail once you replace the <code>raise NotImplementedError</code>.</li>
+<li><strong><code>study site</code> says a module is missing</strong>: run <code>uv sync --all-packages</code> (installs <code>markdown</code> and <code>pygments</code>).</li>
+<li><strong>HTML pages look stale</strong>: you edited a markdown file or question bank; run <code>study site</code>.</li>
+<li><strong>Python version</strong>: the venv uses CPython 3.13 here; a few questions note 3.14 differences.</li>
+<li><strong>Reset your progress</strong>: delete <code>progress/progress.json</code> and <code>journal/quiz_log.jsonl</code>.</li>
+</ul>
 <h2 id="what-3-4-years-of-experience-actually-means-in-interviews">What "3-4 years of experience" actually means in interviews</h2>
 <p>Syllabus coverage gets you through L1 questions. What separates you at L3 is:</p>
 <ol>

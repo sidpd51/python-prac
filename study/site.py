@@ -33,7 +33,7 @@ WIDGETS = ASSETS / "widgets"
 # page file -> list of (where, heading id, widget name); widgets with a leading "!" are built in code
 INSERTS: dict[str, list[tuple[str, str, str]]] = {
     "readme.html": [
-        ("before", "setup-once", "system-map"),
+        ("before", "read-these-notes-in-a-browser-interactive", "system-map"),
         ("after", "the-daily-loop-60-120-min", "daily-loop"),
         ("before", "commands", "srs"),
         ("after", "commands", "commands"),
