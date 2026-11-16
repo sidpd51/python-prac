@@ -1,0 +1,505 @@
+# Interview question bank - Python Functions
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "fn-01"
+topic = "default_args"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+def add(item, bucket=[]):
+    bucket.append(item)
+    return bucket
+
+print(add(1))
+print(add(2))
+print(add(3, []))
+print(add(4))
+print(add.__defaults__)
+```
+'''
+a = '''
+```
+[1]
+[1, 2]
+[3]
+[1, 2, 4]
+([1, 2, 4],)
+```
+- Default values are evaluated **once**, when the `def` statement runs, and stored in
+  `add.__defaults__`. Every call that omits `bucket` gets the **same list**.
+- Passing an explicit list (`add(3, [])`) bypasses the shared default.
+- Fix: `def add(item, bucket=None): if bucket is None: bucket = []`.
+- Linters flag it (ruff/flake8-bugbear B006).
+'''
+followups = ["Is there ever a legitimate use for a mutable default? (memoisation cache - but prefer functools.cache)"]
+
+[[q]]
+id = "fn-02"
+topic = "default_args"
+level = 2
+kind = "debug"
+q = '''
+Every log record from a long-running worker has the same timestamp. Why?
+```python
+from datetime import datetime
+
+def log_event(name, when=datetime.now(), tags=()):
+    print(f"{when.isoformat()} {name} {tags}")
+```
+'''
+a = '''
+- `datetime.now()` runs **once at definition time** (module import); every call reuses that
+  value. Same family as the mutable default bug (ruff B008: function call in default).
+- Fix: `when: datetime | None = None` and `when = when or datetime.now(timezone.utc)` - or
+  better inject a clock: `def log_event(name, *, clock=datetime.now)` so tests can pass a
+  fake clock.
+- `tags=()` is fine: tuples are immutable, so sharing is harmless.
+- Also: use timezone-aware UTC timestamps in logs.
+'''
+
+[[q]]
+id = "fn-03"
+topic = "legb"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+x = 10
+
+def f():
+    print(x)
+    x = 20
+
+try:
+    f()
+except UnboundLocalError as e:
+    print(type(e).__name__, e)
+
+def g():
+    print(x)
+
+g()
+```
+'''
+a = '''
+```
+UnboundLocalError cannot access local variable 'x' where it is not associated with a value
+10
+```
+- Scope is decided at **compile time**: because `f` assigns `x` anywhere in its body, `x` is
+  local for the *whole* body. `print(x)` reads the local before it is bound.
+- `g` never assigns `x`, so the lookup goes L -> E -> **G** and finds 10.
+- Fixes: rename, pass `x` as a parameter, or `global x` if you really mean module state
+  (usually you don't). `UnboundLocalError` is a subclass of `NameError`.
+'''
+
+[[q]]
+id = "fn-04"
+topic = "legb"
+level = 1
+kind = "concept"
+q = "Explain the LEGB rule. What do `global` and `nonlocal` do?"
+a = '''
+- Name lookup order: **L**ocal (current function) -> **E**nclosing function scopes (innermost
+  first) -> **G**lobal (module) -> **B**uiltins (`len`, `print`, `ValueError`).
+- Only functions (and classes, comprehensions) create scopes - `if`/`for`/`with` blocks don't,
+  so a loop variable is still visible after the loop.
+- Assignment creates/binds a **local** name unless declared:
+  * `global x` -> assignments go to the module-level `x`;
+  * `nonlocal x` -> assignments go to `x` in the nearest enclosing *function* scope (must
+    already exist there).
+- Class bodies are special: methods do **not** see class-level names as enclosing scope
+  (use `self.x` / `ClassName.x`).
+- Shadowing builtins (`list = [...]`, `id = 5`) breaks later code in that scope.
+'''
+
+[[q]]
+id = "fn-05"
+topic = "legb"
+level = 3
+kind = "predict"
+q = '''
+What does this print, and how do you fix the first one?
+```python
+fs = [lambda: i for i in range(3)]
+print([f() for f in fs])
+gs = [lambda i=i: i for i in range(3)]
+print([g() for g in gs])
+```
+'''
+a = '''
+```
+[2, 2, 2]
+[0, 1, 2]
+```
+- Closures capture **variables (cells), not values**. All three lambdas share the
+  comprehension's single `i`, looked up when they are *called* - by then it's 2.
+  ("late binding")
+- `lambda i=i: i` evaluates the default at creation time, freezing the current value.
+  Alternatives: `functools.partial`, or a factory `def make(i): return lambda: i`.
+- Real-world version: creating callbacks/handlers or tool functions in a loop
+  (`for name in tools: registry[name] = lambda: run(name)`) - every handler runs the last tool.
+'''
+followups = ["Where does the shared variable live? (f.__closure__[0].cell_contents)"]
+
+[[q]]
+id = "fn-06"
+topic = "args"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+def f(a, b=2, *args, c, d=4, **kwargs):
+    print(a, b, args, c, d, kwargs)
+
+f(1, c=3)
+f(1, 2, 3, 4, c=5, e=6)
+f(*[1, 2], **{"c": 3, "z": 0})
+try:
+    f(1, 2, 3)
+except TypeError as e:
+    print("TypeError:", e)
+```
+'''
+a = '''
+```
+1 2 () 3 4 {}
+1 2 (3, 4) 5 4 {'e': 6}
+1 2 () 3 4 {'z': 0}
+TypeError: f() missing 1 required keyword-only argument: 'c'
+```
+- `*args` collects surplus positionals into a **tuple**; `**kwargs` collects surplus keywords
+  into a **dict**.
+- Any parameter after `*args` (or a bare `*`) is **keyword-only** - `c` can never be filled
+  positionally, and here it has no default, so it's required.
+- At the call site `*seq` / `**mapping` unpack into positional / keyword arguments.
+'''
+
+[[q]]
+id = "fn-07"
+topic = "pos_kw_only"
+level = 2
+kind = "concept"
+q = "What do `/` and `*` mean in `def f(a, b, /, c, *, d)`? Why would you use each in a library API?"
+a = '''
+- Parameters before `/` are **positional-only** (`a`, `b`); between `/` and `*` either way
+  (`c`); after `*` **keyword-only** (`d`).
+- Positional-only (3.8+): the name is an implementation detail - you can rename it without
+  breaking callers, and `**kwargs` can still accept a key with that name
+  (`def call(fn, /, **kwargs)` lets the user pass `fn=` through). Builtins like `len(obj, /)`
+  have always worked this way.
+- Keyword-only: forces readable calls for flags/options (`client.create(model, temperature=0.2,
+  stream=True)` instead of `create(model, 0.2, True)` - the "boolean trap"), and lets you add
+  or reorder options later without breaking anyone.
+- Typical LLM-client shape: `def complete(prompt, /, *, model, temperature=0.0, max_tokens=None, **extra)`.
+'''
+
+[[q]]
+id = "fn-08"
+topic = "unpacking"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+first, *middle, last = [1, 2, 3, 4, 5]
+print(first, middle, last)
+a, (b, c) = 1, (2, 3)
+print(a, b, c)
+print({**{"a": 1, "b": 2}, **{"b": 3}}, [*range(3), *"ab"])
+
+def f(x, y):
+    return x - y
+
+print(f(*(5, 3)), f(**{"y": 5, "x": 3}))
+```
+'''
+a = '''
+```
+1 [2, 3, 4] 5
+1 2 3
+{'a': 1, 'b': 3} [0, 1, 2, 'a', 'b']
+2 -2
+```
+- Starred assignment collects "the rest" into a **list** (even from a tuple); only one
+  starred target allowed.
+- Nested patterns unpack nested structures.
+- `{**a, **b}` merges dicts, later keys win (shallow!); `a | b` does the same (3.9+).
+  `[*x, *y]` concatenates any iterables.
+- `f(*seq)` / `f(**mapping)` spread at call time; mapping keys must match parameter names.
+'''
+
+[[q]]
+id = "fn-09"
+topic = "reference_vs_call"
+level = 1
+kind = "debug"
+q = '''
+Each line has the same bug. What is it?
+```python
+handlers = {"start": on_start(), "stop": on_stop()}
+button.on_click(save())
+docs.sort(key=len())
+thread = Thread(target=embed_all())
+```
+'''
+a = '''
+- `f` is a **reference** to a function object; `f()` **calls** it immediately and gives you
+  its return value.
+- Every line calls the function at setup time and passes/stores the *result* (often `None`)
+  instead of the function:
+  * `handlers = {"start": on_start, "stop": on_stop}`
+  * `button.on_click(save)` (or `lambda: save(doc)` / `partial(save, doc)` if it needs args)
+  * `docs.sort(key=len)` (`len()` raises TypeError right away)
+  * `Thread(target=embed_all)` - the buggy version runs `embed_all` in the **main** thread,
+    then starts a thread with `target=None`.
+'''
+
+[[q]]
+id = "fn-10"
+topic = "first_class"
+level = 2
+kind = "concept"
+q = "What does it mean that functions are first-class objects in Python? Give practical uses in an LLM application."
+a = '''
+- Functions are ordinary objects: assign them to names, store them in lists/dicts, pass them
+  as arguments, return them from functions, attach attributes.
+- They carry metadata: `__name__`, `__doc__`, `__defaults__`, `__annotations__`,
+  `__closure__`, `__code__` - and `inspect.signature(f)` gives the parameter list.
+- Uses:
+  * a **tool registry** `{"search": search, "calculator": calc}` dispatched by the name the
+    model returns;
+  * generating tool JSON schemas from signatures + docstrings (what agent SDKs do);
+  * strategy injection: `chunker=split_by_tokens`, `embed_fn=...`, `clock=time.time` for tests;
+  * callbacks / hooks (on_token for streaming), decorators (retry, cache, tracing).
+'''
+
+[[q]]
+id = "fn-11"
+topic = "higher_order"
+level = 2
+kind = "design"
+q = "Design a higher-order helper that adds retries with exponential backoff to any API call. What does the signature look like and what are the pitfalls?"
+a = '''
+```python
+def with_retry(fn, /, *, attempts=3, base_delay=0.5, retry_on=(TimeoutError, RateLimitError),
+               sleep=time.sleep):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        for i in range(attempts):
+            try:
+                return fn(*args, **kwargs)
+            except retry_on:
+                if i == attempts - 1:
+                    raise
+                sleep(base_delay * 2 ** i * random.uniform(0.5, 1.5))  # jitter
+    return wrapper
+```
+- Takes a function, returns a function (`*args, **kwargs` forwarding keeps it generic);
+  `functools.wraps` keeps name/docstring for logs and tracing.
+- Retry only **transient** errors (timeouts, 429, 5xx) - never 400s/validation errors.
+- Exponential backoff + **jitter** to avoid thundering herds; honour `Retry-After`.
+- Cap total time; make it idempotency-aware (retrying a non-idempotent POST can double-charge).
+- Inject `sleep` (or use an async variant with `asyncio.sleep`) so it's testable.
+- Libraries: tenacity, backoff; most SDKs have built-in `max_retries`.
+'''
+
+[[q]]
+id = "fn-12"
+topic = "recursion"
+level = 2
+kind = "concept"
+q = "What are the limits of recursion in Python, and how do you work around them?"
+a = '''
+- Each call adds a frame; CPython raises `RecursionError` at `sys.getrecursionlimit()`
+  (default 1000). There is **no tail-call optimisation** (by design - keeps tracebacks).
+- `sys.setrecursionlimit` higher is risky: past the real C stack you can segfault the process
+  (3.12+ moved Python-to-Python calls off the C stack, but C-level recursion - e.g. `repr`,
+  `json` of deep objects - still has limits).
+- Workarounds:
+  * rewrite with an explicit **stack** (DFS) or **queue** (BFS) - the standard answer for
+    walking trees/JSON of unknown depth;
+  * memoise overlapping subproblems (`functools.cache`) to cut the call count;
+  * cap depth for untrusted inputs (deeply nested JSON is a DoS vector).
+- Recursion is still the clearest way to express tree algorithms of bounded depth.
+'''
+
+[[q]]
+id = "fn-13"
+topic = "recursion"
+level = 3
+kind = "predict"
+q = '''
+What does this print?
+```python
+def flatten(xs, acc=[]):
+    for x in xs:
+        if isinstance(x, list):
+            flatten(x, acc)
+        else:
+            acc.append(x)
+    return acc
+
+print(flatten([1, [2, [3]]]))
+print(flatten([4]))
+```
+'''
+a = '''
+```
+[1, 2, 3]
+[1, 2, 3, 4]
+```
+- Passing `acc` down the recursion is a legit accumulator pattern - but making it a
+  **mutable default** means the accumulator survives across top-level calls.
+- Fix: `acc=None` + `if acc is None: acc = []`, or return new lists
+  (`out.extend(flatten(x))`), or a generator with `yield from flatten(x)`.
+- Bonus: strings are iterable but must not be recursed into - check `isinstance(x, list)`
+  (or `(list, tuple)`), not "is iterable".
+'''
+
+[[q]]
+id = "fn-14"
+topic = "return_values"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+def f(x):
+    if x > 0:
+        return "pos"
+    elif x < 0:
+        return "neg"
+
+def g():
+    return 1, 2
+
+def h():
+    try:
+        return "try"
+    finally:
+        print("finally runs")
+
+print(f(0), g(), type(g()).__name__)
+print(h())
+```
+'''
+a = '''
+```
+None (1, 2) tuple
+finally runs
+try
+```
+- A function that falls off the end (or a bare `return`) returns **None** - a classic source
+  of `NoneType has no attribute` errors later. Type checkers catch this with `-> str`.
+- `return 1, 2` returns **one tuple**; callers unpack `a, b = g()`. For more than 2-3 values
+  prefer a NamedTuple/dataclass.
+- `finally` runs before the function actually returns (a `return` inside `finally` would even
+  override the first one - don't do that; 3.14 warns about it, PEP 765).
+'''
+
+[[q]]
+id = "fn-15"
+topic = "keyword_args"
+level = 2
+kind = "compare"
+q = '''
+Compare these call styles. Which would you accept in code review and why?
+```python
+fetch_docs("kb", 10, True, False, 0.7)
+fetch_docs("kb", k=10, rerank=True, include_meta=False, min_score=0.7)
+```
+'''
+a = '''
+- Second one. Keyword arguments make the call **self-documenting**, order-independent, and
+  robust to signature changes (adding a parameter in the middle can't silently shift values).
+- The first is the "boolean trap": `True, False` mean nothing at the call site, and swapping
+  two same-typed args is a silent bug.
+- Make it impossible at the API level: `def fetch_docs(index, /, *, k=5, rerank=False,
+  include_meta=True, min_score=0.0)`.
+- Keep 1-2 obvious leading positionals (the "subject" of the call); everything optional is
+  keyword-only. Consider an options dataclass when the list grows long.
+'''
+
+[[q]]
+id = "fn-16"
+topic = "definition"
+level = 3
+kind = "concept"
+q = '''
+What exactly happens when Python executes a `def` statement? Explain why this runs on 3.14
+but raises `NameError` at definition time on 3.13:
+```python
+def f(x: UndefinedName) -> AlsoUndefined:
+    return x
+print(f(1))
+```
+'''
+a = '''
+- `def` is an executable statement: the body was already compiled to a **code object**; at
+  runtime `def` builds a **function object** binding that code to the current globals,
+  evaluates the **default values** (once!), creates closure cells for free variables, and
+  binds the name. The body itself doesn't run until called.
+- Annotations: up to 3.13 they are evaluated at definition time (hence NameError unless
+  `from __future__ import annotations`). **3.14 (PEP 649/749) defers them**: they're computed
+  lazily on first access of `__annotations__` (or via `annotationlib.get_annotations(f,
+  format=Format.STRING)`), so forward references just work. On 3.14 the snippet prints `1`;
+  accessing `f.__annotations__` would raise the NameError then.
+- Consequences: defaults are snapshots, functions can be defined conditionally or in loops,
+  decorators run at definition time (import time for module-level functions).
+'''
+
+[[q]]
+id = "fn-17"
+topic = "positional_args"
+level = 2
+kind = "predict"
+q = '''
+For `def f(a, b): return a, b`, what does each call produce?
+```python
+f(1, 2)
+f(b=1, a=2)
+f(1, a=1)
+f(1)
+f(1, 2, 3)
+```
+'''
+a = '''
+```
+f(1, 2) -> (1, 2)
+f(b=1, a=2) -> (2, 1)
+f(1, a=1) -> TypeError: f() got multiple values for argument 'a'
+f(1) -> TypeError: f() missing 1 required positional argument: 'b'
+f(1, 2, 3) -> TypeError: f() takes 2 positional arguments but 3 were given
+```
+- Positional arguments fill parameters left to right, then keywords fill by name; a parameter
+  can't be filled twice.
+- `f(a=1, 2)` isn't a TypeError but a **SyntaxError** - positional arguments can't follow
+  keyword arguments.
+- These errors happen at call time *before* the body runs, which is what
+  `inspect.signature(f).bind(...)` lets you check ahead of time.
+'''
+
+[[q]]
+id = "fn-18"
+topic = "first_class"
+level = 3
+kind = "compare"
+q = "You need a configured embedding function (model name, batch size, API client) to pass into a RAG pipeline that expects `embed(texts) -> vectors`. Compare: closure, `functools.partial`, callable class (`__call__`), and a plain function with globals."
+a = '''
+- **Closure** (`def make_embedder(model, batch): def embed(texts): ...; return embed`):
+  lightweight, state is private; harder to inspect/serialise, mutable state needs `nonlocal`.
+- **functools.partial(embed, model=..., batch_size=...)**: zero boilerplate, introspectable
+  (`.func`, `.args`, `.keywords`), picklable if the underlying function is - nice for
+  multiprocessing.
+- **Callable class**: best when there is real state or lifecycle - an HTTP client to close,
+  a cache, metrics, retries; supports `__repr__`, type hints via a Protocol, easy to mock.
+- **Globals**: hidden coupling, untestable, not thread/tenant-safe - avoid.
+- All of them satisfy the same interface (`Callable[[list[str]], list[list[float]]]`), so
+  define that as a `Protocol` and the pipeline doesn't care which one it gets.
+'''

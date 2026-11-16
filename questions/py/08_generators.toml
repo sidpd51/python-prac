@@ -1,0 +1,288 @@
+# Interview question bank - Generators
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "gen-01"
+topic = "functions"
+level = 1
+kind = "concept"
+q = "What happens when you *call* a function that contains `yield`? When does its body start running?"
+a = """
+- Calling it does **not** run the body; it returns a **generator object** (state: GEN_CREATED).
+- The body runs on the first `next()` / `send(None)` up to the first `yield`, then **suspends** -
+  the frame (locals + instruction pointer) is kept alive on the heap.
+- Each next() resumes from that point. When the body returns, `StopIteration` is raised
+  (with the return value in `.value`).
+- Practical consequence: argument validation inside a generator is **deferred** until the
+  first next(). Fix: a normal function that validates and returns an inner generator.
+"""
+followups = ["How would you check the state of a generator? (inspect.getgeneratorstate)", "Where does the generator's frame live?"]
+
+[[q]]
+id = "gen-02"
+topic = "exhaustion"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+squares = (x * x for x in range(4))
+print(sum(squares))
+print(sum(squares))
+print(list(squares))
+```
+'''
+a = """
+```
+14
+0
+[]
+```
+A generator is a **one-pass iterator**. The first `sum` exhausts it; afterwards every
+consumer sees an empty iterator (no error!). Silent empty results are a classic bug when
+a generator is passed to two consumers - materialize with `list()` or recreate it, or use
+`itertools.tee` (which buffers).
+"""
+followups = ["How is this different from range(4), which can be iterated twice?"]
+
+[[q]]
+id = "gen-03"
+topic = "list_vs_generator"
+level = 1
+kind = "compare"
+q = "List comprehension vs generator expression: when would you use each? Give a concrete trade-off."
+a = """
+- **List**: materialized, O(n) memory, reusable, supports len()/indexing/slicing, faster to
+  iterate repeatedly. Use when data is small or needed more than once.
+- **Generator**: lazy, O(1) memory, single-pass, can represent infinite/streaming data,
+  can short-circuit (`any(...)` stops early). Use for large files, streams, pipelines.
+- `sys.getsizeof([..1e6 items..])` ~ 8 MB vs generator ~ 200 bytes.
+- Gotcha: generator raises errors *late* (at consumption), which can move a stack trace
+  far away from the cause.
+"""
+
+[[q]]
+id = "gen-04"
+topic = "pipelines"
+level = 2
+kind = "design"
+q = "You must process a 50 GB JSONL file of documents, clean them, chunk them and send chunks to an embedding API in batches of 100. Sketch the design in Python."
+a = """
+- A chain of generators: `read_lines(path)` -> `parse_json` -> `clean` -> `chunk(size, overlap)`
+  (preserving doc_id/source metadata) -> `batched(100)` -> embed -> upsert.
+- Memory is O(batch), not O(file): pull-based, each stage holds one item.
+- Open file with `with`, iterate line by line (file objects are lazy iterators), explicit
+  `encoding="utf-8"` and `errors=` policy.
+- Bad records: log + skip (or dead-letter file), don't crash a 6-hour job.
+- The embed stage is I/O bound -> async with a Semaphore / bounded concurrency, retries with
+  backoff; checkpoint progress (last processed offset/id) to resume after failure.
+- Batching by **token budget** as well as count.
+"""
+followups = ["How do you make this resumable?", "Where would you parallelize, and with what (async vs processes)?"]
+
+[[q]]
+id = "gen-05"
+topic = "send"
+level = 2
+kind = "concept"
+q = "What does `gen.send(value)` do? Why does `gen.send(42)` on a fresh generator raise `TypeError`?"
+a = """
+- `send(v)` resumes the generator and makes the currently paused `yield` **expression**
+  evaluate to `v`; it returns the next yielded value. `next(g)` == `g.send(None)`.
+- A fresh generator isn't paused at any yield yet, so there is nowhere to deliver a value ->
+  `TypeError: can't send non-None value to a just-started generator`. You must **prime** it
+  with `next(g)` / `send(None)` first (often via a `@primed` decorator).
+- This bidirectional channel is how pre-`async` coroutines worked; `await` is built on the
+  same machinery.
+"""
+
+[[q]]
+id = "gen-06"
+topic = "close"
+level = 2
+kind = "concept"
+q = "What do `throw()` and `close()` do to a generator? What happens if a generator yields while handling GeneratorExit?"
+a = """
+- `throw(exc)` raises `exc` **at the paused yield**; the generator may catch it and yield
+  again (the value is returned from throw()), or let it propagate.
+- `close()` throws `GeneratorExit` at the paused yield. The generator should clean up
+  (finally / with blocks run) and return. If it **yields** instead -> `RuntimeError:
+  generator ignored GeneratorExit`.
+- Garbage collection of an unfinished generator calls close(), which is why `finally`
+  in generators eventually runs - but *when* is not guaranteed on non-refcounting
+  implementations; prefer explicit `close()` or `contextlib.closing`.
+"""
+
+[[q]]
+id = "gen-07"
+topic = "yield_from"
+level = 2
+kind = "concept"
+q = "Is `yield from sub` just shorthand for `for x in sub: yield x`? What else does it do?"
+a = """
+No. `yield from`:
+1. Forwards `send()` values and `throw()`/`close()` calls into the sub-generator.
+2. Evaluates to the sub-generator's **return value** (`StopIteration.value`).
+3. Handles all the edge cases of the delegation protocol (PEP 380).
+It's how you compose generator-based coroutines and recursive generators (tree walking,
+flattening).
+"""
+
+[[q]]
+id = "gen-08"
+topic = "lazy_evaluation"
+level = 2
+kind = "predict"
+q = '''
+What does this print, and why?
+```python
+def gen():
+    print("start")
+    yield 1
+    print("middle")
+    yield 2
+    print("end")
+
+g = gen()
+print("created")
+print(next(g))
+print(list(g))
+```
+'''
+a = """
+```
+created
+start
+1
+middle
+end
+[2]
+```
+Nothing runs on `gen()`. `next` runs to the first yield. `list()` resumes, prints middle,
+collects 2, resumes again, prints end, gets StopIteration -> `[2]`.
+"""
+
+[[q]]
+id = "gen-09"
+topic = "suspension"
+level = 3
+kind = "debug"
+q = '''
+A teammate's validation never fires. Why, and how do you fix it without losing laziness?
+```python
+def read_chunks(path, size):
+    if size <= 0:
+        raise ValueError("size must be positive")
+    with open(path) as f:
+        while chunk := f.read(size):
+            yield chunk
+
+chunks = read_chunks("data.txt", 0)   # no error here!
+```
+'''
+a = """
+The function is a generator function, so **nothing in its body** - including the check -
+runs until the first `next()`. The error surfaces later, far from the bug.
+Fix: split into an eager outer function and a lazy inner one:
+```python
+def read_chunks(path, size):
+    if size <= 0:
+        raise ValueError(...)
+    return _read_chunks(path, size)
+```
+Bonus: the file also opens lazily; the outer function could check `path.exists()` eagerly.
+"""
+
+[[q]]
+id = "gen-10"
+topic = "chunk_metadata"
+level = 2
+kind = "design"
+q = "In a RAG ingestion pipeline, what metadata would you keep on each chunk and why? How do generators help here?"
+a = """
+- `doc_id`, `source`/URL/path, `page`/section/heading path, `chunk_index`, char/token
+  offsets, `created_at`/version or content hash, tenant/ACL fields, language.
+- Why: citations in answers, **metadata filtering** in the vector DB (tenant, date, doc type),
+  dedup/re-index when a doc changes (hash), debugging retrieval (which chunk came from where),
+  neighbour expansion (fetch chunk_index +/- 1).
+- Generators: each stage passes the metadata along with the chunk lazily (`yield from`
+  per document), so you never hold the whole corpus in memory. Copy metadata per chunk -
+  don't share one mutable dict.
+"""
+
+[[q]]
+id = "gen-11"
+topic = "memory_efficiency"
+level = 3
+kind = "compare"
+q = "Generators are lazy and memory-efficient. When are they the *wrong* choice?"
+a = """
+- You need random access, len(), multiple passes, or sorting -> you'll materialize anyway.
+- Small data where the list is simpler and faster (generator frame overhead per item).
+- Errors raised lazily make debugging harder; side effects run at consumption time, maybe
+  after a resource (file, DB session, request context) was closed.
+- Holding a generator open can hold a file/DB cursor open indefinitely.
+- Sharing between threads: generators aren't thread-safe ("generator already executing").
+- CPU-bound hot loops: vectorize with NumPy instead of per-item Python generators.
+"""
+
+[[q]]
+id = "gen-12"
+topic = "rag_chunking"
+level = 3
+kind = "design"
+q = "Compare fixed-size character chunking with overlap vs. recursive/structure-aware chunking for RAG. What chunk size and overlap would you start with and how would you decide?"
+a = """
+- Fixed-size char/token windows: simple, predictable cost, but split sentences/tables/code
+  mid-way; overlap (10-20%) mitigates boundary loss at the cost of index size + duplicate hits.
+- Recursive (paragraph -> sentence -> word separators) / markdown/heading-aware: keeps
+  semantic units, better retrieval quality, variable size.
+- Semantic chunking (embedding-similarity breakpoints): best coherence, more compute.
+- Start ~300-800 tokens, 10-15% overlap, measured in **tokens** not chars (the embedding model
+  has a token limit). Then **decide with evals**: recall@k / MRR on a golden question set,
+  answer faithfulness, cost. Chunking is a hyperparameter, not a guess.
+"""
+
+[[q]]
+id = "gen-13"
+topic = "expressions"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+nums = [1, 2, 3]
+g = (n * 10 for n in nums)
+nums.append(4)
+print(list(g))
+
+x = 5
+h = (x + i for i in range(2))
+x = 100
+print(list(h))
+```
+'''
+a = """
+```
+[10, 20, 30, 40]
+[100, 101]
+```
+The outermost iterable (`nums`, `range(2)`) is evaluated **immediately** when the generator
+expression is created, but `nums` is a reference to the list, so the appended 4 is seen.
+Everything else (`x`) is looked up **lazily** at consumption time, so x=100 is used.
+"""
+
+[[q]]
+id = "gen-14"
+topic = "chaining"
+level = 2
+kind = "concept"
+q = "How would you chain/merge several iterables lazily, split one iterator into two consumers, or take the first N items? Name the stdlib tools and their trade-offs."
+a = """
+- `itertools.chain(a, b)` / `chain.from_iterable(iter_of_iters)` - lazy concatenation.
+- `itertools.islice(it, n)` - first N without materializing; doesn't over-consume.
+- `itertools.tee(it, 2)` - two independent consumers, but **buffers** items that one
+  consumer has seen and the other hasn't (can grow unbounded); don't use the original after.
+- `heapq.merge(*sorted_iters)` - lazy k-way merge of sorted streams.
+- `itertools.batched(it, n)` (3.12+) - fixed-size batches.
+"""

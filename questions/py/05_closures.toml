@@ -1,0 +1,395 @@
+# Interview question bank - Closures and Scope
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "clo-01"
+topic = "closures"
+level = 1
+kind = "concept"
+q = "What is a closure in Python? When is it created, and what exactly does it 'remember'?"
+a = '''
+- A closure is a **function object plus references to variables of an enclosing function
+  scope** that the inner function uses (its *free variables*).
+- It's created each time the `def`/`lambda` statement runs inside the outer function - so
+  every call of the factory produces a new function with **new cells**.
+- It remembers **variables (cells), not values**: if the enclosing variable is rebound
+  later, the closure sees the new value when it runs.
+- Captured objects stay alive as long as the closure does (the outer frame is gone, the
+  cells survive).
+- Use cases: factories (`make_counter`), decorators, callbacks that carry config,
+  partial application.
+'''
+followups = ["Where are the cells stored? (fn.__closure__)", "How is this different from a default argument?"]
+
+[[q]]
+id = "clo-02"
+topic = "lexical_scoping"
+level = 1
+kind = "concept"
+q = "Explain the LEGB rule. Is Python's scoping lexical or dynamic?"
+a = '''
+- Name lookup order: **L**ocal -> **E**nclosing function scopes -> **G**lobal (module) ->
+  **B**uiltins.
+- **Lexical** (static): which scope a name belongs to is decided by *where the code is
+  written*, at compile time - not by who calls the function.
+- Class bodies are NOT an enclosing scope for functions/comprehensions defined inside them
+  (methods must use `self.x` / `ClassName.x`).
+- Assigning to a name anywhere in a function makes it local for the *whole* function unless
+  declared `global`/`nonlocal`.
+'''
+
+[[q]]
+id = "clo-03"
+topic = "lexical_scoping"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+prefix = "global"
+
+def show():
+    return prefix
+
+def caller():
+    prefix = "caller"
+    return show()
+
+def outer():
+    x = 1
+    def f():
+        return x
+    x = 2
+    return f
+
+print(caller())
+print(outer()())
+```
+'''
+a = '''
+```
+global
+2
+```
+- `show` looks up `prefix` lexically: not local, no enclosing function, so the **global**
+  one. The caller's local `prefix` is irrelevant (Python is not dynamically scoped).
+- `f` captures the *variable* `x`, which is `2` by the time `f` runs - closures bind late.
+'''
+
+[[q]]
+id = "clo-04"
+topic = "local_global"
+level = 1
+kind = "compare"
+q = "`global` vs `nonlocal`: what does each do, and when do you need neither?"
+a = '''
+- `global x`: assignments to `x` in this function rebind the **module-level** name.
+- `nonlocal x`: assignments rebind `x` in the **nearest enclosing function** scope
+  (must already exist there - otherwise `SyntaxError: no binding for nonlocal 'x' found`;
+  it never reaches module globals).
+- You need **neither** to *read* an outer name, or to **mutate** an outer object
+  (`cache[key] = v`, `items.append(x)`) - that's not rebinding the name.
+- In production code, `global` mutable state is a smell (testing, threads, multiple
+  instances); prefer passing state or an object. `nonlocal` is fine for small closures.
+'''
+
+[[q]]
+id = "clo-05"
+topic = "unboundlocalerror"
+level = 1
+kind = "predict"
+q = '''
+What happens here, and why?
+```python
+x = 10
+
+def f():
+    print(x)
+    x = 20
+
+try:
+    f()
+except UnboundLocalError as e:
+    print(type(e).__name__, "-", e)
+```
+'''
+a = '''
+```
+UnboundLocalError - cannot access local variable 'x' where it is not associated with a value
+```
+- Because `x` is **assigned** in `f`, the compiler marks it local for the whole body. The
+  `print(x)` reads the local before it's bound -> `UnboundLocalError` (a subclass of
+  `NameError`). The global `x` is never consulted.
+- Fixes: `global x` (if you really mean the global), a different local name, or pass `x`
+  as a parameter.
+'''
+
+[[q]]
+id = "clo-06"
+topic = "closures"
+level = 2
+kind = "predict"
+q = '''
+What does this print? How would you fix the first version?
+```python
+fns = [lambda: i for i in range(3)]
+print([f() for f in fns])
+fns = [lambda i=i: i for i in range(3)]
+print([f() for f in fns])
+```
+'''
+a = '''
+```
+[2, 2, 2]
+[0, 1, 2]
+```
+- **Late binding**: all three lambdas close over the same variable `i`, looked up when they
+  are *called* - after the loop, `i == 2`.
+- `i=i` evaluates the default **at definition time**, freezing the current value.
+- Cleaner alternatives: a factory function (`def make(i): return lambda: i`) - each call
+  gets its own cell - or `functools.partial(fn, i)`. The default-arg trick leaks an
+  overridable parameter into the signature.
+'''
+followups = ["Does the same bug happen with a `for` loop that appends `def` functions?", "Why does ruff/flake8-bugbear flag B023?"]
+
+[[q]]
+id = "clo-07"
+topic = "co_freevars"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+def make():
+    count = 0
+    def inc():
+        nonlocal count
+        count += 1
+        return count
+    def get():
+        return count
+    return inc, get
+
+inc, get = make()
+inc(); inc()
+inc2, get2 = make()
+inc2()
+print(get(), get2())
+print(inc.__code__.co_freevars, make.__code__.co_cellvars)
+print(inc.__closure__[0] is get.__closure__[0], inc.__closure__[0] is inc2.__closure__[0])
+```
+'''
+a = '''
+```
+2 1
+('count',) ('count',)
+True False
+```
+- `inc` and `get` come from the **same** `make()` call, so they share one cell; the second
+  `make()` call creates a fresh cell.
+- `co_freevars` (on the inner code object) lists names captured from outside;
+  `co_cellvars` (on the outer code object) lists locals that inner functions capture.
+- `__closure__` is a tuple of cell objects aligned with `co_freevars`; `cell.cell_contents`
+  is the current value.
+'''
+
+[[q]]
+id = "clo-08"
+topic = "nonlocal"
+level = 2
+kind = "debug"
+q = '''
+This rate counter for an LLM gateway crashes on the first call. Why? Give two fixes and say
+which you prefer.
+```python
+def make_rate_counter(limit):
+    used = 0
+    def allow():
+        if used >= limit:
+            return False
+        used += 1
+        return True
+    return allow
+```
+'''
+a = '''
+- `used += 1` is an assignment, so `used` is **local to `allow`**; the earlier `used >= limit`
+  read raises `UnboundLocalError`. (`limit` is fine - it's only read, so it's a free variable.)
+- Fix 1 (preferred): `nonlocal used` at the top of `allow`.
+- Fix 2: mutable container (`used = [0]`, `used[0] += 1`) - the pre-Python-3 workaround;
+  works but obscures intent.
+- Fix 3 when state grows (reset, stats, thread safety): a small class with `__call__`.
+- Production note: `used += 1` is not atomic across threads; guard with a `threading.Lock`
+  if the counter is shared.
+'''
+
+[[q]]
+id = "clo-09"
+topic = "free_variables"
+level = 2
+kind = "concept"
+q = "What is a free variable? How does CPython implement access to it after the outer function has returned?"
+a = '''
+- A **free variable** of a function is a name it uses that is neither local nor global -
+  it's bound in an enclosing function scope.
+- The compiler notices this and stores such variables in **cell objects** instead of the
+  normal fast-locals slots. The outer function's code lists them in `co_cellvars`; the inner
+  code lists them in `co_freevars`.
+- When the inner `def` runs, the function object gets `__closure__` = tuple of those cells.
+  After the outer frame dies, the cells (and the objects they reference) stay alive.
+- Access uses `LOAD_DEREF`/`STORE_DEREF` bytecodes (visible via `dis`).
+'''
+
+[[q]]
+id = "clo-10"
+topic = "inspection"
+level = 2
+kind = "concept"
+q = "You have a callback someone built with a factory and you need to know what config it captured. How do you inspect it?"
+a = '''
+- `fn.__code__.co_freevars` -> names; `fn.__closure__` -> cells in the same order;
+  `dict(zip(fn.__code__.co_freevars, (c.cell_contents for c in fn.__closure__)))`.
+- `inspect.getclosurevars(fn)` returns `nonlocals`, `globals`, `builtins`, `unbound` in
+  one go.
+- `__closure__` is `None` for a plain function. An **empty cell** (variable not assigned
+  yet / deleted) raises `ValueError` on `cell_contents`.
+- Cells are writable (`cell.cell_contents = x`, 3.7+) - handy for tests/debugging, a smell
+  in production code.
+'''
+
+[[q]]
+id = "clo-11"
+topic = "lexical_scoping"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+class Config:
+    base = 10
+    doubled = base * 2
+    try:
+        values = [base + i for i in range(3)]
+    except NameError as e:
+        print("NameError:", e)
+
+print(Config.doubled)
+```
+'''
+a = '''
+```
+NameError: name 'base' is not defined
+20
+```
+- Statements directly in the class body see class-level names (`doubled = base * 2` works).
+- But a **class body is not an enclosing scope** for nested scopes: the comprehension's
+  expression (like a method) can't see `base`. PEP 709 inlined comprehensions in 3.12 but
+  deliberately kept this behaviour.
+- Only the *outermost iterable* is evaluated in the class scope, so
+  `[i for i in range(base)]` would work.
+'''
+
+[[q]]
+id = "clo-12"
+topic = "closures"
+level = 2
+kind = "compare"
+q = "Closure vs class with `__call__` vs `functools.partial`: how do you choose?"
+a = '''
+- **Closure**: one behaviour + a little private state, minimal code (counters, decorators,
+  configured callbacks). State is hidden (good encapsulation) but hard to inspect, extend,
+  pickle or reset.
+- **Class with `__call__`**: multiple operations on the state (reset, stats), you want
+  `repr`, typing, subclassing, or pickling for multiprocessing. Clearer once state grows.
+- **`functools.partial`**: you just want to pre-fill arguments; it's introspectable
+  (`.func`, `.args`, `.keywords`), picklable if the function is, and avoids late-binding bugs.
+- Closures and lambdas can't be pickled -> can't be sent to `ProcessPoolExecutor` workers.
+'''
+
+[[q]]
+id = "clo-13"
+topic = "nested_functions"
+level = 2
+kind = "debug"
+q = '''
+An agent registers one tool handler per tool. Every tool call ends up running the
+`search` handler. Find and fix the bug.
+```python
+def build_handlers(tools, dispatch):
+    handlers = {}
+    for name in tools:              # ["calculator", "weather", "search"]
+        def handler(args):
+            return dispatch(name, args)
+        handlers[name] = handler
+    return handlers
+```
+'''
+a = '''
+- All `handler` functions close over the **same** loop variable `name`; it's read when the
+  handler is called, after the loop finished -> always `"search"` (late binding).
+- Fix with a factory so each handler gets its own cell:
+```python
+def _make_handler(name, dispatch):
+    def handler(args):
+        return dispatch(name, args)
+    return handler
+
+handlers = {name: _make_handler(name, dispatch) for name in tools}
+```
+- Or `functools.partial(dispatch, name)`, or `def handler(args, name=name)` (but that
+  exposes `name` as an overridable parameter - bad for an LLM-facing tool schema).
+'''
+
+[[q]]
+id = "clo-14"
+topic = "closures"
+level = 3
+kind = "design"
+q = "Closures in long-running services can leak memory. How, and how do you avoid it?"
+a = '''
+- A closure keeps every captured object alive: capturing a large DataFrame, a model, a
+  request object or `self` in a callback registered on a long-lived emitter/event loop
+  keeps them alive for the emitter's lifetime.
+- Memoizing closures with unbounded dicts grow forever (cache per prompt/text).
+- Closures stored on the object they capture create **reference cycles** (`self.cb = lambda:
+  self.x`) - freed only by the cyclic GC, and delayed `__del__`/cleanup.
+- Mitigations: capture only what you need (`model_name = self.model_name`, not `self`), use
+  `weakref.ref` / `weakref.WeakMethod` for callbacks, bounded caches (`lru_cache(maxsize)`,
+  TTL), unregister callbacks, and profile with `tracemalloc`/`gc.get_referrers`.
+'''
+
+[[q]]
+id = "clo-15"
+topic = "nonlocal"
+level = 3
+kind = "concept"
+q = "Is a closure-based counter (`nonlocal count; count += 1`) thread-safe? What about with asyncio?"
+a = '''
+- **Threads: no.** `count += 1` is load / add / store - several bytecodes; a thread switch
+  between them loses updates. The GIL doesn't make compound operations atomic, and on
+  free-threaded 3.13t/3.14t builds there's no GIL at all. Guard with a `threading.Lock`
+  (captured in the closure too) or use a thread-safe primitive.
+- **asyncio: yes, as long as there's no `await` between read and write** - coroutines only
+  switch at `await`, so a synchronous `count += 1` can't be interleaved. If the update spans
+  an await (`n = count; await x; count = n + 1`), you need an `asyncio.Lock`.
+'''
+followups = ["How would you test for the race?", "Why does itertools.count() make a better id generator under the GIL?"]
+
+[[q]]
+id = "clo-16"
+topic = "unboundlocalerror"
+level = 3
+kind = "concept"
+q = "Which statements make a name local to a function? Why is this decided at compile time rather than at runtime?"
+a = '''
+- Any binding in the body: `=`, augmented assignment (`+=`), `for x in`, `with ... as x`,
+  `except E as x`, `import x` / `from m import x`, `def x` / `class x`, walrus `:=`
+  (in a comprehension it binds in the containing function), `del x`, and `match` capture
+  patterns.
+- The compiler builds the symbol table for the whole function before running it, so that
+  locals can be stored in fast array slots (`LOAD_FAST`) instead of dict lookups - it must
+  know each name's scope statically.
+- Consequence: a later assignment changes the meaning of an earlier read in the same
+  function (UnboundLocalError), even if the assignment is in a branch that never runs.
+- `except E as x` also **deletes** `x` at the end of the handler.
+'''

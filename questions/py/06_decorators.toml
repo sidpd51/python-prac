@@ -1,0 +1,426 @@
+# Interview question bank - Decorators
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "dec-01"
+topic = "syntax"
+level = 1
+kind = "concept"
+q = "What is a decorator, and what exactly does the `@decorator` line do? When does it run?"
+a = '''
+- A decorator is a callable that takes a function (or class) and returns a replacement -
+  usually a wrapper that adds behaviour before/after the call.
+- `@deco` above `def f(): ...` is sugar for `f = deco(f)`, executed **once, when the `def`
+  statement runs** (typically at import time). The wrapper then runs on every call.
+- `@expr` can be any expression (3.9+, PEP 614), e.g. `@registry["tools"].add`.
+- Common uses: logging/timing, retries, caching, auth checks, registration (routes, tools,
+  fixtures), validation.
+'''
+
+[[q]]
+id = "dec-02"
+topic = "first_class"
+level = 1
+kind = "concept"
+q = "What does it mean that functions are first-class objects in Python, and why do decorators depend on it?"
+a = '''
+- Functions are ordinary objects (instances of `function`): you can assign them to
+  variables, store them in dicts/lists, pass them as arguments, return them from other
+  functions, and attach attributes (`f.schema = {...}`).
+- They carry metadata: `__name__`, `__qualname__`, `__doc__`, `__module__`, `__defaults__`,
+  `__annotations__`, `__code__`, `__closure__`.
+- A decorator is just a **higher-order function** - it takes a function and returns one -
+  and the wrapper is a **closure** over the original function.
+'''
+
+[[q]]
+id = "dec-03"
+topic = "wraps"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import functools
+
+def log(f):
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    return wrapper
+
+def log2(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+    return wrapper
+
+@log
+def embed(text):
+    """Embed text."""
+
+@log2
+def embed2(text):
+    """Embed text."""
+
+print(embed.__name__, embed.__doc__)
+print(embed2.__name__, embed2.__doc__, embed2.__wrapped__.__name__)
+```
+'''
+a = '''
+```
+wrapper None
+embed2 Embed text. embed2
+```
+- Without `functools.wraps` the decorated name *is* the wrapper: wrong `__name__`, lost
+  docstring - breaks logs, tracebacks, `help()`, Sphinx, FastAPI/pytest introspection and
+  anything keyed by function name (tool registries, metrics).
+- `wraps` copies `__module__`, `__name__`, `__qualname__`, `__doc__`, `__annotations__`,
+  `__type_params__`, updates `__dict__`, and sets `__wrapped__` (used by
+  `inspect.signature` and to reach the undecorated function in tests).
+'''
+
+[[q]]
+id = "dec-04"
+topic = "args_kwargs"
+level = 1
+kind = "concept"
+q = "Why do decorator wrappers almost always use `*args, **kwargs`? What breaks if you write `def wrapper(x):`?"
+a = '''
+- The wrapper replaces the original function, so it must accept **whatever the original
+  accepts** - any mix of positional, keyword, keyword-only, defaults. `*args, **kwargs`
+  collects them all and `func(*args, **kwargs)` forwards them unchanged.
+- `def wrapper(x)` only works for one-positional-arg functions; keyword calls (`f(x=1)`),
+  extra args or methods (`self`) raise TypeError.
+- Remember to **return** `func(...)`'s result - a wrapper that forgets `return` silently
+  turns every result into `None`.
+- For precise static typing, use `ParamSpec` (`Callable[P, R]` -> `Callable[P, R]`).
+'''
+
+[[q]]
+id = "dec-05"
+topic = "stacking"
+level = 2
+kind = "predict"
+q = '''
+What does this print (in order)?
+```python
+def deco(name):
+    print("factory", name)
+    def wrap(f):
+        print("decorating", name, "->", f.__name__)
+        def inner(*args, **kwargs):
+            print("enter", name)
+            return f(*args, **kwargs)
+        return inner
+    return wrap
+
+@deco("A")
+@deco("B")
+def hello():
+    print("hello")
+
+print("---")
+hello()
+```
+'''
+a = '''
+```
+factory A
+factory B
+decorating B -> hello
+decorating A -> inner
+---
+enter A
+enter B
+hello
+```
+- The decorator **expressions** are evaluated top-down (`deco("A")` then `deco("B")`), but
+  they are **applied** bottom-up: `hello = A(B(hello))`.
+- At call time the outermost wrapper runs first (onion).
+- `A` receives a function named `inner` - because `B` didn't use `functools.wraps`.
+'''
+followups = ["Where would you put @cache relative to @require_auth, and why?"]
+
+[[q]]
+id = "dec-06"
+topic = "with_arguments"
+level = 2
+kind = "concept"
+q = "How do you write a decorator that takes arguments, like `@retry(times=3)`? Why are there three levels of functions?"
+a = '''
+- `@retry(times=3)` means `f = retry(times=3)(f)`: `retry(...)` must **return a decorator**.
+- Level 1 - factory: receives the config, validates it, returns `decorator`.
+  Level 2 - decorator: receives `func`, returns `wrapper` (runs once per decorated function -
+  per-function state like a cache or rate window goes here).
+  Level 3 - wrapper: runs on every call, closes over both config and func.
+- To support both `@retry` and `@retry(times=5)`: `def retry(func=None, /, *, times=3)` and
+  `return decorator(func) if func else decorator` (keyword-only config avoids ambiguity).
+- Alternative: a class whose `__init__` takes the config and `__call__` takes the function.
+'''
+
+[[q]]
+id = "dec-07"
+topic = "with_arguments"
+level = 2
+kind = "debug"
+q = '''
+A teammate wrote this and gets an error when calling `fetch()`. Explain the output and fix it.
+```python
+def retry(times):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            ...
+        return wrapper
+    return decorator
+
+@retry
+def fetch():
+    return "data"
+
+print(fetch)   # <function retry.<locals>.decorator at 0x...>
+fetch()        # TypeError: retry.<locals>.decorator() missing 1 required positional argument: 'func'
+```
+'''
+a = '''
+- `@retry` without parentheses calls `retry(fetch)`: the **function is bound to `times`**, and
+  the returned `decorator` replaces `fetch`. Calling `fetch()` calls `decorator()` with no func.
+- Fix the call site: `@retry(3)` / `@retry(times=3)`.
+- Or make the decorator support both forms: `def retry(func=None, /, *, times=3)` and
+  dispatch on whether `func` was given; making config keyword-only prevents passing a
+  function where an int is expected. Validating (`if not isinstance(times, int): raise
+  TypeError`) gives a clear error at import time.
+'''
+
+[[q]]
+id = "dec-08"
+topic = "class_based"
+level = 2
+kind = "predict"
+q = '''
+What happens here?
+```python
+class Count:
+    def __init__(self, f):
+        self.f = f
+        self.n = 0
+    def __call__(self, *args):
+        self.n += 1
+        return self.f(*args)
+
+class Agent:
+    @Count
+    def step(self):
+        return "ok"
+
+try:
+    Agent().step()
+except TypeError as e:
+    print("TypeError:", e)
+print(Agent.step.n)
+```
+'''
+a = '''
+```
+TypeError: Agent.step() missing 1 required positional argument: 'self'
+1
+```
+- `Agent.step` is a `Count` **instance**, not a function. Functions become bound methods
+  through the descriptor protocol (`function.__get__`); a plain callable object has no
+  `__get__`, so `Agent().step` returns the `Count` object unchanged and `self` is never passed.
+- The counter was incremented before the inner call failed.
+- Fix: implement `__get__` returning `types.MethodType(self, instance)` (or
+  `functools.partial(self, instance)`), or use a function-based decorator.
+'''
+
+[[q]]
+id = "dec-09"
+topic = "class_based"
+level = 2
+kind = "compare"
+q = "Function-based vs class-based decorators: when would you choose a class?"
+a = '''
+- **Function + closure**: the default - short, automatically works on methods (wrapper is a
+  function, hence a descriptor), `functools.wraps` is easy.
+- **Class**: when the decorator has real **state and an API** - call counts, `reset()`,
+  `cache_info()`, statistics, configurable behaviour, subclassing for variants, nicer `repr`.
+- Class gotchas: copy metadata with `functools.update_wrapper(self, func)`; implement
+  `__get__` to work on methods; instances may hide `inspect.iscoroutinefunction` (an async
+  function wrapped in an object is no longer detected as a coroutine function unless you
+  mark it, e.g. `inspect.markcoroutinefunction` in 3.12+).
+- Class-as-factory (`__init__(config)`, `__call__(func)`) is a clean alternative to the
+  three-level nested function for decorators with arguments.
+'''
+
+[[q]]
+id = "dec-10"
+topic = "timing"
+level = 2
+kind = "concept"
+q = "You're adding a `@timed` decorator to LLM calls. Which clock do you use, and what details matter?"
+a = '''
+- `time.perf_counter()` - monotonic, highest resolution, unaffected by NTP/wall-clock jumps.
+  `time.time()` can go backwards; `time.process_time()` measures CPU only (excludes waiting on
+  the network - useless for I/O-bound LLM calls).
+- Measure in `try/finally` so failures/timeouts are recorded too (often the slowest calls).
+- Log with lazy formatting (`logger.info("%s took %.1f ms", name, ms)`) on a named logger, or
+  emit a histogram metric/trace span rather than print.
+- For `async def` functions the wrapper must be `async` and `await` the call - a sync wrapper
+  would time only the creation of the coroutine (~microseconds).
+- Use `functools.wraps` so the metric is labelled with the real function name.
+'''
+
+[[q]]
+id = "dec-11"
+topic = "wrapping"
+level = 2
+kind = "debug"
+q = '''
+This retry decorator was added to an async LLM call, but transient errors are never retried.
+Why?
+```python
+def retry(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        for attempt in range(3):
+            try:
+                return func(*args, **kwargs)
+            except ConnectionError:
+                print("retrying")
+        raise RuntimeError("gave up")
+    return wrapper
+
+@retry
+async def call_llm():
+    raise ConnectionError("reset")
+
+await call_llm()   # ConnectionError: reset  (called once, no "retrying")
+```
+'''
+a = '''
+- Calling an `async def` function does **not** run it - it returns a coroutine object. The
+  sync wrapper's `try` succeeds immediately and returns the un-awaited coroutine; the
+  exception happens later, at the caller's `await`, outside the try.
+- Fix: detect `inspect.iscoroutinefunction(func)` and build an `async def wrapper` that
+  `await`s `func(...)` inside the try (and uses `await asyncio.sleep` for backoff, never
+  `time.sleep`).
+- Side effect of the bug: `inspect.iscoroutinefunction(call_llm)` is now False, which can
+  confuse frameworks (FastAPI, pytest-asyncio) that dispatch on it.
+'''
+
+[[q]]
+id = "dec-12"
+topic = "higher_order"
+level = 1
+kind = "debug"
+q = '''
+After decorating, `summarize` is `None` and calls fail with
+`TypeError: 'NoneType' object is not callable`. What's wrong?
+```python
+REGISTRY = []
+
+def register(f):
+    REGISTRY.append(f)
+
+@register
+def summarize(text):
+    return text[:10]
+```
+'''
+a = '''
+- A decorator's **return value replaces the function**. `register` returns `None`
+  implicitly, so `summarize = register(summarize)` rebinds the name to `None`.
+- Fix: `return f` at the end. Registration decorators (Flask routes, pytest fixtures,
+  tool registries) return the original function unchanged - no wrapper needed.
+- Same class of bug: a wrapper that forgets `return func(*args, **kwargs)` makes every call
+  return `None`.
+'''
+
+[[q]]
+id = "dec-13"
+topic = "metadata"
+level = 2
+kind = "concept"
+q = "How does `inspect.signature` still show the original parameters for a `functools.wraps`-decorated function? Why does that matter for frameworks?"
+a = '''
+- `wraps` sets `wrapper.__wrapped__ = func`; `inspect.signature` follows the `__wrapped__`
+  chain (unless `follow_wrapped=False`) and reports `func`'s parameters, not `(*args, **kwargs)`.
+- Frameworks build behaviour from signatures: FastAPI request parsing and OpenAPI docs,
+  pytest fixture injection, Typer/Click CLIs, LLM tool/function-calling schemas generated
+  from type hints, dependency-injection containers.
+- Caveat: if the wrapper actually changes the signature (adds/removes a parameter), the
+  reported signature is now a lie - set `wrapper.__signature__` explicitly.
+- `inspect.unwrap(f)` / `f.__wrapped__` give you the undecorated function (handy in tests to
+  bypass retries/caches).
+'''
+
+[[q]]
+id = "dec-14"
+topic = "stacking"
+level = 3
+kind = "design"
+q = "Your LLM client function gets `@retry`, `@timed`, `@cache`, and `@rate_limited`. In what order do you stack them, and why?"
+a = '''
+One sensible order (top = outermost):
+```python
+@cache          # hit -> no limiter token, no retries, no latency metric for the API
+@timed          # end-to-end latency the caller experiences, incl. retries/backoff
+@retry(...)     # each attempt must pass through the limiter
+@rate_limited(...)
+def complete(prompt): ...
+```
+- **Cache outermost**: cache hits shouldn't consume rate-limit budget or be retried.
+  Cache only successes, and never cache across tenants/users without a scoped key.
+- **retry above rate_limited**: every retry is a real request and must be counted; a 429
+  from the limiter should be retryable after `retry_after`.
+- **timed above retry** for user-visible latency; put another `@timed` below retry for
+  per-attempt latency if you need both.
+- Auth/permission checks go **above** the cache, or the cache leaks responses to
+  unauthorized callers.
+- Rule: decorators wrap bottom-up; the first one listed runs first on the call.
+'''
+
+[[q]]
+id = "dec-15"
+topic = "class_based"
+level = 3
+kind = "concept"
+q = "`@property`, `@staticmethod`, `@classmethod` and `@functools.cached_property` are decorators. What do they return, and how do they actually work?"
+a = '''
+- They return **descriptor objects**, not wrapper functions. On attribute access Python calls
+  the descriptor's `__get__`:
+  - `property`: data descriptor (`__get__` + `__set__`/`__delete__`) - calls the getter on
+    every access; wins over the instance `__dict__`.
+  - `staticmethod`: `__get__` returns the raw function (no binding).
+  - `classmethod`: `__get__` binds the **class** as the first argument.
+  - `cached_property`: non-data descriptor - computes once, stores the result in the
+    instance `__dict__`, which then shadows the descriptor (needs a `__dict__`, so not with
+    `__slots__`).
+- Plain functions are non-data descriptors too: `function.__get__(obj)` creates a bound
+  method - which is why a class-based decorator needs `__get__` to work on methods.
+- Order matters when combining with other decorators (e.g. `@classmethod` must be
+  outermost over a function-based decorator; chaining `classmethod` over `property` was
+  deprecated in 3.11 and removed in 3.13).
+'''
+
+[[q]]
+id = "dec-16"
+topic = "wrappers"
+level = 3
+kind = "design"
+q = "Design an `@observe` decorator for an LLM app that records latency, token usage, errors and a trace span for each call. What are the pitfalls?"
+a = '''
+- Wrapper (sync + async variants) that starts a span/timer (`perf_counter`), calls the
+  function in `try/except/finally`, records: duration, success/error type, model name,
+  prompt/completion tokens (read from the response object), and re-raises unchanged.
+- Correlation: propagate a trace/request id via `contextvars` (works across `await`), or
+  OpenTelemetry spans so nested tool calls nest in the trace.
+- Pitfalls:
+  - **Never log raw prompts/PII/API keys** by default; redact or sample.
+  - Telemetry failures must not break the call (catch around the exporter).
+  - Streaming responses: the function returns an iterator/async iterator immediately -
+    measure time-to-first-token and total, by wrapping the stream, not the call.
+  - Keep cardinality low on metric labels (don't label by prompt text/user id).
+  - `functools.wraps` so names are right; keep `inspect.iscoroutinefunction` true for async.
+  - Overhead: keep it cheap; push exporting to a background thread/batch.
+'''

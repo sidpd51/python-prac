@@ -1,0 +1,33 @@
+<div class="widget" data-widget="system-map">
+  <h3 class="w-title">How the pieces fit</h3>
+  <p class="w-sub">Click a box to see what it holds and the command that touches it.</p>
+  <div class="svgwrap">
+  <svg viewBox="0 0 900 275" role="img" aria-label="System map: curriculum feeds exercises, questions and the capstone; all of them write evidence to the progress file, which powers today and report">
+    <defs><marker id="sm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrowhead"/></marker></defs>
+    <g class="edges">
+      <path d="M170 60 C 230 60 230 40 290 40" marker-end="url(#sm-arrow)"/>
+      <path d="M170 60 L290 130" marker-end="url(#sm-arrow)"/>
+      <path d="M170 60 C 230 60 230 220 290 220" marker-end="url(#sm-arrow)"/>
+      <path d="M470 40 C 540 40 540 130 600 130" marker-end="url(#sm-arrow)"/>
+      <path d="M470 130 L600 130" marker-end="url(#sm-arrow)"/>
+      <path d="M470 220 C 540 220 540 130 600 130" marker-end="url(#sm-arrow)"/>
+      <path d="M750 130 L 750 190" marker-end="url(#sm-arrow)"/>
+      <path d="M750 130 L 750 70" marker-end="url(#sm-arrow)"/>
+    </g>
+    <g class="node" tabindex="0" role="button" data-title="Curriculum" data-body="Every topic of every track as a stable id such as py.generators.send. Tracks are TOML files, so a new area is just a new file." data-cmd="study topics generators">
+      <rect x="20" y="30" width="150" height="60" rx="10"/><text x="95" y="56">Curriculum</text><text x="95" y="74" class="sub">564 topic ids</text></g>
+    <g class="node" tabindex="0" role="button" data-title="Exercises" data-body="Stubs you implement plus pytest tests tagged with topic ids. Each test run records pass, fail or TODO per topic." data-cmd="study test generators">
+      <rect x="290" y="10" width="180" height="60" rx="10"/><text x="380" y="36">Exercises</text><text x="380" y="54" class="sub">tests update mastery</text></g>
+    <g class="node" tabindex="0" role="button" data-title="Question bank" data-body="Interview questions at three levels (concept, predict, debug, design, compare). You answer, reveal the key points, then grade yourself 0-5." data-cmd="study quiz --due">
+      <rect x="290" y="100" width="180" height="60" rx="10"/><text x="380" y="126">Question bank</text><text x="380" y="144" class="sub">graded by you</text></g>
+    <g class="node" tabindex="0" role="button" data-title="DocMind capstone" data-body="One project that grows from ingestion to agents to production. Its tests are tagged with topics too, so building it proves mastery." data-cmd="study test capstone">
+      <rect x="290" y="190" width="180" height="60" rx="10"/><text x="380" y="216">DocMind capstone</text><text x="380" y="234" class="sub">7 milestones in phase 0</text></g>
+    <g class="node hot" tabindex="0" role="button" data-title="progress.json" data-body="One readable file with every review, test result and logged mistake. Spaced repetition and mastery are always recomputed from it, so they cannot drift." data-cmd="cat progress/progress.json">
+      <rect x="600" y="100" width="300" height="60" rx="10"/><text x="750" y="126">progress/progress.json</text><text x="750" y="144" class="sub">mastery + schedule, derived</text></g>
+    <g class="node" tabindex="0" role="button" data-title="study report" data-body="Strengths and weaknesses per module or per topic. A topic with no evidence counts as unproven, not strong." data-cmd="study report async">
+      <rect x="600" y="190" width="145" height="60" rx="10"/><text x="672" y="216">report</text><text x="672" y="234" class="sub">weak spots</text></g>
+    <g class="node" tabindex="0" role="button" data-title="study today" data-body="Your plan: reviews that are due, the weakest topics with an exercise to solve, and the next capstone milestone." data-cmd="study today">
+      <rect x="600" y="10" width="145" height="60" rx="10"/><text x="672" y="36">today</text><text x="672" y="54" class="sub">daily plan</text></g>
+  </svg></div>
+  <div class="panel" data-panel aria-live="polite"><strong>Pick a box.</strong> <span>Everything feeds one progress file, so you always know what to revise.</span></div>
+</div>

@@ -1,0 +1,489 @@
+# Interview question bank - Python Type Hints
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "th-01"
+topic = "basic"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+def double(x: int) -> int:
+    return x * 2
+
+print(double("ab"), double([1]))
+print(double.__annotations__)
+```
+'''
+a = """
+```
+abab [1, 1]
+{'x': <class 'int'>, 'return': <class 'int'>}
+```
+- Type hints are **not enforced at runtime** - they're metadata stored in
+  `__annotations__`. Python happily multiplies a str and a list.
+- Enforcement comes from **static** checkers (mypy, pyright - in the editor/CI) or from
+  runtime libraries that read the annotations (pydantic, FastAPI, typeguard, beartype).
+- Value: documentation that can't go stale, editor completion, catching whole classes of
+  bugs before running, safer refactors - especially in big codebases and around LLM/API
+  payloads.
+"""
+
+[[q]]
+id = "th-02"
+topic = "functions"
+level = 1
+kind = "concept"
+q = "How do you annotate a function with defaults, *args, **kwargs, keyword-only args and a function that never returns normally?"
+a = """
+```python
+def search(query: str, top_k: int = 5, *filters: str, rerank: bool = False,
+           **opts: float) -> list[Hit]: ...
+def fail(msg: str) -> NoReturn: raise RuntimeError(msg)   # or Never (3.11)
+def log(msg: str) -> None: ...
+```
+- `*filters: str` means *each* positional extra is a str (the tuple is `tuple[str, ...]`);
+  `**opts: float` means each value is a float.
+- Annotate a default of None as `x: int | None = None` (no implicit Optional anymore).
+- `-> None` for procedures; omitting the return annotation makes mypy treat the function
+  as untyped (its body isn't checked unless `--check-untyped-defs`).
+- For precise `**kwargs` shapes: `**kwargs: Unpack[MyTypedDict]` (PEP 692).
+"""
+
+[[q]]
+id = "th-03"
+topic = "optional"
+level = 1
+kind = "debug"
+q = '''
+mypy flags line 3. Why, and what are two good fixes?
+```python
+def get_user_name(users: dict[int, str], uid: int) -> str:
+    name = users.get(uid)
+    return name.upper()
+```
+'''
+a = """
+- `dict.get` returns `str | None` (Optional[str]); calling `.upper()` on a possible None is
+  exactly the `AttributeError: 'NoneType' object has no attribute 'upper'` you'd get in
+  production. mypy: `Item "None" of "str | None" has no attribute "upper"`.
+- Fix by **narrowing**: `if name is None: raise KeyError(uid)` (or return a default) - after
+  the check mypy knows it's `str`. Or use `users[uid]` if absence is a bug, or
+  `users.get(uid, "unknown")`.
+- `Optional[X]` == `X | None` means "may be None" - it's about the *value*, not about the
+  parameter being optional. A parameter with a default isn't Optional unless None is allowed.
+- Avoid silencing with `assert name` or `# type: ignore` unless you can prove it.
+"""
+
+[[q]]
+id = "th-04"
+topic = "union"
+level = 2
+kind = "predict"
+q = '''
+What does this print (3.13 and 3.14 agree)?
+```python
+import types
+from typing import Literal, Optional, get_args, get_origin
+
+print(get_origin(list[int]), get_args(dict[str, list[int]]))
+print(get_origin(int | None) is types.UnionType, get_args(Optional[int]))
+print(Optional[int] == int | None)
+print(get_args(Literal["user", "assistant"]))
+```
+'''
+a = """
+```
+<class 'list'> (<class 'str'>, list[int])
+True (<class 'int'>, <class 'NoneType'>)
+True
+('user', 'assistant')
+```
+- `get_origin` / `get_args` are how runtime tools (pydantic, FastAPI, your own validators)
+  take annotations apart: `list[int]` -> (list, (int,)).
+- `X | Y` (PEP 604, 3.10+) and `Union[X, Y]` / `Optional[X]` are equal; None shows up as
+  `NoneType` in the args. (In 3.14 `Union[...]` itself produces a `types.UnionType`.)
+- `get_args(Literal[...])` gives the allowed values - a single source of truth for
+  runtime validation of roles, finish reasons, etc.
+"""
+
+[[q]]
+id = "th-05"
+topic = "collections"
+level = 2
+kind = "predict"
+q = '''
+Which lines does mypy reject, and why?
+```python
+from collections.abc import Sequence
+
+def mean(xs: list[float]) -> float:
+    return sum(xs) / len(xs)
+
+def mean_seq(xs: Sequence[float]) -> float:
+    return sum(xs) / len(xs)
+
+ints: list[int] = [1, 2, 3]
+mean(ints)        # A
+mean_seq(ints)    # B
+mean([1, 2, 3])   # C
+```
+'''
+a = """
+Only **A**:
+```
+error: Argument 1 to "mean" has incompatible type "list[int]"; expected "list[float]"  [arg-type]
+note: "list" is invariant -- see https://mypy.readthedocs.io/en/stable/common_issues.html#variance
+note: Consider using "Sequence" instead, which is covariant
+```
+- `int` is acceptable where `float` is expected, but `list[int]` is **not** a
+  `list[float]`: lists are mutable, so `mean` could legally `xs.append(0.5)` into your
+  list of ints -> **invariant**.
+- `Sequence` is read-only -> **covariant**, so B is fine. C is fine because the literal is
+  inferred as `list[float]` from context.
+- Rule of thumb: accept abstract read-only types (`Sequence`, `Mapping`, `Iterable`) in
+  parameters, return concrete ones (`list`, `dict`).
+"""
+
+[[q]]
+id = "th-06"
+topic = "any_vs_object"
+level = 2
+kind = "compare"
+q = "What's the difference between `Any` and `object` as an annotation? When is each appropriate?"
+a = """
+- Both accept any value. The difference is what you may **do** with it:
+  * `Any` turns type checking **off** in both directions: `x.foo()`, `x + 1`, passing it
+    anywhere - all allowed. It's contagious: results of operations on Any are Any.
+  * `object` allows only what every object supports (`==`, `str()`, `hash()`);
+    `x.foo()` is an error (`"object" has no attribute "foo"`) until you **narrow** with
+    `isinstance`.
+- Use `object` for "I accept anything and don't care" (a logging helper, `__eq__` param)
+  - it's type-safe. Use `Any` as an escape hatch for genuinely dynamic data (raw JSON
+  before validation, untyped libraries), and keep it at the edges.
+- Better than both for JSON: a recursive alias
+  `type JSON = dict[str, JSON] | list[JSON] | str | int | float | bool | None`, or validate
+  into a pydantic model / TypedDict.
+- mypy `--strict` / `--disallow-any-explicit` / `warn_return_any` help keep Any contained.
+"""
+
+[[q]]
+id = "th-07"
+topic = "callable"
+level = 2
+kind = "debug"
+q = '''
+After adding this decorator, the IDE no longer autocompletes `ask`'s parameters and mypy
+stopped catching `ask(123)`. Why? Fix it.
+```python
+from typing import Any, Callable
+
+def logged(fn: Callable[..., Any]) -> Callable[..., Any]:
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        print("calling", fn.__name__)
+        return fn(*args, **kwargs)
+    return wrapper
+
+@logged
+def ask(prompt: str, temperature: float = 0.0) -> str: ...
+```
+'''
+a = """
+- The decorator's return type `Callable[..., Any]` **erases** the signature: to the type
+  checker `ask` now takes anything and returns Any.
+- Fix with ParamSpec + TypeVar (PEP 612; 3.12 syntax):
+```python
+import functools
+from collections.abc import Callable
+
+def logged[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
+    @functools.wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        print("calling", fn.__name__)
+        return fn(*args, **kwargs)
+    return wrapper
+```
+- `functools.wraps` fixes the *runtime* metadata (`__name__`, `__doc__`, `__wrapped__`,
+  `inspect.signature`); ParamSpec fixes the *static* signature - you need both.
+- Use `Concatenate[Ctx, P]` when the decorator adds/removes a leading parameter.
+"""
+
+[[q]]
+id = "th-08"
+topic = "typevar"
+level = 2
+kind = "compare"
+q = '''
+What does mypy say for each `reveal_type`, and what's the lesson?
+```python
+def first_union(xs: list[int | str]) -> int | str:
+    return xs[0]
+
+def first[T](xs: list[T]) -> T:
+    return xs[0]
+
+ints: list[int] = [1, 2, 3]
+reveal_type(first(ints))
+reveal_type(first_union(ints))
+```
+'''
+a = """
+```
+note: Revealed type is "int"
+note: Revealed type is "int | str"
+error: Argument 1 to "first_union" has incompatible type "list[int]"; expected "list[int | str]"
+```
+- A **TypeVar** links types: whatever element type goes in comes out - `first(ints)` is
+  an `int`, no casts or isinstance checks needed afterwards.
+- A **Union** forgets the relationship (result is `int | str`) - and because `list` is
+  invariant, a `list[int]` isn't even accepted.
+- Bounds and constraints: `def top_k[S: HasScore](...)` (any subtype of HasScore, keeps the
+  caller's type), `def concat[T: (str, bytes)](a: T, b: T) -> T` (exactly one of those).
+- Pre-3.12 spelling: `T = TypeVar("T")`, `class Box(Generic[T])`.
+"""
+
+[[q]]
+id = "th-09"
+topic = "generics"
+level = 3
+kind = "design"
+q = "Design a typed, generic cache for LLM responses and embeddings. What would its signature look like, and what do the type parameters buy you at runtime?"
+a = """
+```python
+class TTLCache[K: Hashable, V]:
+    def __init__(self, ttl: float, *, max_size: int = 1024,
+                 clock: Callable[[], float] = time.monotonic) -> None: ...
+    def get(self, key: K) -> V | None: ...
+    def set(self, key: K, value: V) -> None: ...
+    def get_or_set(self, key: K, factory: Callable[[], V]) -> V: ...
+
+emb_cache: TTLCache[str, list[float]] = TTLCache(3600)
+```
+- Statically: `emb_cache.get(q)` is `list[float] | None`; `emb_cache.set(q, "oops")` is an
+  error; one implementation serves many key/value types.
+- At runtime: **nothing** - generics are erased. `TTLCache[str, int]` is a
+  `types.GenericAlias`; instances are plain `TTLCache` objects (`__orig_class__` is set
+  when instantiated through the alias). `TTLCache.__type_params__` lists K, V.
+- Injected `clock` for testable expiry; `Hashable` bound for keys; for async factories
+  use `Callable[[], Awaitable[V]]` and single-flight locking to avoid stampedes.
+- Variance: an immutable read-only view could be declared covariant in V; mutable caches
+  are invariant (PEP 695 infers variance automatically).
+"""
+
+[[q]]
+id = "th-10"
+topic = "protocol"
+level = 2
+kind = "compare"
+q = "Protocol vs ABC: how do they differ, and which would you use for a pluggable `Embedder` / `VectorStore` interface?"
+a = """
+- **ABC** (nominal): implementations must inherit (or `register`). Can provide shared
+  concrete methods; `@abstractmethod` makes instantiation of incomplete classes fail at
+  runtime.
+- **Protocol** (structural, PEP 544): any class with matching attributes/method
+  signatures *is* an implementation - no inheritance, no import of your interface.
+  Checked statically; `@runtime_checkable` enables `isinstance`, but that only checks that
+  the members **exist**, not their signatures.
+- For pluggable AI components (OpenAI embedder, local model, test fake, a third-party
+  client you can't modify) a **Protocol** is usually the better fit; keep it small
+  (`dim`, `embed(texts) -> list[list[float]]`).
+- Use an ABC when you want to share implementation (template methods, common retry/
+  batching logic) or enforce registration.
+"""
+
+[[q]]
+id = "th-11"
+topic = "typeddict"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from typing import TypedDict
+
+class ChatMessage(TypedDict):
+    role: str
+    content: str
+
+m = ChatMessage(role="robot", content=123)
+print(m, type(m).__name__)
+print(isinstance(m, dict))
+try:
+    isinstance(m, ChatMessage)
+except TypeError as e:
+    print("TypeError:", e)
+```
+'''
+a = """
+```
+{'role': 'robot', 'content': 123} dict
+True
+TypeError: TypedDict does not support instance and class checks
+```
+- A TypedDict is a **static description of a dict's shape**; at runtime "calling" it just
+  builds a plain dict - no validation (mypy would flag `content=123`).
+- You can't `isinstance` against it; validate with code using `__required_keys__`,
+  `__optional_keys__`, `get_type_hints(...)` - or with pydantic's `TypeAdapter(ChatMessage)`.
+- `NotRequired[...]` / `Required[...]` / `total=False` control optional keys;
+  `ReadOnly[...]` (3.13) marks immutable keys.
+"""
+
+[[q]]
+id = "th-12"
+topic = "typeddict"
+level = 3
+kind = "compare"
+q = "TypedDict vs dataclass vs pydantic BaseModel for LLM request/response payloads - when do you use which?"
+a = """
+- **TypedDict**: zero runtime overhead, data stays a plain dict -> ideal for JSON you pass
+  straight through (OpenAI-style `messages` lists, kwargs to SDKs), typing external dict
+  APIs. No validation, no methods.
+- **dataclass**: real class with attributes, `__eq__`, defaults, `frozen=True`, slots -
+  great for internal domain objects (Chunk, Hit, EvalResult). No validation/coercion of
+  types; conversion to/from JSON is manual (`asdict`).
+- **pydantic**: runtime **validation + coercion**, JSON (de)serialization, JSON Schema
+  generation (used for LLM structured outputs / tool definitions), nice errors. Costs CPU
+  per object (v2 is fast, Rust core) - use at trust boundaries: HTTP bodies, LLM outputs,
+  config (`pydantic-settings`).
+- Common architecture: pydantic at the edges, dataclasses/TypedDicts inside.
+"""
+
+[[q]]
+id = "th-13"
+topic = "literal"
+level = 2
+kind = "concept"
+q = "What are `Literal` types good for? How do you combine them with `@overload`?"
+a = """
+- `Literal["system", "user", "assistant"]` restricts a value to specific constants -
+  mypy rejects `role="admin"` and narrows on `if role == "user":`. Perfect for roles,
+  finish reasons, model names, modes. Exhaustiveness: with a `match`/if-chain plus
+  `assert_never(x)` mypy proves every case is handled.
+- `@overload` + Literal gives a return type that depends on an argument **value**:
+```python
+@overload
+def get_setting(key: Literal["temperature"]) -> float: ...
+@overload
+def get_setting(key: Literal["model"]) -> str: ...
+def get_setting(key: str) -> float | str: ...   # the real implementation
+```
+  Same trick as `open(path, "rb") -> BufferedReader` vs `open(path) -> TextIOWrapper`.
+- At runtime Literal is just metadata: validate with `get_args(Role)`.
+- Alternatives: `enum.StrEnum` when you want a real runtime type with members.
+"""
+
+[[q]]
+id = "th-14"
+topic = "aliases"
+level = 2
+kind = "compare"
+q = "Compare `Vector = list[float]`, `Vector: TypeAlias = list[float]`, `type Vector = list[float]` and `UserId = NewType('UserId', int)`."
+a = """
+- `Vector = list[float]`: implicit alias - a plain variable that the checker treats as an
+  alias. Works, but ambiguous for forward references.
+- `Vector: TypeAlias = list[float]` (PEP 613): explicit alias, pre-3.12 recommended form.
+- `type Vector = list[float]` (PEP 695, 3.12+): a real `TypeAliasType` object; the value is
+  **lazily evaluated** (forward/recursive refs just work: `type JSON = dict[str, JSON] | ...`),
+  supports parameters: `type Pair[T] = tuple[T, T]`. At runtime read `.__value__`.
+- All of the above are **interchangeable** with the original type: a `list[float]` *is*
+  a Vector.
+- `NewType("UserId", int)` creates a **distinct** type for the checker: passing a plain
+  `int` where `UserId` is expected is an error (prevents mixing up doc ids and chunk ids).
+  At runtime `UserId(5)` is just `5` (zero cost).
+"""
+
+[[q]]
+id = "th-15"
+topic = "static_checking"
+level = 3
+kind = "predict"
+q = '''
+What happens with Python 3.13, and with Python 3.14?
+```python
+def embed(doc: Document) -> list[float]:
+    return []
+
+print("defined")
+
+class Document: ...
+
+print(embed.__annotations__)
+```
+'''
+a = """
+- **3.13**: `NameError: name 'Document' is not defined` - annotations are evaluated when
+  the `def` executes, and Document doesn't exist yet. Nothing is printed.
+- **3.14** (PEP 649/749, deferred evaluation): annotations are evaluated lazily on first
+  access, so it prints
+```
+defined
+{'doc': <class '__main__.Document'>, 'return': list[float]}
+```
+- Pre-3.14 fixes: quote it (`doc: "Document"`) or `from __future__ import annotations`
+  (all annotations stored as strings; tools must call `typing.get_type_hints()` to resolve
+  them - which breaks for names only imported under `if TYPE_CHECKING:`).
+- 3.14 adds `annotationlib.get_annotations(obj, format=Format.FORWARDREF / STRING)` for
+  tools that must cope with still-undefined names.
+- Static checkers don't care either way - this is about *runtime* introspection
+  (pydantic, FastAPI, dataclasses).
+"""
+
+[[q]]
+id = "th-16"
+topic = "static_checking"
+level = 2
+kind = "design"
+q = "You join a team with a 60k-line untyped Python codebase (an LLM platform). How do you introduce type checking without stopping feature work?"
+a = """
+- Gradual typing: mypy/pyright only check what's annotated; start in CI with a
+  permissive config so it passes *today*, then ratchet.
+- Per-module strictness: `[[tool.mypy.overrides]] module = "platform.core.*"
+  strict = true`; new modules strict by default; `disallow_untyped_defs` on touched files.
+- Type the boundaries first: public APIs, config, LLM request/response models (pydantic),
+  DB layer - that's where type errors cost most. Add `py.typed` for internal packages.
+- Third-party: install stubs (`types-requests`), `ignore_missing_imports` per module only.
+- Track `# type: ignore[code]` (with error codes, `warn_unused_ignores`) and Any usage
+  as metrics; use `reveal_type` when confused.
+- Run the checker in pre-commit + CI; editors (Pylance/pyright) give instant feedback.
+"""
+
+[[q]]
+id = "th-17"
+topic = "mypy_pyright"
+level = 3
+kind = "compare"
+q = "mypy vs pyright (and the newer Rust-based checkers): what differs in practice?"
+a = """
+- Both implement the shared typing spec (PEPs, typing.python.org), so most code checks the
+  same. Differences show up in inference and defaults:
+  * **pyright** (Pylance in VS Code): very fast, incremental; infers return types of
+    unannotated functions and checks their bodies by default; stricter narrowing; great
+    editor integration. Config in `pyrightconfig.json` / `[tool.pyright]`.
+  * **mypy**: reference implementation; skips bodies of unannotated functions unless
+    `--check-untyped-defs`; **plugin system** (pydantic, SQLAlchemy, django-stubs);
+    `--strict` bundle; `reveal_type`/`reveal_locals`; daemon mode (dmypy) for speed.
+- Newer Rust-based checkers (Astral's ty, Meta's Pyrefly) aim at speed for huge repos.
+- Practical answer: pick one for CI (team consistency), run it `--strict` on new code,
+  pin its version (new releases add errors), and expect occasional disagreements
+  (`# type: ignore[code]` or `# pyright: ignore[rule]` with a comment).
+"""
+
+[[q]]
+id = "th-18"
+topic = "collections"
+level = 1
+kind = "concept"
+q = "How do you annotate a list of strings, a dict of embeddings, a fixed (x, y) pair, a variable-length tuple and a set? Is `List[str]` still needed?"
+a = """
+- Since 3.9 use the builtins directly (PEP 585): `list[str]`, `dict[str, list[float]]`,
+  `set[int]`, `frozenset[str]`. `typing.List/Dict/Set/Tuple` are deprecated aliases -
+  only needed for 3.8 and older.
+- Tuples are special: `tuple[float, float]` = exactly two floats (a point, a
+  `(text, score)` pair), `tuple[int, ...]` = any length of ints, `tuple[()]` = empty.
+- Abstract types from `collections.abc` for parameters: `Iterable[str]` (anything you
+  can loop over once), `Sequence[str]` (indexable, read-only), `Mapping[str, int]`
+  (read-only dict-like), `Iterator[Chunk]` / `Generator[Chunk, None, None]` for generators.
+- Nesting is fine but name it: `type Embedding = list[float]`,
+  `dict[str, Embedding]` reads better than `dict[str, list[float]]`.
+"""

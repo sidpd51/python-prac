@@ -1,0 +1,14 @@
+<div class="widget" data-widget="decision">
+  <h3 class="w-title">Write an entry</h3>
+  <p class="w-sub">Fill the fields and copy the markdown into <code>journal/decisions.md</code>. Nothing is stored or sent.</p>
+  <div class="form">
+    <label>Decision<input type="text" data-f="title" placeholder="Chunk with a recursive splitter"></label>
+    <label>Context<textarea rows="2" data-f="context" placeholder="What problem or constraint forced a choice?"></textarea></label>
+    <label>Options considered<input type="text" data-f="options" placeholder="A fixed windows, B recursive, C semantic"></label>
+    <label>Chose, and why<textarea rows="2" data-f="chose" placeholder="B. recall@5 rose from 0.71 to 0.78 on the golden set"></textarea></label>
+    <label>Trade-off accepted<input type="text" data-f="tradeoff" placeholder="Variable chunk sizes, slightly slower ingestion"></label>
+    <label>Would revisit if<input type="text" data-f="revisit" placeholder="The corpus becomes mostly tables"></label>
+  </div>
+  <pre class="out"><code data-out></code></pre>
+  <button type="button" class="btn" data-copy>Copy markdown</button>
+</div>

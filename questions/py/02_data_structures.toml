@@ -1,0 +1,443 @@
+# Interview question bank - Python Data Structures
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "ds-01"
+topic = "lists"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+a = [3, 1, 2]
+b = a.sort()
+print(b, a)
+c = sorted(a, reverse=True)
+print(c, a)
+a.append([4])
+a.extend([5, 6])
+print(a, len(a))
+print([0] * 3 + [1])
+```
+'''
+a = '''
+```
+None [1, 2, 3]
+[3, 2, 1] [1, 2, 3]
+[1, 2, 3, [4], 5, 6] 6
+[0, 0, 0, 1]
+```
+- `list.sort()` sorts **in place and returns None** (a convention for mutating methods);
+  `sorted()` returns a new list and accepts any iterable.
+- `append(x)` adds one element (here a nested list); `extend(iterable)` adds each element.
+- Both sorts are stable (Timsort) and take `key=` / `reverse=`.
+'''
+followups = ["Why is sort stability useful when sorting by multiple keys?"]
+
+[[q]]
+id = "ds-02"
+topic = "lists"
+level = 2
+kind = "concept"
+q = "How is a Python list implemented? What are the costs of append, insert(0, x), pop(), pop(0), `x in lst`, and indexing?"
+a = '''
+- A **dynamic array** of pointers to objects (contiguous `PyObject*` buffer) with
+  over-allocation.
+- `lst[i]`, `len`, `append`, `pop()` (from the end): O(1) (append is *amortised* O(1) -
+  occasional resize copies everything, but growth is geometric).
+- `insert(0, x)`, `pop(0)`, `del lst[0]`: O(n) - every pointer shifts. Use `collections.deque`
+  for a FIFO.
+- `x in lst`, `lst.index(x)`, `lst.remove(x)`: O(n) linear scan with `==`.
+- Slicing `lst[a:b]` copies: O(b - a). Sorting: O(n log n).
+- Elements are references, so a list of 1M floats costs ~8 MB of pointers + ~24 B per float
+  object - use `array`/NumPy for numeric data (embeddings!).
+'''
+
+[[q]]
+id = "ds-03"
+topic = "dicts"
+level = 2
+kind = "concept"
+q = "How does a Python dict work internally? Why must keys be hashable, and what is the complexity of lookups?"
+a = '''
+- A **hash table** with open addressing. Since 3.6 (guaranteed 3.7) it's a compact layout:
+  a dense array of entries in **insertion order** + a sparse index table of slots.
+- Lookup: `hash(key)` -> probe slots -> for each candidate compare identity first, then `==`.
+- Average O(1) get/set/delete/`in`; worst case O(n) with many collisions (hash flooding is why
+  str hashes are randomised per process - `PYTHONHASHSEED`).
+- Keys must be hashable and their hash must not change while stored, otherwise the entry
+  ends up in the wrong slot and becomes unreachable.
+- Resizes when ~2/3 full (amortised O(1) inserts). Iterating while changing size raises
+  `RuntimeError`.
+'''
+followups = ["Why does `{1: 'a', 1.0: 'b'}` have a single key?", "What does __hash__ = None do?"]
+
+[[q]]
+id = "ds-04"
+topic = "tuples"
+level = 1
+kind = "compare"
+q = "Tuple vs list: what is the difference and when do you use each?"
+a = '''
+- Tuple: immutable, hashable if its elements are -> usable as dict keys / set members
+  (e.g. `(doc_id, chunk_index)`), slightly smaller and faster to create, can be constant-folded.
+- List: mutable, growable; for homogeneous collections you'll append to or sort.
+- Convention: tuple = a fixed-shape **record** (heterogeneous fields, position has meaning,
+  e.g. `(score, doc_id)`); list = a **sequence** of like items.
+- Tuples compare lexicographically -> handy sort keys: `key=lambda r: (-r.score, r.id)`.
+- Single-element tuple needs a comma: `(1,)`; `(1)` is just `1`.
+- For named fields use `namedtuple` / `NamedTuple` / dataclass instead of magic indexes.
+'''
+
+[[q]]
+id = "ds-05"
+topic = "set_operations"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+a, b = {1, 2, 3}, {2, 3, 4}
+print(a & b, a | b, a - b, a ^ b)
+print({1, True, 1.0}, len({0, False, 0.0, ""}))
+print(a <= {1, 2, 3, 4}, a.isdisjoint({7}))
+print(sorted(set("hello")))
+```
+'''
+a = '''
+```
+{2, 3} {1, 2, 3, 4} {1} {1, 4}
+{1} 2
+True True
+['e', 'h', 'l', 'o']
+```
+- `&` intersection, `|` union, `-` difference, `^` symmetric difference; `<=` subset.
+- `1`, `True` and `1.0` are equal **and** hash equal -> one element (the first one inserted is
+  kept). `0`, `False`, `0.0` collapse too; `""` is different -> 2 elements.
+- Sets are unordered; sort when you need determinism (tests, logs, cache keys).
+- The method forms (`a.union(xs)`, `a.intersection(*others)`) accept any iterables;
+  operators require sets.
+'''
+
+[[q]]
+id = "ds-06"
+topic = "list_vs_dict"
+level = 2
+kind = "compare"
+q = "You must check, for each of 100k incoming chunk ids, whether it was already embedded (1M ids known). List, set or dict? What about when you also need the stored embedding?"
+a = '''
+- List: `id in known_list` is O(n) per check -> 100k x 1M = 10^11 comparisons. Never.
+- Set: O(1) average membership -> ~100k hash lookups. Use when you only need "seen or not".
+- Dict: O(1) lookup **plus** a value - `id -> embedding / row offset`. Use when you need data.
+- Sorted list + `bisect`: O(log n), compact, supports range queries - useful if ids are
+  ordered (timestamps) or you need "closest" rather than exact.
+- Memory: sets/dicts cost more per element than a list (hash table overhead ~30-100 B per
+  entry); at 100M ids consider a Bloom filter or a DB/kv store.
+- Building the set once is O(n); worth it as soon as you do more than a handful of lookups.
+'''
+
+[[q]]
+id = "ds-07"
+topic = "dict_lookup"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from collections import defaultdict
+d = defaultdict(list)
+print("x" in d, d["x"], "x" in d, len(d))
+c = {"a": 1}
+print(c.get("b"), c.setdefault("b", []), c)
+print(1 in {"a": 1}, "a" in {"a": 1})
+try:
+    c["zzz"]
+except KeyError as e:
+    print("KeyError", e)
+```
+'''
+a = '''
+```
+False [] True 1
+None [] {'a': 1, 'b': []}
+False True
+KeyError 'zzz'
+```
+- Reading a missing key from a defaultdict **inserts** it (`__missing__` calls the factory and
+  stores the result). `in` and `.get()` do not.
+- `get(k, default)` never inserts; `setdefault(k, v)` inserts if missing and returns the
+  stored value.
+- `in` on a dict checks **keys**, not values.
+- `d[k]` on a plain dict raises KeyError - good when absence is a bug; use `.get` when absence
+  is expected.
+'''
+
+[[q]]
+id = "ds-08"
+topic = "counter"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from collections import Counter
+a = Counter("abracadabra")
+print(a.most_common(2))
+b = Counter(a=1, b=5)
+print(a - b)
+print(a["zzz"], "zzz" in a)
+print((a + b)["b"])
+print(sum(a.values()), a.total())
+```
+'''
+a = '''
+```
+[('a', 5), ('b', 2)]
+Counter({'a': 4, 'r': 2, 'c': 1, 'd': 1})
+0 False
+7
+11 11
+```
+- Counter is a dict subclass for counts; a missing key reads as **0** without inserting it.
+- `-` subtracts and **drops** non-positive counts (`b` went to -3 -> removed); `subtract()`
+  keeps negatives. `+`, `&` (min), `|` (max) also exist.
+- `most_common(k)` uses a heap (O(n log k)); ties keep insertion order - sort by
+  `(-count, key)` yourself if you need determinism.
+- `total()` (3.10+) sums the counts.
+'''
+followups = ["How would you compute the top-k tokens of a stream that doesn't fit in memory?"]
+
+[[q]]
+id = "ds-09"
+topic = "deque"
+level = 2
+kind = "compare"
+q = "deque vs list vs queue.Queue vs asyncio.Queue - when do you use which?"
+a = '''
+- `list`: stack (append/pop at the end, O(1)), random access O(1). FIFO via pop(0) is O(n).
+- `collections.deque`: O(1) append/pop at **both** ends, `maxlen` for bounded buffers
+  (last-N logs, sliding windows, recent chat turns), `rotate`. Indexing the middle is O(n).
+  Single append/pop calls are thread-safe in CPython, but it's not a coordination primitive.
+- `queue.Queue`: thread-safe producer/consumer with **blocking** `get`/`put`, `maxsize` for
+  backpressure, `task_done`/`join`. For threads.
+- `asyncio.Queue`: same idea for coroutines (`await q.get()`), not thread-safe. For an async
+  pipeline (fetch -> embed -> upsert workers).
+- `heapq` / `queue.PriorityQueue` when items need priority ordering.
+'''
+
+[[q]]
+id = "ds-10"
+topic = "stack_queue"
+level = 1
+kind = "concept"
+q = "What is the difference between a stack and a queue? How do you implement each in Python, and give a real use case for each."
+a = '''
+- **Stack** = LIFO: push/pop at the same end. Python: `list.append` / `list.pop()`.
+  Uses: matching brackets / repairing partial JSON from a stream, undo history, DFS,
+  evaluating expressions, the call stack itself.
+- **Queue** = FIFO: enqueue at one end, dequeue at the other. Python: `deque.append` /
+  `deque.popleft()` (not `list.pop(0)`, which is O(n)).
+  Uses: BFS (shortest path in unweighted graphs), job/task queues, request buffering,
+  rate-limiter logs.
+- Both O(1) per operation with the right container.
+'''
+
+[[q]]
+id = "ds-11"
+topic = "ordereddict"
+level = 2
+kind = "compare"
+q = "Plain dicts preserve insertion order since 3.7. Is OrderedDict still useful?"
+a = '''
+Yes, for a few things:
+- `move_to_end(key, last=True/False)` - O(1) reordering; plain dict needs delete + reinsert.
+- `popitem(last=False)` - O(1) pop of the **oldest** entry (FIFO); plain `dict.popitem()` is
+  LIFO only. Together these make an **LRU cache** trivial.
+- Equality is **order-sensitive** between two OrderedDicts
+  (`OrderedDict(a=1, b=2) != OrderedDict(b=2, a=1)`), while dicts compare order-insensitively.
+- Expresses intent ("order matters here") to readers.
+- Costs more memory than a dict (it maintains a doubly linked list).
+'''
+followups = ["Implement an LRU cache without OrderedDict - what structures do you need?"]
+
+[[q]]
+id = "ds-12"
+topic = "namedtuple"
+level = 2
+kind = "compare"
+q = "namedtuple vs typing.NamedTuple vs @dataclass vs TypedDict vs pydantic model - how do you choose for e.g. a retrieval result?"
+a = '''
+- `collections.namedtuple` / `typing.NamedTuple`: immutable tuple subclass with named fields;
+  tiny memory, hashable, unpackable, sortable as a tuple. Good for small value records like
+  `Hit(doc_id, score)`. Caveat: it *is* a tuple - `Hit("a", 1) == ("a", 1)` is True and
+  positional access leaks into APIs. `NamedTuple` adds type hints and defaults with class syntax.
+- `@dataclass`: a regular class with generated `__init__/__repr__/__eq__`; mutable by default,
+  `frozen=True`, `slots=True`, defaults via `field(default_factory=...)`, methods. Default choice
+  for internal domain objects.
+- `TypedDict`: just type hints over a plain dict - for JSON-shaped data (API payloads)
+  without runtime cost or validation.
+- pydantic: runtime **validation** and parsing/serialisation at trust boundaries (LLM tool
+  arguments, API requests, config).
+'''
+
+[[q]]
+id = "ds-13"
+topic = "binary_search"
+level = 3
+kind = "debug"
+q = '''
+Find the bugs. (Hint: try `find([1, 3, 5, 7], 7)` and `find([], 7)`.)
+```python
+def find(xs, target):
+    lo, hi = 0, len(xs) - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if xs[mid] < target:
+            lo = mid
+        else:
+            hi = mid
+    return lo if xs[lo] == target else -1
+```
+'''
+a = '''
+- `lo = mid` can make no progress: with `lo=2, hi=3`, `mid=2` forever -> **infinite loop**
+  (`find([1,3,5,7], 7)` hangs). Must be `lo = mid + 1`.
+- Empty list: `hi = -1`, loop skipped, `xs[0]` -> **IndexError**.
+- It mixes conventions (closed `hi = len - 1` with `lo < hi`). Pick one invariant, e.g.
+  half-open:
+  ```python
+  lo, hi = 0, len(xs)
+  while lo < hi:
+      mid = (lo + hi) // 2
+      if xs[mid] < target: lo = mid + 1
+      else: hi = mid
+  return lo if lo < len(xs) and xs[lo] == target else -1
+  ```
+- Or just `i = bisect.bisect_left(xs, target)`.
+- Test edges: empty, single element, target smaller/larger than all, duplicates.
+'''
+
+[[q]]
+id = "ds-14"
+topic = "complexity"
+level = 1
+kind = "concept"
+q = "Give the time complexity of: `x in list`, `x in set`, `dict[k]`, `list.append`, `list.insert(0, x)`, `deque.popleft()`, `sorted(xs)`, `bisect.bisect_left`, `heapq.heappush`, `s1 + s2` for strings."
+a = '''
+| operation | complexity |
+|---|---|
+| `x in list` | O(n) |
+| `x in set`, `dict[k]`, `k in dict` | O(1) average, O(n) worst |
+| `list.append`, `list.pop()` | O(1) amortised |
+| `list.insert(0, x)`, `list.pop(0)` | O(n) |
+| `deque.popleft()` / `appendleft` | O(1) |
+| `sorted(xs)` / `list.sort()` | O(n log n) (Timsort, O(n) on already-sorted data) |
+| `bisect.bisect_left` | O(log n) comparisons (but `insort` is O(n) due to the shift) |
+| `heapq.heappush/heappop` | O(log n); `heapify` O(n) |
+| `s1 + s2` | O(len(s1) + len(s2)) - strings are immutable |
+
+- O(1) < O(log n) < O(n) < O(n log n) < O(n^2). Constant factors and memory matter in
+  practice - measure with `timeit` before optimising.
+'''
+
+[[q]]
+id = "ds-15"
+topic = "dedup"
+level = 3
+kind = "design"
+q = "Your RAG ingestion pulls 10M web documents; many are exact or near duplicates (boilerplate, mirrors, minor edits). How do you deduplicate?"
+a = '''
+- **Exact dups**: hash the normalised text (lowercase, collapse whitespace, strip boilerplate)
+  with a fast stable hash (sha1/xxhash) and keep a `seen` set of digests - 20 bytes per doc
+  instead of the full text. For multiple workers, keep the set in Redis / a DB unique index.
+- Preserve the first/best occurrence (e.g. canonical URL, newest version) - define the policy.
+- **Near dups**: MinHash over word shingles + LSH buckets (datasketch), or SimHash; compare
+  only candidates in the same bucket instead of O(n^2) pairs. Threshold e.g. Jaccard >= 0.8.
+- **Semantic dups**: embedding cosine similarity with an ANN index - most expensive, use after
+  cheaper filters.
+- Do it at **chunk** level too: duplicated chunks waste index space and crowd the top-k with
+  the same content (also dedupe retrieval results before building the prompt).
+- Memory beyond RAM: Bloom filter (small false-positive rate), or sort-based dedup on disk.
+'''
+followups = ["What is the false-positive behaviour of a Bloom filter and why is it acceptable here?"]
+
+[[q]]
+id = "ds-16"
+topic = "linear_search"
+level = 2
+kind = "compare"
+q = "Linear search vs binary search vs hash lookup: when is a plain linear scan the right answer?"
+a = '''
+- Linear O(n): works on **any** iterable, unsorted data, arbitrary predicates
+  (`next((d for d in docs if d.score > 0.8), None)`), streams/generators, and stops early.
+  For small n (tens of items) it's often fastest - no setup, cache-friendly.
+- Binary O(log n): needs sorted, random-access data and a monotone condition; supports
+  range queries and "first >= x". Sorting first costs O(n log n) - only worth it for many
+  queries.
+- Hash O(1) avg: exact-match only, needs hashable keys, building the set/dict is O(n) and
+  uses more memory.
+- Rule of thumb: one lookup -> linear; many exact lookups -> set/dict; range/nearest
+  queries over ordered data -> sorted + bisect (or a DB index).
+'''
+
+[[q]]
+id = "ds-17"
+topic = "defaultdict"
+level = 3
+kind = "debug"
+q = '''
+A long-running API server's memory grows steadily. The hot path:
+```python
+from collections import defaultdict
+user_history = defaultdict(list)
+
+def handle(user_id: str, msg: str):
+    if user_history[user_id]:              # returning user?
+        prompt = build_prompt(user_history[user_id], msg)
+    else:
+        prompt = msg
+    ...
+```
+Most requests come from anonymous, one-off `user_id`s. What's wrong and how do you fix it?
+'''
+a = '''
+- `user_history[user_id]` on a defaultdict **inserts** an empty list for every unknown id,
+  even when you only meant to read. Millions of one-off ids -> millions of entries -> memory
+  leak.
+- Fix the read: `history = user_history.get(user_id)` / `if user_id in user_history`; only
+  `user_history[user_id].append(...)` when you actually store something.
+- Fix the design: an unbounded in-process dict is a leak anyway - bound it (LRU/TTL cache),
+  or move conversation state to Redis/DB with expiry. Per-process state also breaks with
+  multiple workers.
+- More defaultdict gotchas: `defaultdict(lambda: ...)` can't be pickled; return a plain
+  `dict(...)` from APIs so callers don't get insert-on-read semantics.
+'''
+
+[[q]]
+id = "ds-18"
+topic = "dicts"
+level = 3
+kind = "predict"
+q = '''
+What does this print, and why?
+```python
+d = {1: "a", True: "b", 1.0: "c"}
+print(d)
+s = {0, False, 0.0}
+print(s)
+print(hash(1) == hash(1.0) == hash(True))
+```
+'''
+a = '''
+```
+{1: 'c'}
+{0}
+True
+```
+- `1 == True == 1.0` and they hash the same, so they are the **same key**.
+- On assignment to an existing key, the dict keeps the **original key object** (`1`) and
+  replaces the **value** - so the last value `"c"` wins but the key stays `1`. Sets likewise
+  keep the first element.
+- Real-world impact: mixing bools and ints as keys (e.g. label maps from JSON/CSV) silently
+  merges entries.
+'''

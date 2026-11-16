@@ -1,0 +1,33 @@
+[track]
+id = "nlp"
+title = "NLP Foundations"
+order = 4
+description = "From text preprocessing to embeddings - the bridge between ML and LLMs."
+
+[[module]]
+slug = "text_preprocessing"
+num = 1
+title = "Text Preprocessing"
+status = "planned"
+topics = [["normalization", "Normalization, stemming, lemmatization"], ["stopwords", "Stopwords"], ["ngrams", "N-grams"]]
+
+[[module]]
+slug = "representations"
+num = 2
+title = "Text Representations"
+status = "planned"
+topics = [["bow_tfidf", "Bag-of-words & TF-IDF"], ["bm25", "BM25"], ["word2vec", "Word2Vec / GloVe"], ["sentence_embeddings", "Sentence embeddings"]]
+
+[[module]]
+slug = "tokenization"
+num = 3
+title = "Tokenization"
+status = "planned"
+topics = [["bpe", "Byte-Pair Encoding"], ["wordpiece_sentencepiece", "WordPiece / SentencePiece"], ["tiktoken", "tiktoken & token counting"]]
+
+[[module]]
+slug = "tasks"
+num = 4
+title = "Classic NLP Tasks"
+status = "planned"
+topics = [["classification", "Text classification"], ["ner", "Named entity recognition"], ["summarization", "Summarization"], ["qa", "Question answering"]]

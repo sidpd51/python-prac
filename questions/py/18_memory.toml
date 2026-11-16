@@ -1,0 +1,407 @@
+# Interview question bank - Python Memory Management
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "mem-01"
+topic = "object_model"
+level = 1
+kind = "concept"
+q = "What is a Python object at the CPython level? What do `id()`, `type()` and `is` tell you?"
+a = """
+- Every value is a heap-allocated **PyObject** with a header: a **reference count** and a
+  pointer to its **type** (variable-size objects also store a length). Then the value data.
+- An object has **identity** (`id()` - in CPython its memory address, unique only among
+  objects alive at the same time), a **type** (fixed, decides behaviour) and a **value**.
+- `a is b` compares identity (same object); `a == b` calls `__eq__` (same value).
+- Variables are just **names bound to objects**; containers hold references (pointers),
+  not values. Assignment never copies.
+- Mutability is a property of the type: list/dict/set mutable; int/str/tuple/frozenset immutable.
+"""
+followups = ["Why is `x is None` preferred over `x == None`?", "Can two live objects have the same id()?"]
+
+[[q]]
+id = "mem-02"
+topic = "references"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+a = [1, 2, 3]
+b = a
+b += [4]
+print(a)
+t = (1, 2)
+u = t
+u += (3,)
+print(t, u)
+print(a is b, t is u)
+```
+'''
+a = """
+```
+[1, 2, 3, 4]
+(1, 2) (1, 2, 3)
+True False
+```
+- `b = a` binds a second name to the **same list**. `+=` on a list is `__iadd__` = in-place
+  extend, so the change is visible through `a`, and `b` still refers to the same object.
+- Tuples are immutable and have no `__iadd__`, so `u += (3,)` builds a **new** tuple and
+  rebinds `u`; `t` is untouched.
+- Same syntax, different semantics depending on mutability - a classic source of aliasing bugs.
+"""
+
+[[q]]
+id = "mem-03"
+topic = "copy"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import copy
+cfg = {"model": "gpt-4o", "stop": ["END"]}
+shallow = dict(cfg)
+deep = copy.deepcopy(cfg)
+cfg["stop"].append("###")
+cfg["model"] = "claude"
+print(shallow)
+print(deep)
+```
+'''
+a = """
+```
+{'model': 'gpt-4o', 'stop': ['END', '###']}
+{'model': 'gpt-4o', 'stop': ['END']}
+```
+- `dict(cfg)` (like `cfg.copy()`, `copy.copy`, `list(x)`, slicing) is **shallow**: a new
+  outer dict whose values are the **same** objects. Rebinding `cfg["model"]` doesn't
+  affect it, but mutating the shared `stop` list does.
+- `deepcopy` recursively copies nested containers, so it is fully independent.
+"""
+followups = ["How does deepcopy handle an object that contains itself?"]
+
+[[q]]
+id = "mem-04"
+topic = "references"
+level = 2
+kind = "predict"
+q = '''
+What does this print, and why?
+```python
+grid = [[0] * 3] * 3
+grid[0][0] = 1
+print(grid)
+rows = [[0] * 3 for _ in range(3)]
+rows[0][0] = 1
+print(rows)
+```
+'''
+a = """
+```
+[[1, 0, 0], [1, 0, 0], [1, 0, 0]]
+[[1, 0, 0], [0, 0, 0], [0, 0, 0]]
+```
+- `[inner] * 3` copies the **reference** three times: all three rows are the same list object.
+- The comprehension evaluates `[0] * 3` on each iteration, so three distinct lists.
+- `[0] * 3` itself is fine because ints are immutable - you can only rebind a slot, never
+  mutate the shared int.
+"""
+
+[[q]]
+id = "mem-05"
+topic = "refcounting"
+level = 2
+kind = "concept"
+q = "How does reference counting work in CPython? When exactly is an object freed, and what are its limitations?"
+a = """
+- Each object counts the references to it (names, container slots, attributes, frames).
+  Binding increments; rebinding, `del name`, a container dropping it, or a frame exiting
+  decrements. At **zero** the object is deallocated **immediately** (deterministic -
+  that's why `open()` without `with` usually still closes the file in CPython).
+- `del x` deletes the **name**, not the object; the object dies only if that was the last ref.
+- `sys.getrefcount(x)` reports one extra (its own argument); absolute values vary by version
+  (3.12+ **immortal objects** like None/True/small ints report a huge constant, PEP 683;
+  3.14 avoids some temporary increments).
+- Limitations: **cycles** never reach zero (need the cycle GC); every incref/decref is a
+  memory write (cache traffic, copy-on-write pages after fork); not thread-safe without the
+  GIL - the free-threaded build uses biased/deferred refcounting instead.
+"""
+followups = ["Why does refcounting make the GIL hard to remove?"]
+
+[[q]]
+id = "mem-06"
+topic = "gc"
+level = 2
+kind = "concept"
+q = "What does Python's `gc` module actually collect, and how does it decide when to run?"
+a = """
+- It only handles **reference cycles** among container objects (lists, dicts, instances...) -
+  everything else is freed by refcounting. Atomic objects (ints, strs) aren't even tracked.
+- Algorithm: for tracked objects, subtract references coming from *inside* the candidate set;
+  whatever still has external references is reachable, the rest is unreachable garbage.
+- Trigger: allocation-count based thresholds (`gc.get_threshold()`, default first threshold
+  2000 in 3.13+). Up to 3.13 it is **generational** (gen 0/1/2; survivors get promoted);
+  **3.14 made it incremental** (young + old generations, the old one scanned in increments)
+  to cut pause times on large heaps.
+- `gc.collect()` forces a full collection and returns the number of unreachable objects found;
+  `gc.disable()` stops automatic runs only (refcounting continues).
+- Useful: `gc.freeze()` (move everything to a permanent generation - e.g. before forking
+  workers), `gc.get_referrers()`, `gc.callbacks`, `gc.set_debug(gc.DEBUG_SAVEALL)`.
+"""
+
+[[q]]
+id = "mem-07"
+topic = "cycles"
+level = 2
+kind = "debug"
+q = '''
+A teammate added `gc.disable()` at startup of a long-running RAG API "for throughput". RSS now grows
+until the pod is OOM-killed. Each request builds a parse tree like this. What's happening and how do you fix it?
+```python
+class Section:
+    def __init__(self, title, parent=None):
+        self.title = title
+        self.parent = parent
+        self.children = []
+        if parent:
+            parent.children.append(self)
+```
+'''
+a = """
+- Every child references its parent and the parent references the child -> a **reference
+  cycle** per tree. Refcounts never reach 0, so only the cycle collector can free them - and
+  it was disabled. Every request leaks a whole tree.
+- Fixes (in order of preference):
+  1. Break the cycle: store the back-pointer as `weakref.ref(parent)` (parent owns children
+     strongly; child points back weakly) - trees are then freed by refcounting alone.
+  2. Re-enable gc; if GC pauses are the real concern, tune `gc.set_threshold` or call
+     `gc.freeze()` after startup so long-lived startup objects aren't rescanned.
+  3. Explicitly tear down (`children.clear()`) when done.
+- Verify with `gc.collect()` return values, `tracemalloc` snapshot diffs, or counting
+  `Section` instances via `gc.get_objects()` over time.
+"""
+followups = ["Is a cycle a memory leak in Python?", "Why might a library still disable GC (e.g. during bulk object creation)?"]
+
+[[q]]
+id = "mem-08"
+topic = "weakref"
+level = 2
+kind = "compare"
+q = "You cache loaded models/tokenizers. Compare `functools.lru_cache`, a plain dict and `weakref.WeakValueDictionary` as the cache. Which objects can't be weakly referenced?"
+a = """
+- **Plain dict**: strong refs - models stay loaded forever (unbounded memory).
+- **lru_cache(maxsize=N)**: strong refs, bounded by count, evicts least recently used.
+  Keeps hot models resident even when nobody currently uses them. Also holds references to
+  arguments (watch out for `self` on methods -> instances never freed).
+- **WeakValueDictionary**: entries disappear when the last *outside* strong reference dies.
+  It dedups models that are currently in use but never keeps an idle one - a "canonicalising"
+  cache, not a performance cache. Often combined: small strong LRU + weak map.
+- Can't be weakly referenced: `int`, `str`, `bytes`, `tuple`, `list`, `dict` (subclasses of
+  list/dict can), and `__slots__` classes that don't declare `'__weakref__'`.
+- Weak containers also break parent<->child cycles and power observer registries
+  (`WeakSet` of listeners) and `WeakKeyDictionary` for per-object metadata without leaking.
+"""
+
+[[q]]
+id = "mem-09"
+topic = "weakref"
+level = 3
+kind = "debug"
+q = '''
+The connection is never closed when a `Session` is dropped, and Session objects seem to live
+until interpreter exit. Why? Fix it.
+```python
+import weakref
+
+class Session:
+    def __init__(self, dsn):
+        self.conn = connect(dsn)
+        weakref.finalize(self, self.close)
+
+    def close(self):
+        self.conn.close()
+```
+'''
+a = """
+- `weakref.finalize` keeps **strong** references to the callback and its args.
+  `self.close` is a **bound method** that holds `self` -> the finalizer keeps the very object
+  it's watching alive, so it is never collected (the finalizer only runs at exit).
+- Fix: register a callback that doesn't reference `self`:
+  ```python
+  self._finalizer = weakref.finalize(self, self.conn.close)   # bound to conn, not self
+  def close(self):
+      self._finalizer()    # runs at most once; later GC won't call it again
+  ```
+- Same rule for `weakref.ref(obj, callback)`, and why `finalize` beats `__del__`: runs at most
+  once, can be `detach()`-ed, survives cycles, runs at exit for still-alive objects.
+- Best practice is still explicit lifetime management (`with` / context managers); finalizers
+  are the safety net.
+"""
+
+[[q]]
+id = "mem-10"
+topic = "allocation"
+level = 2
+kind = "concept"
+q = "How does CPython allocate memory for small objects? Why might RSS stay high after you free a big list of dicts?"
+a = """
+- **pymalloc**: objects <= 512 bytes come from per-size-class **pools** (16 KiB on 64-bit builds since 3.10) inside
+  **arenas** (1 MiB in modern versions) obtained from the OS; bigger requests go to `malloc`.
+- Freed blocks return to their pool for reuse, but an **arena is only released to the OS when
+  completely empty**. Fragmentation (a few survivors per arena) keeps RSS high even though
+  Python can reuse the memory internally.
+- Over-allocation: lists/dicts grow geometrically, so `append` is amortised O(1) but capacity >
+  length (`sys.getsizeof` shows it).
+- Caches: small ints (-5..256) are preallocated singletons; some strings are interned;
+  free lists for floats/tuples/frames.
+- Mitigations: process big batches in a worker process that exits, stream instead of
+  materialise, use NumPy/Arrow buffers (one big allocation) instead of millions of small objects.
+"""
+
+[[q]]
+id = "mem-11"
+topic = "allocation"
+level = 2
+kind = "predict"
+q = '''
+What does this print on CPython, and why?
+```python
+x = int("256"); y = int("256")
+print(x is y)
+x = int("257"); y = int("257")
+print(x is y)
+print(x == y)
+```
+'''
+a = """
+```
+True
+False
+True
+```
+- CPython preallocates the **small-int cache** (-5..256); any operation producing 256 returns
+  the same cached object.
+- 257 is created fresh each time at runtime -> two distinct objects with equal value.
+- (Literals in the same compiled code object may be deduplicated by the compiler, which is why
+  `257 is 257` in one file can print True - another reason never to use `is` for value
+  comparison. Only use `is` for singletons: None, True/False, sentinels.)
+"""
+
+[[q]]
+id = "mem-12"
+topic = "stack_heap"
+level = 1
+kind = "concept"
+q = "Does Python have 'stack' and 'heap' variables like C? Where do local variables and objects live?"
+a = """
+- **All objects live on the heap** (private Python heap managed by pymalloc). There are no
+  stack-allocated objects.
+- Each function call gets a **frame** holding the local *names* (references), evaluation stack,
+  and instruction pointer. Conceptually that's "the call stack" - in 3.11+ frames are allocated
+  in a per-thread contiguous chunk, but they still only hold **pointers** to heap objects.
+- When a frame exits, its references are dropped; objects survive if referenced elsewhere
+  (returned values, closures, containers).
+- Generator/coroutine frames are kept alive across suspensions - that's how they remember state.
+- Deep recursion -> `RecursionError` (limit `sys.getrecursionlimit()`, default 1000), not a C
+  segfault (normally).
+"""
+
+[[q]]
+id = "mem-13"
+topic = "profiling"
+level = 3
+kind = "design"
+q = "A FastAPI embedding service's memory grows ~200 MB/day until restart. How do you find the leak?"
+a = """
+1. Confirm it's real growth (not allocator fragmentation / warm caches plateauing): plot RSS
+   over time vs traffic; check if `gc.collect()` helps (cycles) or not (true references).
+2. `tracemalloc`: start with enough frames (`tracemalloc.start(25)`), take snapshots
+   minutes/hours apart, `snapshot2.compare_to(snapshot1, "traceback")` -> top growing
+   allocation sites (file:line).
+3. Object-level: count `type(o).__name__` over `gc.get_objects()` periodically; `objgraph`
+   `show_growth()` / back-reference chains to see who holds them.
+4. Native memory (NumPy, tokenizers, torch, C extensions): tracemalloc doesn't see it - use
+   **memray** (also traces native allocations) or `py-spy dump` for live processes.
+5. Usual suspects: unbounded module-level caches/dicts, `lru_cache` on methods (holds self),
+   growing lists of request contexts/logs, listeners never unsubscribed, cycles with `gc`
+   disabled, exceptions storing tracebacks (frames -> locals).
+6. Fix, add a regression test that measures peak/retained memory, and set bounded caches.
+"""
+
+[[q]]
+id = "mem-14"
+topic = "efficient_processing"
+level = 3
+kind = "design"
+q = "You must compute statistics over 30 M LLM-usage log rows (JSONL, ~25 GB) on a 4 GB machine. How do you keep memory bounded?"
+a = """
+- **Stream**: iterate the file line by line with generators (`for line in f`), aggregate into
+  running counters/sums - O(groups) memory, not O(rows). Never `readlines()`/`json.load` the lot.
+- If using pandas: `read_json(..., lines=True, chunksize=...)` / `read_csv(chunksize=...)`,
+  select only needed columns (`usecols`), downcast dtypes (`category` for model names,
+  `int32`/`float32`), combine partial aggregates.
+- Columnar formats: convert once to Parquet (Arrow) and read only needed columns; or use
+  DuckDB/Polars, which spill and stream.
+- Avoid millions of tiny Python objects: a float in a list costs ~32 bytes (8 pointer + 24
+  object) vs 8 bytes in a NumPy array; use `__slots__` or tuples for record objects.
+- Percentiles over huge data: approximate sketches (t-digest) or per-chunk histograms instead
+  of keeping all latencies.
+- Measure: `tracemalloc` peak in tests, RSS in prod.
+"""
+
+[[q]]
+id = "mem-15"
+topic = "generator_memory"
+level = 1
+kind = "compare"
+q = "Compare the memory of `sum([x * x for x in range(10_000_000)])` and `sum(x * x for x in range(10_000_000))`."
+a = """
+- The list comprehension **materialises** 10 M ints first: the list's pointer array (~80 MB)
+  plus the int objects (28-32 bytes each beyond the small-int cache) -> hundreds of MB peak.
+- The generator expression produces one value at a time; `sum` consumes it immediately ->
+  **O(1) peak memory** (one frame + one int). `sys.getsizeof(gen)` is ~200 bytes regardless of n.
+- Time is similar (the list version can even be slightly faster for small n); memory differs
+  by orders of magnitude for large n.
+- Measure it with `tracemalloc.get_traced_memory()` peak, not `sys.getsizeof` of the list
+  (shallow - excludes the elements).
+"""
+
+[[q]]
+id = "mem-16"
+topic = "gc"
+level = 3
+kind = "concept"
+q = "Why do pre-fork servers (gunicorn with preload) see memory grow in workers even though workers only *read* shared data? What does `gc.freeze()` have to do with it?"
+a = """
+- After `fork()`, parent and child share pages **copy-on-write**. Python writes to an object
+  whenever it touches its **refcount** (even reading a list element increments/decrements) and
+  the GC writes to its per-object GC header when scanning. Each write copies a 4 KiB page into
+  the child -> "read-only" data gets duplicated in every worker.
+- `gc.freeze()` (3.7+) called in the parent before forking moves all current objects to a
+  permanent generation, so collections in the children don't scan/touch them. Common recipe:
+  `gc.disable()` early in the parent, load models/data, `gc.freeze()`, fork, re-enable in workers.
+- **Immortal objects** (3.12, PEP 683) remove refcount writes for interned/static objects.
+- For big read-only data, keep it in buffers that don't have per-element refcounts (NumPy,
+  mmap, shared memory) - refcount writes then hit only one header.
+"""
+
+[[q]]
+id = "mem-17"
+topic = "copy"
+level = 2
+kind = "concept"
+q = "How does `copy.deepcopy` work, what breaks it, and how do you customise copying for your own class?"
+a = """
+- It recursively copies via `__deepcopy__(memo)` if defined, otherwise the pickle protocol
+  (`__reduce_ex__`) to rebuild the object, copying its state.
+- `memo` (id -> copy) means each original object is copied **once**: shared references stay
+  shared in the copy and **cycles terminate**.
+- Immutable atomic objects (ints, strs, None, functions, classes) are returned as-is.
+- Breaks on objects that can't be pickled/copied: locks, sockets, open files, DB connections,
+  generators -> `TypeError: cannot pickle '_thread.lock' object`. Expensive for big graphs.
+- Customise: `__copy__(self)` and `__deepcopy__(self, memo)` (e.g. share an immutable
+  tokenizer, reset a lock, deep-copy only the config). Or `dataclasses.replace` /
+  `model_copy(deep=True)` in pydantic for value objects.
+"""
+followups = ["Shallow-copy a list three ways.", "When is a deep copy the wrong fix for an aliasing bug?"]

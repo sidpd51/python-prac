@@ -1,0 +1,457 @@
+# Interview question bank - Context Managers
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "cm-01"
+topic = "protocol"
+level = 1
+kind = "concept"
+q = "What is a context manager? Which methods make up the protocol and what problem does it solve?"
+a = """
+- An object usable in a `with` statement: it defines `__enter__(self)` and
+  `__exit__(self, exc_type, exc, tb)` (async version: `__aenter__`/`__aexit__` with
+  `async with`).
+- It pairs **setup with guaranteed teardown**: whatever happens inside the block -
+  normal exit, `return`, `break`, an exception - `__exit__` runs.
+- Typical uses: files, locks, DB transactions, network sessions/clients, temporary state
+  (env vars, cwd, mocks), timing/tracing spans.
+- It replaces error-prone try/finally boilerplate and makes ownership visible: the
+  resource lives exactly as long as the block.
+"""
+
+[[q]]
+id = "cm-02"
+topic = "enter"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import threading
+lock = threading.Lock()
+with lock as got:
+    print(got, lock.locked())
+with open(__file__) as f:
+    print(f is f.__enter__())
+print(lock.locked(), f.closed)
+```
+'''
+a = """
+```
+True True
+True
+False True
+```
+- `as` binds **the return value of `__enter__`**, not the context manager itself. For a
+  Lock that's `True` (the result of `acquire()`); for a file object `__enter__` returns
+  `self`, which is why `with open(...) as f` gives you the file.
+- After the blocks: the lock is released and the file closed, but the names `got` and `f`
+  are still bound - `with` doesn't create a scope.
+"""
+
+[[q]]
+id = "cm-03"
+topic = "exit"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+class Quiet:
+    def __enter__(self):
+        print("enter")
+        return "value"
+
+    def __exit__(self, exc_type, exc, tb):
+        print("exit", exc_type.__name__ if exc_type else None)
+        return "yes"
+
+def f():
+    with Quiet() as q:
+        print(q)
+        raise ValueError("lost")
+    return "after with"
+
+print(f())
+```
+'''
+a = """
+```
+enter
+value
+exit ValueError
+after with
+```
+- `__exit__` receives `(type, value, traceback)` of the in-flight exception (or three
+  Nones). A **truthy** return value **suppresses** the exception - here the non-empty
+  string `"yes"` is truthy, so the ValueError silently disappears and execution continues
+  after the `with` block.
+- Only return True deliberately (like `contextlib.suppress`). Return None/False to let it
+  propagate - forgetting that and writing `return self` or `return result` is a real bug.
+- On success, the return value of `__exit__` is ignored.
+"""
+
+[[q]]
+id = "cm-04"
+topic = "with_internals"
+level = 2
+kind = "concept"
+q = "Write roughly what the interpreter does for `with EXPR as VAR: BODY`."
+a = """
+```python
+mgr = EXPR
+enter = type(mgr).__enter__      # looked up on the TYPE, before anything runs
+exit_ = type(mgr).__exit__
+value = enter(mgr)               # if this raises, __exit__ is NOT called
+try:
+    VAR = value
+    BODY
+except BaseException as e:
+    if not exit_(mgr, type(e), e, e.__traceback__):
+        raise                    # original exception, original traceback
+else:
+    exit_(mgr, None, None, None)
+```
+- Special methods are looked up on the class, so assigning `obj.__enter__ = ...` on an
+  instance doesn't work (`TypeError: ... does not support the context manager protocol`).
+- `__exit__` also sees BaseExceptions (KeyboardInterrupt, CancelledError).
+- `return`/`break` inside BODY still go through `exit_(None, None, None)`.
+- If `__exit__` itself raises, that exception replaces the original (which becomes its
+  `__context__`).
+"""
+
+[[q]]
+id = "cm-05"
+topic = "with_internals"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def tag(name):
+    print("open", name)
+    try:
+        yield name.upper()
+    finally:
+        print("close", name)
+
+with tag("a") as a, tag("b") as b:
+    print("body", a, b)
+```
+'''
+a = """
+```
+open a
+open b
+body A B
+close b
+close a
+```
+- `with A, B:` is exactly `with A: with B:` - entered left to right, exited **in reverse
+  (LIFO)** order, like a stack. Resources acquired later (b may depend on a) are released
+  first.
+- If entering `b` had failed, `a` would still be closed.
+- Python 3.10+ allows parentheses to split long lists:
+  `with (open(x) as src, open(y, "w") as dst):`
+"""
+
+[[q]]
+id = "cm-06"
+topic = "contextmanager"
+level = 2
+kind = "debug"
+q = '''
+Under load the GPU "lock" stays held forever after the first failed inference. What does
+this print, and what's the fix?
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def gpu_lock():
+    print("acquire")
+    yield
+    print("release")
+
+try:
+    with gpu_lock():
+        raise KeyError("x")
+except KeyError:
+    print("caught")
+```
+'''
+a = """
+```
+acquire
+caught
+```
+- With `@contextmanager`, an exception in the block is **thrown into the generator at
+  the `yield`**. Nothing catches it there, so the code after `yield` never runs -
+  "release" is skipped and the lock leaks.
+- Fix: always wrap the yield:
+```python
+@contextmanager
+def gpu_lock():
+    acquire()
+    try:
+        yield
+    finally:
+        release()
+```
+- To *handle* the exception (e.g. rollback), use `except ...: rollback(); raise` around
+  the yield; to suppress it, catch it and don't re-raise.
+- The generator must yield exactly once - yielding twice raises `RuntimeError: generator
+  didn't stop`.
+"""
+
+[[q]]
+id = "cm-07"
+topic = "contextmanager"
+level = 2
+kind = "predict"
+q = '''
+What happens here?
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def session():
+    print("start")
+    yield "s"
+    print("end")
+
+cm = session()
+with cm:
+    pass
+try:
+    with cm:
+        pass
+except RuntimeError as e:
+    print("RuntimeError:", e)
+```
+'''
+a = """
+```
+start
+end
+Traceback (most recent call last):
+  ...
+AttributeError: '_GeneratorContextManager' object has no attribute 'args'
+```
+- An `@contextmanager` object wraps **one generator**, so it is single-use. The first
+  `__enter__` deletes the stored args/function; reusing the same object fails (an
+  AttributeError - so `except RuntimeError` doesn't catch it).
+- Call the factory again for each use: `with session():`.
+- Class-based CMs can be designed to be reusable (a Timer that resets in `__enter__`) or
+  even reentrant (`threading.RLock`, `contextlib.redirect_stdout`). Know which kind
+  you're writing.
+"""
+
+[[q]]
+id = "cm-08"
+topic = "custom"
+level = 1
+kind = "compare"
+q = "Class-based context manager vs `@contextlib.contextmanager`: when do you pick each?"
+a = """
+- `@contextmanager`: a generator - setup, `try: yield value finally: teardown`. Short,
+  readable, great for "temporarily change X" helpers. Single-use; logic is linear.
+- Class with `__enter__`/`__exit__`: when the object has **state and methods used inside
+  the block** (a Timer exposing `.elapsed`, a writer with `.write()`, a client with
+  `.complete()`), needs to be reusable/reentrant, needs `__exit__`'s exception info in a
+  structured way, or must also support `async with` (`__aenter__`/`__aexit__`).
+- `contextlib.ContextDecorator` (and `@contextmanager` objects) can also be used as
+  decorators.
+- Async equivalents: `@asynccontextmanager`, `AsyncExitStack`.
+"""
+
+[[q]]
+id = "cm-09"
+topic = "exitstack"
+level = 2
+kind = "concept"
+q = "What is `contextlib.ExitStack` for? Explain `enter_context`, `callback` and `pop_all` with a use case each."
+a = """
+- A context manager that manages a **dynamic** number of other context managers and
+  cleanup callbacks, unwinding them LIFO on exit (with nested-`with`-like exception handling).
+- `stack.enter_context(cm)`: enter cm now, exit it when the stack closes -
+  e.g. `files = [stack.enter_context(open(p)) for p in paths]` for N shard files.
+- `stack.callback(fn, *args)`: register any cleanup function - e.g. `client.close`,
+  `os.remove(tmp)`, `span.end()` for objects that aren't CMs.
+- `stack.pop_all()`: move all registered cleanups to a new stack and **disarm** the
+  current one -> "acquire everything; if any step fails clean up what you got, otherwise
+  hand ownership to the caller" (constructors, `__enter__` that opens many things).
+- Also `push(exit_fn)` for raw `__exit__`-style callbacks, and `AsyncExitStack` with
+  `enter_async_context` for async clients.
+"""
+
+[[q]]
+id = "cm-10"
+topic = "exitstack"
+level = 3
+kind = "design"
+q = "A RAG service at startup must create an embedding client, an LLM client, a vector DB connection pool and a Redis cache - any can fail - and close all of them cleanly at shutdown. How do you structure this in an async FastAPI app?"
+a = """
+- Use the app **lifespan** (`@asynccontextmanager async def lifespan(app)`) with an
+  `AsyncExitStack`:
+```python
+@asynccontextmanager
+async def lifespan(app):
+    async with AsyncExitStack() as stack:
+        app.state.http = await stack.enter_async_context(httpx.AsyncClient(timeout=30))
+        app.state.vdb = await stack.enter_async_context(make_pool())
+        app.state.redis = await stack.enter_async_context(redis_client())
+        stack.push_async_callback(flush_metrics)
+        yield
+```
+- If the 3rd resource fails, the first two are closed (LIFO) and startup fails loudly -
+  no half-initialized app serving traffic.
+- At shutdown everything is closed in reverse order even if one close fails.
+- One shared client per process (connection pooling) instead of a client per request.
+- For library-style constructors: build with ExitStack and `pop_all()` on success.
+"""
+
+[[q]]
+id = "cm-11"
+topic = "resources"
+level = 2
+kind = "predict"
+q = '''
+What does this print? Is the connection closed at the end?
+```python
+import sqlite3
+conn = sqlite3.connect(":memory:")
+with conn:
+    conn.execute("CREATE TABLE t (x)")
+    conn.execute("INSERT INTO t VALUES (1)")
+print(conn.execute("SELECT COUNT(*) FROM t").fetchone())
+try:
+    with conn:
+        conn.execute("INSERT INTO t VALUES (2)")
+        raise ValueError("boom")
+except ValueError:
+    pass
+print(conn.execute("SELECT COUNT(*) FROM t").fetchone())
+```
+'''
+a = """
+```
+(1,)
+(1,)
+```
+- `with conn:` on a sqlite3 Connection is a **transaction** scope: COMMIT on success,
+  ROLLBACK on exception (the second insert is undone). The exception still propagates.
+- It does **not close** the connection - `conn` is still usable after both blocks. Many
+  people assume otherwise and leak connections. Use `contextlib.closing(sqlite3.connect(...))`
+  or your own `connect()` CM that closes in `finally`.
+- Lesson: read what a type's `__exit__` actually does - "context manager" doesn't
+  automatically mean "closes". (Same with some DB drivers' sessions/cursors.)
+"""
+
+[[q]]
+id = "cm-12"
+topic = "cleanup"
+level = 3
+kind = "design"
+q = "Ingesting a document writes rows to Postgres AND vectors to a vector DB. Design a context manager that keeps them consistent when one write fails."
+a = """
+- There's no distributed transaction across the two, so design for **compensation +
+  idempotency**:
+  * `with ingest_unit(doc_id) as unit:` opens a DB transaction (BEGIN) and records
+    compensating actions with an ExitStack-like list (e.g. "delete vectors for doc_id").
+  * Write vectors first (idempotent upsert keyed by chunk id), then DB rows.
+  * On exception in `__exit__`: ROLLBACK the DB, run compensations (delete upserted
+    vectors) in reverse order, log failures of compensations, then **re-raise**.
+  * On success: COMMIT; only then mark the document as indexed.
+- Alternatives: outbox pattern (DB row + "pending vector write" in one transaction, a
+  worker syncs the vector DB with retries), or treat the vector index as rebuildable
+  derived data.
+- `__exit__` must never swallow the original error; cleanup errors are attached as
+  context/notes, not hidden.
+"""
+
+[[q]]
+id = "cm-13"
+topic = "resources"
+level = 3
+kind = "debug"
+q = '''
+This FastAPI endpoint works, but after a few hours in production the service hits
+"Too many open files" and latency climbs. Why?
+```python
+@app.post("/embed")
+async def embed(req: EmbedRequest):
+    client = httpx.AsyncClient(base_url=EMBED_URL, timeout=10)
+    resp = await client.post("/v1/embeddings", json=req.model_dump())
+    resp.raise_for_status()
+    return resp.json()
+```
+'''
+a = """
+- A new `AsyncClient` (with its own connection pool) is created per request and **never
+  closed** - sockets stay open until GC (maybe never under load) -> file descriptor
+  exhaustion. And when `raise_for_status()` raises, even explicit `close()` after it would
+  be skipped.
+- No connection reuse: each request pays TCP + TLS handshakes -> latency.
+- Fix: one long-lived client created in the app lifespan (`async with httpx.AsyncClient()
+  as client:` around `yield`) and injected; or at minimum
+  `async with httpx.AsyncClient(...) as client:` per request.
+- Same pattern for DB sessions, file handles and streamed responses
+  (`async with client.stream(...)`).
+"""
+
+[[q]]
+id = "cm-14"
+topic = "exit"
+level = 3
+kind = "predict"
+q = '''
+What does this print? What does it mean for writing `__exit__`?
+```python
+class Flaky:
+    def __enter__(self):
+        return self
+    def __exit__(self, et, e, tb):
+        raise OSError("cleanup failed")
+
+try:
+    with Flaky():
+        raise ValueError("real problem")
+except Exception as err:
+    print(type(err).__name__, "|", repr(err.__context__))
+```
+'''
+a = """
+```
+OSError | ValueError('real problem')
+```
+- An exception raised inside `__exit__` **replaces** the in-flight one. The original is
+  only kept as `__context__` (shown as "During handling of the above exception...").
+  Callers that `except ValueError` no longer catch it; alerts show the cleanup error.
+- Good `__exit__` code: keep cleanup minimal, catch and log cleanup failures when an
+  exception is already propagating (or attach them with `add_note`), and never let a
+  secondary failure mask the primary one.
+- ExitStack follows the same rules and keeps running the remaining callbacks even if one
+  of them raises.
+"""
+
+[[q]]
+id = "cm-15"
+topic = "custom"
+level = 1
+kind = "concept"
+q = "Name some ready-made context managers in the standard library and what you'd use them for."
+a = """
+- `open()`, `threading.Lock/RLock/Semaphore`, `asyncio.Lock/Semaphore/timeout()` (3.11),
+  `asyncio.TaskGroup`, `tempfile.TemporaryDirectory/NamedTemporaryFile`,
+  `sqlite3.Connection` (transaction), `unittest.mock.patch`, `decimal.localcontext()`,
+  `warnings.catch_warnings()`.
+- contextlib: `suppress(*excs)` (ignore specific errors), `closing(obj)` (calls
+  `.close()`), `nullcontext(value)` (optional CM placeholder), `redirect_stdout/stderr`,
+  `chdir(path)` (3.11), `ExitStack`/`AsyncExitStack`, `contextmanager`/`asynccontextmanager`.
+- `pytest.raises`, `monkeypatch.context()` in tests.
+- Knowing these avoids hand-rolled try/finally - and `nullcontext` avoids
+  `if lock: with lock: ... else: ...` duplication.
+"""

@@ -1,0 +1,466 @@
+# Interview question bank - Functional Programming
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "fp-01"
+topic = "lambda"
+level = 1
+kind = "concept"
+q = "What is a lambda in Python, what are its limitations, and when should you use `def` instead?"
+a = '''
+- `lambda args: expression` creates an anonymous function object whose body is a **single
+  expression** (its value is returned). No statements, no annotations, no docstring.
+- It's exactly as powerful as a `def` with one `return` - same closures, same scoping
+  (including late binding of free variables).
+- Good for short throwaway callables: `sorted(..., key=lambda r: r["score"])`,
+  `defaultdict(lambda: [0, 0])`, small callbacks.
+- Use `def` when it has a name (`f = lambda x: ...` is flagged by linters, E731), more than
+  a trivial expression, needs tests, or shows up in tracebacks (lambdas are all `<lambda>`).
+- Often `operator.itemgetter("score")`, `attrgetter`, or a method reference (`str.lower`) is
+  clearer and slightly faster than a lambda.
+'''
+
+[[q]]
+id = "fp-02"
+topic = "lambda"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+docs = [("b", 0.5), ("a", 0.9), ("c", 0.5)]
+print(sorted(docs, key=lambda d: (-d[1], d[0])))
+print(max(docs, key=lambda d: d[1]))
+print(sorted(docs, key=lambda d: d[1], reverse=True))
+print(min(docs, key=lambda d: d[1]))
+```
+'''
+a = '''
+```
+[('a', 0.9), ('b', 0.5), ('c', 0.5)]
+('a', 0.9)
+[('a', 0.9), ('b', 0.5), ('c', 0.5)]
+('b', 0.5)
+```
+- A tuple key sorts by several fields; negating a numeric field reverses only that field.
+- Sorting is **stable** - also with `reverse=True` - so equal keys keep their input order
+  (`b` before `c` in line 3 only because `b` came first).
+- `min`/`max` return the **first** of equal items.
+- Negation only works for numbers; for strings descending + something else ascending, sort
+  twice (secondary key first) relying on stability.
+'''
+
+[[q]]
+id = "fp-03"
+topic = "map"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+m = map(str.upper, ["a", "b"])
+print(type(m).__name__, list(m), list(m))
+print(list(map(lambda x, y: x * y, [1, 2, 3], [10, 20])))
+print(list(map(len, ["rag", "", "agent"])))
+```
+'''
+a = '''
+```
+map ['A', 'B'] []
+[10, 40]
+[3, 0, 5]
+```
+- In Python 3 `map` returns a lazy **iterator** (Python 2 returned a list). It can be
+  consumed once - the second `list(m)` is empty.
+- With several iterables, map passes one item from each and **stops at the shortest** (like
+  `zip`); `itertools.starmap` takes pre-zipped tuples.
+- Passing an existing function (`len`, `str.upper`) is where map reads best.
+'''
+
+[[q]]
+id = "fp-04"
+topic = "filter"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+print(list(filter(None, [0, 1, "", "a", [], None, 2])))
+print(list(filter(str.isdigit, "a1b2")))
+print(list(filter(lambda r: r["score"] > 0.5, [{"score": 0.4}, {"score": 0.8}])))
+```
+'''
+a = '''
+```
+[1, 'a', 2]
+['1', '2']
+[{'score': 0.8}]
+```
+- `filter(pred, iterable)` lazily yields the items for which `pred(item)` is truthy.
+- `filter(None, xs)` keeps the **truthy** items - careful, it also drops legitimate `0`,
+  `0.0`, `""` values (e.g. a score of 0).
+- A string is an iterable of characters.
+- `itertools.filterfalse` keeps the items where the predicate is falsy; the comprehension
+  equivalent is `[x for x in xs if pred(x)]`.
+'''
+
+[[q]]
+id = "fp-05"
+topic = "reduce"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from functools import reduce
+print(reduce(lambda a, b: a * b, [1, 2, 3, 4]))
+print(reduce(lambda acc, x: acc + [x * 2], [1, 2], []))
+try:
+    reduce(lambda a, b: a + b, [])
+except TypeError as e:
+    print("TypeError:", e)
+print(reduce(lambda a, b: a + b, [], 0))
+print(reduce(lambda a, b: f"({a}+{b})", ["x", "y", "z"]))
+```
+'''
+a = '''
+```
+24
+[2, 4]
+TypeError: reduce() of empty iterable with no initial value
+0
+((x+y)+z)
+```
+- `reduce(f, xs, init)` folds **left**: `f(f(f(init, x1), x2), x3)`. Without `init` the first
+  item is the start value - and empty input raises `TypeError`.
+- Always pass an initializer when input can be empty (and to fix the accumulator's type).
+- `acc + [x]` builds a new list each step (O(n^2) overall) - fine for tiny inputs; in real
+  code use a comprehension.
+- `reduce` lives in `functools` since Python 3; `sum`, `math.prod`, `min`, `max`, `any`,
+  `all`, `"".join` cover most folds more readably.
+'''
+
+[[q]]
+id = "fp-06"
+topic = "lazy_evaluation"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+def log(x):
+    print("processing", x)
+    return x * 2
+
+m = map(log, [1, 2, 3])
+print("created")
+print(next(m))
+f = filter(lambda x: x > 2, m)
+print("filter created")
+print(list(f))
+```
+'''
+a = '''
+```
+created
+processing 1
+2
+filter created
+processing 2
+processing 3
+[4, 6]
+```
+- Creating `map`/`filter` runs nothing. Work happens item by item as the consumer pulls.
+- `next(m)` processes exactly one item. The filter is chained on the **same** iterator, so it
+  only sees the remaining items (2 and 3) - item 1 is gone.
+- Chained lazy iterators form a pull pipeline with O(1) memory - like generator pipelines.
+'''
+
+[[q]]
+id = "fp-07"
+topic = "iterator_consumption"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+nums = map(int, ["1", "2", "3"])
+print(2 in nums)
+print(list(nums))
+z = zip([1, 2, 3], "ab")
+print(list(z), list(z))
+```
+'''
+a = '''
+```
+True
+[3]
+[(1, 'a'), (2, 'b')] []
+```
+- `in` on an iterator **consumes** items until it finds a match (or exhausts it) - 1 and 2
+  are gone, only 3 remains.
+- `zip` stops at the shortest input (3 is silently dropped; `zip(..., strict=True)` raises
+  instead) and, being an iterator, is empty on the second pass.
+- Rule: iterators (map, filter, zip, enumerate, generators, file objects) are one-shot;
+  containers (list, tuple, range, dict) can be iterated repeatedly.
+'''
+
+[[q]]
+id = "fp-08"
+topic = "iterator_consumption"
+level = 3
+kind = "debug"
+q = '''
+An eval script reports a plausible accuracy, but the saved predictions file is always empty.
+Why?
+```python
+preds = map(model.predict, inputs)
+correct = sum(p == y for p, y in zip(preds, labels))
+print(f"accuracy = {correct / len(labels):.3f}")
+save_jsonl("preds.jsonl", list(preds))
+```
+'''
+a = '''
+- `preds` is a lazy, one-shot `map` iterator. The `sum(...)` over `zip` consumes it fully;
+  `list(preds)` afterwards is `[]` - no error, just silence.
+- Fix: materialise once - `preds = [model.predict(x) for x in inputs]` - then reuse the list.
+  (If predictions are huge, write them while computing the metric in a single loop.)
+- Also: `zip` silently truncates if `inputs` and `labels` differ in length -> wrong accuracy.
+  Use `zip(preds, labels, strict=True)`.
+- And `model.predict` per item is likely slow - batch it.
+'''
+
+[[q]]
+id = "fp-09"
+topic = "pure_functions"
+level = 1
+kind = "concept"
+q = "What is a pure function? Why do pure functions matter in a production AI codebase?"
+a = '''
+- Pure: (1) the result depends **only on its arguments** (no reading of globals, clock,
+  randomness, env, network); (2) **no observable side effects** (no mutating arguments or
+  globals, no I/O, no logging).
+- Benefits: trivially unit-testable (no mocks), deterministic, safe to cache/memoise
+  (`functools.cache`), safe to run in parallel, easy to reason about and replay.
+- In an LLM app: prompt building, chunking, score normalisation, parsing/validating model
+  output, routing decisions, token budgeting can all be pure; the LLM call, DB writes and
+  logging stay at the edges.
+- Make impure things explicit parameters (pass `now`, `rng`, `client`) so the core stays pure.
+'''
+
+[[q]]
+id = "fp-10"
+topic = "side_effects"
+level = 2
+kind = "debug"
+q = '''
+After calling this, the UI shows sources in the wrong order and citation numbers no longer
+match. What's the bug?
+```python
+def top_k(results, k=3):
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results[:k]
+
+context = top_k(retrieved)
+render_sources(retrieved)   # expects retrieval order
+```
+'''
+a = '''
+- `list.sort()` sorts **in place** - `top_k` silently reorders the caller's `retrieved` list.
+  A hidden side effect on an argument.
+- Fix: `return sorted(results, key=..., reverse=True)[:k]` (new list), or
+  `heapq.nlargest(k, results, key=...)` which is O(n log k) and doesn't mutate.
+- Same family: `dict.update`/`pop` on a passed-in config, `list.append` on an argument,
+  mutating dicts inside a list you received.
+- Defensive habit: functions that take collections shouldn't mutate them unless that is
+  their documented job (name it accordingly: `sort_in_place`).
+'''
+
+[[q]]
+id = "fp-11"
+topic = "immutability"
+level = 2
+kind = "compare"
+q = "What tools does Python offer for immutability, and how deep does each one go? (tuple, frozenset, frozen dataclass, NamedTuple, MappingProxyType)"
+a = '''
+- `tuple` / `NamedTuple`: can't add/remove/replace elements - but elements may be mutable
+  (`([1], 2)`). Hashable only if all elements are.
+- `frozenset`: immutable, hashable set (usable as dict key / set member).
+- `@dataclass(frozen=True)`: assignment to fields raises `FrozenInstanceError`; generates
+  `__hash__`. Still **shallow** - a list field can be mutated. Use tuple/frozenset fields.
+  Updates via `dataclasses.replace(obj, field=new)`.
+- `types.MappingProxyType(d)`: a read-only **view** of a dict - the owner can still mutate `d`
+  and the view reflects it.
+- `str`, `bytes`, numbers are immutable by nature.
+- Python has no deep-freeze or persistent data structures built in (libs: `pyrsistent`);
+  immutability is mostly convention + these tools. Pydantic models support `frozen=True` too.
+'''
+
+[[q]]
+id = "fp-12"
+topic = "immutability"
+level = 3
+kind = "predict"
+q = '''
+What does this print?
+```python
+from dataclasses import dataclass, FrozenInstanceError
+
+@dataclass(frozen=True)
+class Cfg:
+    model: str
+    stops: list
+
+c = Cfg("m", ["\n"])
+try:
+    c.model = "x"
+except FrozenInstanceError as e:
+    print("frozen:", e)
+c.stops.append("END")
+print(c)
+try:
+    hash(c)
+except TypeError as e:
+    print("TypeError:", e)
+```
+'''
+a = '''
+```
+frozen: cannot assign to field 'model'
+Cfg(model='m', stops=['\n', 'END'])
+TypeError: unhashable type: 'list'
+```
+- `frozen=True` blocks **attribute assignment** only; the list object inside is still
+  mutable -> shallow immutability.
+- The generated `__hash__` hashes the tuple of fields, so a list field makes the instance
+  unhashable at hash time (you'd find out when using it as a cache key).
+- Fix: `stops: tuple[str, ...]` (and convert in `__post_init__` via
+  `object.__setattr__(self, "stops", tuple(stops))` if callers pass lists).
+'''
+followups = ["Why does __post_init__ of a frozen dataclass need object.__setattr__?"]
+
+[[q]]
+id = "fp-13"
+topic = "concepts"
+level = 2
+kind = "concept"
+q = "Which functional programming ideas does Python support well, and where does it fall short?"
+a = '''
+Supported well:
+- First-class and higher-order functions, closures, lambdas, decorators.
+- Lazy iteration everywhere (iterators, generators, `itertools`), comprehensions as
+  declarative map/filter.
+- `functools` (`reduce`, `partial`, `cache`, `singledispatch`), `operator` (`itemgetter`,
+  `add`), `itertools` (`accumulate`, `chain`, `groupby`, `starmap`).
+- Immutable built-ins (tuple, frozenset, str) and frozen dataclasses; structural pattern
+  matching.
+Falls short:
+- No tail-call optimisation, recursion limit ~1000.
+- Single-expression lambdas only.
+- No persistent (structurally shared) collections in the stdlib; mutable defaults everywhere.
+- No enforced purity / effect tracking.
+Pragmatic style: pure functions + immutable data for the core logic, plain loops when they
+are clearer; idiomatic Python favours comprehensions over map/filter+lambda.
+'''
+
+[[q]]
+id = "fp-14"
+topic = "concepts"
+level = 3
+kind = "design"
+q = "How would you apply 'functional core, imperative shell' to an LLM agent loop (plan -> call tools -> observe -> answer)? How does it help testing and debugging?"
+a = '''
+- **Core (pure)**: `decide(state, model_output) -> (new_state, actions)` - parse the model
+  output, validate tool calls, update immutable conversation state, enforce budgets (max
+  steps/tokens), choose the next action. Also prompt construction:
+  `build_prompt(state, docs) -> messages`.
+- **Shell (impure)**: performs the actions - calls the LLM, executes tools, hits the vector DB,
+  logs, persists state, handles retries/timeouts - then feeds results back into the core as
+  events.
+- State as immutable values + events (`apply(state, event)`) gives an event log: replay a
+  production trace locally (`reduce(apply, events)`), time-travel to the step where it went
+  wrong, diff states.
+- Testing: the core needs no mocks - table-driven tests with recorded model outputs; the
+  shell gets a few integration tests with fakes (`httpx.MockTransport`, a fake LLM).
+- Determinism: inject clock/RNG/ids; cache LLM responses by request hash in tests.
+'''
+
+[[q]]
+id = "fp-15"
+topic = "map"
+level = 2
+kind = "compare"
+q = "map/filter vs list comprehension vs generator expression - readability, laziness and performance?"
+a = '''
+- `[f(x) for x in xs if p(x)]`: eager list, most readable for map+filter with expressions,
+  idiomatic Python.
+- `(f(x) for x in xs if p(x))`: same syntax, **lazy** iterator - for streaming / single
+  consumption (`sum(...)`, `any(...)`, feeding a pipeline).
+- `map(f, xs)` / `filter(p, xs)`: lazy iterators; clean when `f` already exists
+  (`map(str.strip, lines)`); with a lambda they're usually less readable and a bit slower
+  than a comprehension (an extra Python function call per item).
+- Performance differences are small; choose on readability. For numeric heavy lifting,
+  vectorise (NumPy) instead of any of them.
+- All lazy forms share the one-shot / late-error behaviour.
+'''
+
+[[q]]
+id = "fp-16"
+topic = "lazy_evaluation"
+level = 3
+kind = "predict"
+q = '''
+What does this print?
+```python
+x = 10
+gen = (x + i for i in range(3))
+x = 100
+print(list(gen))
+
+xs = [1, 2]
+g = (v for v in xs)
+xs = [9]
+print(list(g))
+
+with open(path) as fh:          # path holds "a\nb\n"
+    lines = map(str.strip, fh)
+try:
+    print(list(lines))
+except ValueError as e:
+    print("ValueError:", e)
+```
+'''
+a = '''
+```
+[100, 101, 102]
+[1, 2]
+ValueError: I/O operation on closed file.
+```
+- In a generator expression only the **first iterable** (`range(3)`, `xs`) is evaluated
+  immediately; everything else (`x + i`) is evaluated lazily when consumed - so it sees
+  `x = 100`.
+- `g` captured the original list object; rebinding the name `xs` later doesn't matter.
+- Lazy iterators over a resource must be consumed **while the resource is open** - the `with`
+  block closed the file before `list(lines)` ran. Materialise inside the block or make the
+  whole pipeline run inside it.
+- General pitfall: lazy code moves errors and side effects to consumption time, far from
+  where the pipeline was built.
+'''
+
+[[q]]
+id = "fp-17"
+topic = "reduce"
+level = 3
+kind = "compare"
+q = "A teammate flattens retrieved chunk lists with `reduce(operator.add, list_of_lists)` (or `sum(list_of_lists, [])`). What's wrong with it, and what would you use instead?"
+a = '''
+- Each `+` builds a **new list** copying everything accumulated so far -> O(n^2) total work
+  in the number of elements. Fine for 3 lists, painful for 10k.
+- `reduce` without an initializer also crashes on empty input (`sum(..., [])` doesn't).
+- Use `list(itertools.chain.from_iterable(list_of_lists))` (O(n), lazy if you skip `list`), or
+  `[x for sub in list_of_lists for x in sub]`.
+- If you really want a fold with a mutable accumulator, do it in a loop with `acc.extend(sub)`
+  - clearer than a reduce that mutates.
+- General rule: prefer a dedicated builtin (`sum` for numbers, `"".join` for strings, `chain`
+  for iterables, `Counter`/`merge` helpers) over a generic `reduce`.
+'''

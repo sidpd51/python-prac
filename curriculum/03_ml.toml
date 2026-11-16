@@ -1,0 +1,47 @@
+[track]
+id = "ml"
+title = "Machine Learning & Deep Learning"
+order = 3
+description = "Enough ML/DL depth to reason about models, embeddings, training and evaluation in interviews."
+
+[[module]]
+slug = "math"
+num = 1
+title = "Math for ML"
+status = "planned"
+topics = [["linear_algebra", "Vectors, matrices, dot products, norms"], ["calculus", "Derivatives, chain rule, gradients"], ["probability", "Probability & distributions"], ["statistics", "Statistics, hypothesis testing"], ["similarity", "Cosine similarity & distance metrics"]]
+
+[[module]]
+slug = "classical"
+num = 2
+title = "Classical ML"
+status = "planned"
+topics = [["supervised", "Supervised vs unsupervised"], ["linear_regression", "Linear regression"], ["logistic_regression", "Logistic regression"], ["trees_ensembles", "Decision trees, random forests, gradient boosting"], ["clustering", "k-means & clustering"], ["dim_reduction", "PCA / dimensionality reduction"], ["sklearn", "scikit-learn workflow & pipelines"]]
+
+[[module]]
+slug = "evaluation"
+num = 3
+title = "Model Evaluation"
+status = "planned"
+topics = [["splits", "Train/val/test splits, cross-validation"], ["bias_variance", "Bias-variance, over/underfitting"], ["classification_metrics", "Precision, recall, F1, ROC-AUC"], ["regression_metrics", "MSE, MAE, R2"], ["leakage", "Data leakage"], ["imbalance", "Class imbalance"]]
+
+[[module]]
+slug = "neural_nets"
+num = 4
+title = "Neural Network Fundamentals"
+status = "planned"
+topics = [["perceptron_mlp", "Perceptron & MLP"], ["activations", "Activation functions"], ["loss_functions", "Loss functions (MSE, cross-entropy)"], ["backprop", "Backpropagation"], ["optimizers", "SGD, momentum, Adam"], ["regularization", "Dropout, weight decay, batch/layer norm"]]
+
+[[module]]
+slug = "pytorch"
+num = 5
+title = "PyTorch"
+status = "planned"
+topics = [["tensors", "Tensors & autograd"], ["modules", "nn.Module"], ["training_loop", "Training loop"], ["datasets", "Dataset & DataLoader"], ["gpu", "Devices, mixed precision"], ["checkpointing", "Saving / loading models"]]
+
+[[module]]
+slug = "architectures"
+num = 6
+title = "Deep Learning Architectures"
+status = "planned"
+topics = [["cnn", "CNNs"], ["rnn_lstm", "RNNs / LSTMs"], ["embeddings", "Embedding layers"], ["transfer_learning", "Transfer learning & fine-tuning"]]

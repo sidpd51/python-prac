@@ -1,0 +1,7 @@
+<div class="widget" data-widget="lazy">
+  <h3 class="w-title">Lazy pipelines pull, they don't push</h3>
+  <p class="w-sub">We ask for the first 2 ERROR lines through <code>take(2, only(parse(lines), "ERROR"))</code>. Step through and watch how little is read.</p>
+  <div class="lz-controls"><button type="button" class="btn" data-step>Next step</button><button type="button" class="btn ghost" data-reset>Reset</button><span class="lz-count" data-count></span></div>
+  <div class="lz-grid"><ol class="lz-lines"></ol><div class="lz-log" aria-live="polite"></div></div>
+  <p class="w-note" data-note></p>
+</div>

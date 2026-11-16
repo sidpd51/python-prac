@@ -1,0 +1,33 @@
+[track]
+id = "prod"
+title = "Production AI Engineering"
+order = 8
+description = "What separates a demo from a system with 3-4 years of experience behind it."
+
+[[module]]
+slug = "apis"
+num = 1
+title = "Serving AI over APIs"
+status = "planned"
+topics = [["fastapi", "FastAPI"], ["streaming_sse", "Streaming (SSE / websockets)"], ["background_jobs", "Background jobs & queues"], ["auth", "Auth & multi-tenancy"]]
+
+[[module]]
+slug = "infra"
+num = 2
+title = "Infrastructure"
+status = "planned"
+topics = [["docker", "Docker"], ["ci_cd", "CI/CD"], ["cloud", "Cloud deployment (AWS/GCP/Azure)"], ["k8s_basics", "Kubernetes basics"], ["databases", "Postgres, Redis"]]
+
+[[module]]
+slug = "observability"
+num = 3
+title = "LLMOps & Observability"
+status = "planned"
+topics = [["tracing", "Tracing (OpenTelemetry, Langfuse/LangSmith)"], ["metrics", "Latency, token, cost metrics"], ["online_eval", "Online evaluation & feedback loops"], ["prompt_mgmt", "Prompt/version management"]]
+
+[[module]]
+slug = "reliability"
+num = 4
+title = "Reliability, Cost & Safety"
+status = "planned"
+topics = [["caching", "Semantic & exact caching"], ["fallbacks", "Model fallbacks & routing"], ["cost_optimization", "Cost optimization"], ["guardrails", "Guardrails, PII, moderation"], ["security", "Prompt injection, data exfiltration"], ["load", "Load testing & scaling"]]

@@ -1,0 +1,11 @@
+<div class="widget" data-widget="chunker">
+  <h3 class="w-title">Chunker playground</h3>
+  <p class="w-sub">The same windowing rule as <code>CharChunker</code>. Highlighted text at the start of a chunk is overlap repeated from the previous one.</p>
+  <textarea class="ta" rows="4" aria-label="Text to chunk">Retrieval augmented generation grounds answers in your documents. Chunk size is a hyperparameter, not a guess. Too small and you lose context. Too large and retrieval gets noisy.</textarea>
+  <div class="sliders">
+    <label>Size <output data-o="size">60</output> chars<input type="range" min="10" max="200" value="60" data-in="size"></label>
+    <label>Overlap <output data-o="overlap">10</output> chars<input type="range" min="0" max="100" value="10" data-in="overlap"></label>
+  </div>
+  <p class="w-note" data-summary></p>
+  <div class="chunks"></div>
+</div>

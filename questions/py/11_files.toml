@@ -1,0 +1,407 @@
+# Interview question bank - File Handling
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "fil-01"
+topic = "open_close"
+level = 1
+kind = "predict"
+q = '''
+What does this print, and why?
+```python
+f = open("out.txt", "w", encoding="utf-8")
+f.write("data")
+print(repr(open("out.txt", encoding="utf-8").read()))
+f.close()
+print(repr(open("out.txt", encoding="utf-8").read()))
+```
+'''
+a = """
+```
+''
+'data'
+```
+- `write()` goes into Python's userspace **buffer**; nothing reaches the OS until the
+  buffer fills, `flush()` is called, or the file is **closed**.
+- Not closing files = lost/partial writes if the process dies, plus leaked file
+  descriptors ("OSError: [Errno 24] Too many open files" in a long-running worker).
+- CPython usually closes on garbage collection (refcount), but that's an implementation
+  detail (PyPy doesn't) and a `ResourceWarning`. Use `with open(...)`.
+"""
+
+[[q]]
+id = "fil-02"
+topic = "with"
+level = 1
+kind = "concept"
+q = "What exactly does `with open(path) as f:` guarantee? What does it NOT guarantee?"
+a = """
+- `open()` returns a file object that is its own context manager; `__exit__` calls
+  `close()` (which flushes) when the block exits - normally, via `return`/`break`, or by
+  an exception. The exception is not swallowed.
+- It does **not** guarantee the data is on disk (that needs `flush()` + `os.fsync()`),
+  nor that the write was atomic - a crash mid-block leaves a partial file.
+- It doesn't protect the file object after the block: `f.read()` afterwards raises
+  `ValueError: I/O operation on closed file`.
+- Several files: `with open(a) as src, open(b, "w") as dst:` or `contextlib.ExitStack`
+  for a dynamic number.
+"""
+
+[[q]]
+id = "fil-03"
+topic = "modes"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+p = "notes.txt"
+with open(p, "w", encoding="utf-8") as f:
+    f.write("hello")
+with open(p, "a", encoding="utf-8") as f:
+    f.seek(0)
+    f.write("X")
+print(open(p, encoding="utf-8").read())
+with open(p, "r+", encoding="utf-8") as f:
+    f.write("J")
+print(open(p, encoding="utf-8").read())
+with open(p, "w+", encoding="utf-8") as f:
+    print(repr(f.read()))
+try:
+    open(p, "x")
+except FileExistsError as e:
+    print(type(e).__name__)
+```
+'''
+a = """
+```
+helloX
+JelloX
+''
+FileExistsError
+```
+- `"a"`: every write goes to the **end**, regardless of seek (O_APPEND) - safe for logs
+  written by several processes.
+- `"r+"`: read/write, no truncation, position starts at 0 -> overwrites in place.
+- `"w"`/`"w+"`: **truncates** immediately on open - the classic "I opened it to read and
+  wiped it" bug.
+- `"x"`: exclusive create, fails if the file exists - race-free "create only if new".
+- Add `"b"` for bytes; text is the default (`"t"`).
+"""
+
+[[q]]
+id = "fil-04"
+topic = "read_write"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+with open("log.txt", "w", encoding="utf-8") as f:
+    f.write("a\nb\nc\n")
+with open("log.txt", encoding="utf-8") as f:
+    first = f.readline()
+    rest = list(f)
+    again = f.read()
+print(repr(first), rest, repr(again))
+print(f.closed)
+```
+'''
+a = """
+```
+'a\\n' ['b\\n', 'c\\n'] ''
+True
+```
+- A file object is an **iterator** with a position: readline() consumed line 1, iterating
+  consumed the rest, so read() returns `''` (EOF) - no error. `f.seek(0)` rewinds.
+- Lines keep their `"\\n"`; use `line.rstrip("\\n")` (not `strip()`, which also eats
+  meaningful whitespace).
+- `read()` = whole file into memory, `readlines()` = list of all lines (also whole file),
+  `for line in f` = lazy, buffered. The variable `f` still exists after `with`, but is closed.
+"""
+
+[[q]]
+id = "fil-05"
+topic = "text_vs_binary"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+s = "naïve ☕"
+print(len(s), len(s.encode("utf-8")), len(s.encode("utf-16")))
+b = s.encode("utf-8")
+print(b[:4])
+try:
+    b[:3].decode("utf-8")
+except UnicodeDecodeError as e:
+    print("error:", e.reason)
+print(b[:3].decode("utf-8", errors="replace"))
+```
+'''
+a = """
+```
+7 10 16
+b'na\\xc3\\xaf'
+error: unexpected end of data
+na�
+```
+(the last line prints `na` followed by the replacement character U+FFFD)
+- `str` = code points, `bytes` = encoded bytes. "ï" is 2 bytes and "☕" 3 bytes in UTF-8;
+  UTF-16 = 2-byte BOM + 2 bytes per BMP char.
+- Slicing bytes can cut a character in half -> decode error. That's why chunked binary
+  readers must decode at line/whole boundaries (or use an incremental decoder).
+- Text mode = binary + a codec + newline translation; binary mode gives raw bytes and
+  meaningful byte offsets for seek()/tell().
+- Token/byte limits (embedding APIs, Content-Length) are about bytes or tokens, not len(str).
+"""
+
+[[q]]
+id = "fil-06"
+topic = "encoding"
+level = 2
+kind = "debug"
+q = "Your ingestion script works on your Mac but crashes on a colleague's Windows laptop with `UnicodeDecodeError: 'charmap' codec can't decode byte 0x9d`. Another file's first chunk starts with a weird `\\ufeff`. Explain both and fix them."
+a = """
+- `open(path)` without `encoding=` uses the **locale's preferred encoding**: UTF-8 on
+  macOS/Linux, often cp1252 on Windows. The UTF-8 file contains bytes that are invalid
+  in cp1252 -> crash. Fix: always pass `encoding="utf-8"` (ruff/pylint can enforce it;
+  `-X warn_default_encoding` emits EncodingWarning; `PYTHONUTF8=1` / UTF-8 mode makes
+  UTF-8 the default - the default from Python 3.15).
+- `\\ufeff` is a **UTF-8 BOM** (Excel, Notepad) decoded as a character. It breaks exact
+  matching, `json.loads`, CSV header names (`"\\ufeffid"`). Read with
+  `encoding="utf-8-sig"`, which strips a BOM if present and is a no-op otherwise.
+- For unknown encodings: try strict UTF-8, fall back to cp1252/latin-1 (or
+  `charset-normalizer`), and log which files needed a fallback. `errors="replace"` hides
+  corruption - use it knowingly.
+"""
+
+[[q]]
+id = "fil-07"
+topic = "csv"
+level = 2
+kind = "debug"
+q = '''
+What's wrong with this CSV code? (Hint: there are at least three bugs.)
+```python
+with open("results.csv", "w") as f:
+    f.write("id,answer\n")
+    for r in rows:
+        f.write(f"{r.id},{r.answer}\n")
+
+with open("results.csv") as f:
+    for line in f:
+        id_, answer = line.strip().split(",")
+```
+'''
+a = """
+- LLM answers contain **commas, quotes and newlines** -> hand-rolled join/split breaks
+  rows (or raises "too many values to unpack"). Use `csv.writer`/`csv.DictWriter` and
+  `csv.reader`/`DictReader`, which quote/escape properly.
+- Open CSV files with **`newline=""`** in both directions: the csv module writes `\\r\\n`
+  itself and handles newlines inside quoted fields; without it you get blank lines
+  between rows on Windows and mangled embedded `\\r\\n`.
+- No `encoding=` -> platform-dependent (see BOM/cp1252 issues).
+- `strip()` also removes meaningful leading/trailing whitespace of the last field.
+- All values come back as `str` - coerce types (and validate) explicitly.
+"""
+
+[[q]]
+id = "fil-08"
+topic = "json"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import json
+data = {1: "a", "t": (1, 2), "n": None, "ok": True}
+s = json.dumps(data)
+print(s)
+print(json.loads(s) == data)
+print(json.dumps(float("nan")))
+print(json.dumps("café"), json.dumps("café", ensure_ascii=False))
+```
+'''
+a = """
+```
+{"1": "a", "t": [1, 2], "n": null, "ok": true}
+False
+NaN
+"caf\\u00e9" "café"
+```
+- JSON object keys are always strings (int 1 -> "1"), tuples become arrays -> the
+  round trip is **lossy**, so `loads(dumps(x)) != x`.
+- `NaN`/`Infinity` are emitted by default but are **not valid JSON** - other parsers
+  (JS, Go, many APIs) reject them. Use `allow_nan=False` to fail fast.
+- `ensure_ascii=True` (default) escapes non-ASCII; `ensure_ascii=False` keeps it
+  readable/smaller - then the file must be written as UTF-8.
+- datetime/Decimal/set aren't serializable -> `default=` hook or pydantic `model_dump_json`.
+"""
+
+[[q]]
+id = "fil-09"
+topic = "json"
+level = 2
+kind = "compare"
+q = "You must store 5 million LLM eval records. One big JSON array, or JSONL? What about reading a 3 GB JSON array you were given?"
+a = """
+- **JSONL**: one object per line -> streamable (`for line in f`), appendable (`"a"` mode),
+  splittable for parallel processing (`split -l`), one bad record doesn't break the whole
+  file, `wc -l` = count. It's what fine-tuning and batch APIs use.
+- **JSON array**: must be parsed as a whole - `json.load` builds the full object tree in
+  memory (often 5-10x file size). Can't append without rewriting.
+- Given a 3 GB array: stream-parse it with `ijson` (iterative parser) or convert once to
+  JSONL; `orjson`/`msgspec` are faster but still whole-document.
+- Either way: explicit `encoding="utf-8"`, validate each record (pydantic), log + skip
+  bad lines with their line number.
+"""
+
+[[q]]
+id = "fil-10"
+topic = "pathlib"
+level = 1
+kind = "predict"
+q = '''
+What does this print (on Linux/macOS)?
+```python
+from pathlib import Path
+print(Path("data") / "raw" / "doc.tar.gz")
+p = Path("data/raw/doc.tar.gz")
+print(p.name, p.stem, p.suffix, p.suffixes)
+print(p.with_suffix(".txt"))
+print(p.parent, p.parts)
+print(Path("data") / "/etc/passwd")
+```
+'''
+a = """
+```
+data/raw/doc.tar.gz
+doc.tar.gz doc.tar .gz ['.tar', '.gz']
+data/raw/doc.tar.txt
+data/raw ('data', 'raw', 'doc.tar.gz')
+/etc/passwd
+```
+- `stem`/`suffix`/`with_suffix` only look at the **last** dot - multi-part extensions
+  need `suffixes`.
+- Joining with an absolute path **discards** everything before it - so
+  `upload_dir / user_supplied_name` is a path-traversal hole (also with `".."`). Resolve
+  and check `target.is_relative_to(base)`.
+- pathlib vs os.path: object API, `/` operator, `read_text`/`write_text`, `glob`/`rglob`,
+  `mkdir(parents=True, exist_ok=True)`; accepted everywhere a path is (os.PathLike).
+"""
+
+[[q]]
+id = "fil-11"
+topic = "dir_ops"
+level = 2
+kind = "concept"
+q = "Walk a large repository to index its docs but skip `.git`, `node_modules` and `.venv`. Why is `Path.rglob('*.md')` followed by a filter a poor choice, and what do you use instead?"
+a = """
+- `rglob` still **descends into** node_modules/.venv (hundreds of thousands of entries)
+  and only then you throw the results away - slow, and it can hit permission errors or
+  symlink loops in vendored trees.
+- `os.walk(root)` / `Path.walk()` (3.12+) let you **prune**: modify `dirnames` in place
+  (`dirnames[:] = [d for d in dirnames if d not in IGNORE]`) and the walk never enters them.
+- Sort results for determinism (directory order is filesystem-dependent), return paths
+  relative to the root, compare suffixes case-insensitively.
+- Other dir ops worth knowing: `shutil.copytree(dirs_exist_ok=True)`, `shutil.rmtree`,
+  `Path.unlink(missing_ok=True)`, `os.scandir` (cheap `DirEntry.is_file()` without extra stat).
+"""
+
+[[q]]
+id = "fil-12"
+topic = "tempfiles"
+level = 2
+kind = "concept"
+q = "Which `tempfile` tools do you know and when do you use each? Why is `tempfile.mktemp()` deprecated?"
+a = """
+- `TemporaryDirectory()` - a scratch dir removed on exit (great in tests / extracting archives).
+- `NamedTemporaryFile(delete=...)` - a file with a real name other code can open; on
+  Windows it couldn't be reopened while open until 3.12's `delete_on_close=False`.
+- `mkstemp()` / `mkdtemp()` - low level, returns fd + path, you clean up.
+- `SpooledTemporaryFile(max_size=...)` - stays in memory until it grows past max_size,
+  then rolls to disk; good for buffering uploads/LLM responses of unknown size.
+- `mktemp()` only returns a name -> another process can create that file between the
+  name check and your open (TOCTOU race, symlink attacks). The others create the file
+  atomically with O_EXCL and 0600 permissions.
+- Same-directory temp files are the basis of atomic writes (temp + fsync + os.replace).
+"""
+
+[[q]]
+id = "fil-13"
+topic = "tempfiles"
+level = 3
+kind = "design"
+q = "A 6-hour embedding job checkpoints its progress to `state.json` every 1000 documents. After an OOM kill, the job can't resume because `state.json` is empty. Design a fix."
+a = """
+- Cause: `open("state.json", "w")` **truncates first**, then writes; the kill landed
+  between truncate and the final flush.
+- Atomic write: write to a temp file **in the same directory**
+  (`NamedTemporaryFile(dir=target.parent, delete=False)`), `flush()` + `os.fsync()`, then
+  `os.replace(tmp, target)` - atomic rename on POSIX and Windows. Readers see old or new,
+  never half. On failure, delete the temp file and keep the old state.
+- Same dir because rename across filesystems (/tmp is often tmpfs) isn't atomic / fails
+  with EXDEV.
+- For full durability also fsync the directory after the rename.
+- Make the job **idempotent**: checkpoint = last processed id/offset, and upserts keyed
+  by chunk id so redoing the last batch is harmless.
+"""
+
+[[q]]
+id = "fil-14"
+topic = "large_files"
+level = 2
+kind = "compare"
+q = "Compare `f.read()`, `f.readlines()`, `for line in f`, and `f.read(chunk_size)` for a 20 GB log file."
+a = """
+- `read()` / `readlines()`: whole file in memory -> MemoryError or swapping. Fine only for
+  small files.
+- `for line in f`: lazy, internally buffered (reads blocks, yields lines) - O(longest line)
+  memory. The default choice for line-based formats (logs, JSONL, CSV via csv.reader).
+- `read(chunk_size)` in a loop (`while chunk := f.read(1 << 20)`): fixed memory even if
+  there are no newlines (minified JSON, binary). Use **binary mode** for counting/
+  hashing/copying; beware of splitting multi-byte characters or records across chunks.
+- Others: `mmap` for random access / regex over a huge file, `seek()` from the end for
+  `tail`, splitting by byte ranges (aligned to the next newline) for multiprocessing,
+  `shutil.copyfileobj` for copying.
+"""
+
+[[q]]
+id = "fil-15"
+topic = "large_files"
+level = 3
+kind = "design"
+q = "Design a component that continuously ingests a JSONL log that another service keeps appending to (and rotates daily), so that a crash never loses or duplicates records."
+a = """
+- Open in **binary** mode and track a **byte offset** (text-mode `tell()` is an opaque
+  cookie). Read only complete lines; leave a partial last line (no `\\n` yet) for the
+  next poll.
+- Persist the offset **after** the records are durably processed (atomic checkpoint
+  write) -> at-least-once delivery; make the sink idempotent (record id / hash as the
+  key) to get effectively-once.
+- Detect rotation/truncation: file size < offset, or inode changed (`os.stat().st_ino`)
+  -> finish the old file, start the new one at offset 0. Store (inode, offset).
+- Bounded memory: process in batches; handle bad lines by logging + dead-letter file.
+- Mention existing tools (Fluent Bit, Vector, Filebeat) - don't build this in an
+  interview without saying so.
+"""
+
+[[q]]
+id = "fil-16"
+topic = "open"
+level = 3
+kind = "concept"
+q = "What objects does `open()` actually return for `'r'`, `'rb'` and `buffering=0`? Why does it matter?"
+a = """
+- `open(p, "r")` -> `io.TextIOWrapper` (decoding + newline translation) wrapping an
+  `io.BufferedReader` wrapping an `io.FileIO` (raw OS file descriptor).
+- `open(p, "rb")` -> `io.BufferedReader` (bytes, buffered); `open(p, "rb", buffering=0)`
+  -> raw `io.FileIO`, every read is a syscall (text mode can't be unbuffered).
+- Why it matters: `flush()` empties the Python buffer, not the OS cache (`os.fsync`);
+  `tell()/seek()` in text mode are opaque cookies; `read(n)` means n *characters* in text
+  mode but n *bytes* in binary; `f.buffer` gives the binary layer of a text file;
+  `sys.stdout` is a TextIOWrapper too (line-buffered when attached to a terminal).
+- Anything with `read()`/`write()` is a "file-like object": `io.StringIO`/`io.BytesIO`
+  are great test doubles - accept file objects, not just paths, in your APIs.
+"""

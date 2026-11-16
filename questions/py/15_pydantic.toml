@@ -1,0 +1,517 @@
+# Interview question bank - Pydantic (v2)
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "pyd-01"
+topic = "basemodel"
+level = 1
+kind = "compare"
+q = "dataclass vs TypedDict vs pydantic BaseModel: when do you use each in an LLM service?"
+a = """
+- **TypedDict**: only a static type hint for a dict - zero runtime checks, zero cost. Good for
+  internal dict shapes (e.g. typing an OpenAI SDK payload) where data is already trusted.
+- **dataclass**: a real class with generated __init__/__eq__/__repr__, **no validation or coercion**
+  (`Point(x="oops")` is accepted). Good for internal value objects.
+- **BaseModel**: parses + validates + coerces untrusted input at runtime (core in Rust), gives
+  JSON (de)serialization, JSON schema, aliases, nested models, precise errors.
+- Rule of thumb: pydantic at the **boundaries** (HTTP requests/responses, LLM output, config,
+  queue messages), plain dataclasses inside the domain where data is already valid.
+- Middle ground: `pydantic.dataclasses.dataclass` or `TypeAdapter(SomeTypedDict)` to validate
+  without inheriting BaseModel.
+"""
+followups = ["What does 'parse, don't validate' mean?", "What's the cost of validating on every internal function call?"]
+
+[[q]]
+id = "pyd-02"
+topic = "validation"
+level = 1
+kind = "predict"
+q = '''
+What does this print (pydantic v2, default config)?
+```python
+from pydantic import BaseModel, ValidationError
+
+class M(BaseModel):
+    n: int
+
+print(M(n="3").n, M(n=True).n, M(n=4.0).n)
+try:
+    M(n=3.7)
+except ValidationError as e:
+    print(e.errors()[0]["type"])
+```
+'''
+a = """
+```
+3 1 4
+int_from_float
+```
+- Default **lax mode** coerces: numeric strings -> int, `True` -> 1, a float with no fractional
+  part -> int.
+- A float WITH a fractional part is rejected (`int_from_float`) - v2 never silently truncates.
+- `True -> 1` surprises people: for token counts / prices use `Field(strict=True)` or
+  `StrictInt`, or `model_config = ConfigDict(strict=True)`.
+"""
+followups = ["What changes with strict=True?", "How does v1 behave for 3.7? (it truncated to 3)"]
+
+[[q]]
+id = "pyd-03"
+topic = "required_optional"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+from pydantic import BaseModel, ValidationError
+
+class Doc(BaseModel):
+    title: str | None
+    source: str | None = None
+
+print(Doc(title=None))
+try:
+    Doc()
+except ValidationError as e:
+    print([(err["loc"], err["type"]) for err in e.errors()])
+```
+'''
+a = """
+```
+title=None source=None
+[(('title',), 'missing')]
+```
+- In v2 **"optional" (has a default) and "nullable" (accepts None) are independent**.
+  `title: str | None` is REQUIRED but may be null; `source: str | None = None` is optional.
+- `Optional[X]` is just `X | None` - it does NOT add a default (it did in v1: a common
+  migration bug).
+- Four combos: `x: int` required; `x: int = 0` optional; `x: int | None` required-nullable;
+  `x: int | None = None` optional-nullable.
+"""
+
+[[q]]
+id = "pyd-04"
+topic = "field"
+level = 1
+kind = "concept"
+q = "What can you express with `Field(...)`? Give examples relevant to an LLM request model."
+a = """
+- **Defaults**: `default=1.0`, `default_factory=list` (fresh object per instance; also for
+  `uuid4`, `datetime.now`).
+- **Constraints**: `gt/ge/lt/le` (temperature `ge=0, le=2`, max_tokens `gt=0`),
+  `min_length/max_length` (strings and lists: at most 4 stop sequences), `pattern=r"..."`,
+  `multiple_of`, `strict=True`.
+- **Aliases**: `alias`, `validation_alias` (accept `AliasChoices("maxTokens", "max_tokens")`),
+  `serialization_alias`.
+- **Docs / schema**: `description`, `examples`, `title`, `json_schema_extra` - descriptions end
+  up in tool/JSON schemas that the LLM reads, so they are prompt engineering.
+- **Serialization**: `exclude=True` (secrets), `repr=False`; `frozen=True` per field.
+- Can be used as `Annotated[int, Field(gt=0)]` to build reusable constrained types.
+"""
+followups = ["Why default_factory instead of default=[] (and is default=[] actually a bug in pydantic)?"]
+
+[[q]]
+id = "pyd-05"
+topic = "models"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+from pydantic import BaseModel
+
+class Chunk(BaseModel):
+    text: str
+    tags: list[str] = []
+
+a, b = Chunk(text="a"), Chunk(text="b")
+a.tags.append("pii")
+print(b.tags)
+a.text = 123
+print(repr(a.text))
+```
+'''
+a = """
+```
+[]
+123
+```
+- Unlike a plain class / dataclass, pydantic **copies mutable defaults** per instance, so
+  `= []` is safe (still, `Field(default_factory=list)` states intent).
+- **Assignment is not validated by default**: `a.text = 123` stores an int in a `str` field.
+  Turn on `model_config = ConfigDict(validate_assignment=True)` (or `frozen=True` to forbid
+  mutation entirely - also makes the model hashable).
+"""
+
+[[q]]
+id = "pyd-06"
+topic = "custom_validators"
+level = 1
+kind = "debug"
+q = '''
+Every query ends up with `text=None`. Why?
+```python
+from pydantic import BaseModel, field_validator
+
+class Query(BaseModel):
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def strip(cls, v: str) -> str:
+        v.strip()
+
+print(Query(text="  hello  "))   # text=None
+```
+'''
+a = """
+- A validator's **return value becomes the field value**. The function returns None implicitly
+  (and `str.strip()` returns a new string anyway - strings are immutable).
+- Fix: `return v.strip()`.
+- Note pydantic does NOT re-validate the validator's output against `str`, so the bug is silent.
+- Simpler alternative for this case: `Annotated[str, StringConstraints(strip_whitespace=True)]`
+  or `model_config = ConfigDict(str_strip_whitespace=True)`.
+- Related: a `model_validator(mode="after")` must `return self` - returning None currently only
+  emits a warning.
+"""
+
+[[q]]
+id = "pyd-07"
+topic = "custom_validators"
+level = 2
+kind = "debug"
+q = '''
+The API should return a 422 with a validation error, but it returns a 500. Why?
+```python
+class Msg(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def check(cls, v):
+        if v not in {"user", "assistant"}:
+            raise TypeError(f"bad role {v}")
+        return v
+
+Msg(role="robot")
+```
+'''
+a = """
+- Pydantic v2 only converts **ValueError, AssertionError and PydanticCustomError** raised in
+  validators into a `ValidationError`. A `TypeError` (or KeyError, RuntimeError...) escapes
+  unwrapped -> FastAPI doesn't turn it into a 422, you get a 500.
+- (v1 also wrapped TypeError - a migration gotcha.)
+- Fix: raise `ValueError`, or better use `role: Literal["user", "assistant"]` and let the type do it.
+- Avoid `assert` for validation: asserts are stripped under `python -O`.
+"""
+
+[[q]]
+id = "pyd-08"
+topic = "model_validator"
+level = 2
+kind = "concept"
+q = "field_validator vs model_validator; mode='before' vs 'after' vs 'wrap'. When do you use each?"
+a = """
+- **field_validator**: rule about ONE field (strip/normalise, check a format). Can target several
+  fields: `@field_validator("a", "b")`. Has access to already-validated earlier fields via
+  `info.data` (order-dependent - fragile for cross-field rules).
+- **model_validator(mode="after")**: cross-field rules on the fully typed instance (exactly one of
+  `prompt`/`messages`, `tool` role needs `tool_call_id`, `end > start`). Must `return self`.
+- **mode="before"**: sees the RAW input (dict, str, anything) before type validation - for
+  reshaping/normalising input (accept a bare string as `[{"role":"user","content": s}]`,
+  lowercase a role before the Literal check). Must be defensive about types.
+- **mode="wrap"**: gets a `handler`; run code around default validation (catch its error and fall
+  back, log, time it).
+- Only ValueError/AssertionError become ValidationErrors. After-validators don't run if field
+  validation already failed.
+"""
+followups = ["Why might a cross-field check in a field_validator see a missing key in info.data?"]
+
+[[q]]
+id = "pyd-09"
+topic = "model_dump"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from pydantic import BaseModel
+
+class Req(BaseModel):
+    model: str
+    temperature: float | None = None
+    user: str | None = None
+
+r = Req(model="gpt-4o", user=None, seed=42)
+print(r.model_dump())
+print(r.model_dump(exclude_none=True))
+print(r.model_dump(exclude_unset=True))
+```
+'''
+a = """
+```
+{'model': 'gpt-4o', 'temperature': None, 'user': None}
+{'model': 'gpt-4o'}
+{'model': 'gpt-4o', 'user': None}
+```
+- `seed=42` vanished: default `extra="ignore"` silently drops unknown keys (use `extra="forbid"`
+  on request models to catch typos, `extra="allow"` to keep them).
+- `exclude_none` drops every None. `exclude_unset` drops fields the caller didn't pass -
+  `user=None` was explicitly set, so it stays.
+- That's exactly the PATCH semantics difference: "not provided" vs "set to null".
+"""
+
+[[q]]
+id = "pyd-10"
+topic = "serialization"
+level = 2
+kind = "concept"
+q = "Your API is camelCase and your Python code is snake_case. How do you model that, and what are the serialization knobs you'd use?"
+a = """
+- `model_config = ConfigDict(alias_generator=to_camel, validate_by_name=True, validate_by_alias=True)`
+  (older: `populate_by_name=True`) - accept both spellings on input.
+- Output: `model_dump(by_alias=True)` / `model_dump_json(by_alias=True)` (or
+  `serialize_by_alias=True` in config).
+- `mode="json"` gives JSON-native types (UUID/datetime -> str, Decimal -> str/float) vs default
+  `mode="python"` keeping objects - use json mode for HTTP bodies, python for DB rows.
+- `@field_serializer("created_at", when_used="json")` for custom formats ("...Z");
+  `@computed_field` for derived values that must appear in the output;
+  `Field(exclude=True)` / `SecretStr` for secrets.
+- Gotcha: with a plain `Field(alias="text")` and no validate_by_name, `Message(content=...)`
+  fails - only the alias is accepted on input.
+"""
+
+[[q]]
+id = "pyd-11"
+topic = "model_validate"
+level = 2
+kind = "compare"
+q = "`Model(**data)` vs `model_validate(data)` vs `model_validate_json(raw)` vs `model_construct(...)`?"
+a = """
+- `Model(**data)`: validates; keyword args only - fails for non-str keys and can't validate a
+  non-dict input. Fine for code you write by hand.
+- `model_validate(obj)`: validates a dict (or an object with `from_attributes=True`, e.g. ORM
+  rows). Supports `strict=`, `context=`.
+- `model_validate_json(raw: str | bytes)`: parses AND validates in one pass inside pydantic-core -
+  faster than `json.loads` + `model_validate`, and applies **JSON-mode** rules (e.g. in strict
+  mode a "2024-05-01" string is accepted for a `date` field from JSON, but not from Python).
+- `model_construct(**data)`: **no validation** - only for data you already trust (e.g. read back
+  from your own DB) for speed; garbage in, garbage out.
+- For non-model types (list[Chunk], unions) use a `TypeAdapter` - create it once at module level,
+  not per call.
+"""
+
+[[q]]
+id = "pyd-12"
+topic = "model_validate"
+level = 3
+kind = "predict"
+q = '''
+What does this print?
+```python
+import json
+from datetime import date
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+class Event(BaseModel):
+    model_config = ConfigDict(strict=True)
+    day: date
+
+print(Event.model_validate_json('{"day": "2024-05-01"}'))
+try:
+    Event.model_validate(json.loads('{"day": "2024-05-01"}'))
+except ValidationError as e:
+    print(e.errors()[0]["type"])
+```
+'''
+a = """
+```
+day=datetime.date(2024, 5, 1)
+date_type
+```
+- Strict mode is **input-format aware**: JSON has no date type, so a date string is the only
+  way to encode one and is accepted by `model_validate_json`.
+- In Python mode strict means "must already be a `date` instance" -> the str is rejected.
+- Lesson: validate raw HTTP/LLM bodies with `model_validate_json`; json.loads + model_validate
+  is slower and has different (python-mode) semantics.
+"""
+
+[[q]]
+id = "pyd-13"
+topic = "validation"
+level = 2
+kind = "predict"
+q = '''
+What does this print (pydantic v2)?
+```python
+from pydantic import BaseModel
+
+class M(BaseModel):
+    x: int | str
+    y: float | int
+    z: str | int
+
+m = M(x="1", y=1, z=1)
+print(repr(m.x), repr(m.y), repr(m.z))
+```
+'''
+a = """
+```
+'1' 1 1
+```
+- v2 unions use **smart mode**: an exact type match wins over coercion, regardless of order.
+  `"1"` is exactly a `str`, `1` is exactly an `int`, so nothing is converted.
+- v1 tried members left to right and coerced on the first success (x would become 1, y 1.0,
+  z '1') - a common source of silent data changes.
+- For unions of models, prefer a **discriminated union** (`Field(discriminator="type")`):
+  deterministic, faster, and errors only for the selected member.
+"""
+
+[[q]]
+id = "pyd-14"
+topic = "nested"
+level = 2
+kind = "design"
+q = "Design pydantic models for an OpenAI-style chat completion request and response, including tool calls. Which rules go where?"
+a = """
+- `Message(role: Literal["system","user","assistant","tool"], content: str | None = None,
+  tool_calls: list[ToolCall] | None = None, tool_call_id: str | None = None)`;
+  `ToolCall(id, type: Literal["function"], function: FunctionCall(name, arguments: str))` -
+  `arguments` is a JSON *string* the model wrote: parse it separately and validate against the
+  tool's own args model (it may be invalid JSON!).
+- Request: `model: str`, `messages: list[Message] = Field(min_length=1)`,
+  `temperature: float = Field(1.0, ge=0, le=2)`, `max_tokens: int | None = Field(None, gt=0)`,
+  `tools: list[ToolDef] | None`, `extra="forbid"`.
+- Cross-field rules in `model_validator(mode="after")`: tool messages need `tool_call_id`,
+  only assistant messages carry tool_calls, system message first, each tool result answers an
+  earlier call.
+- Response: `choices: list[Choice(index, message, finish_reason: Literal[...])]`, `usage: Usage`.
+  Be **lenient on responses** (`extra="ignore"`, unknown finish_reason -> str fallback) because
+  providers add fields; be **strict on requests** you send.
+- Streaming deltas get their own models (all fields optional) - don't reuse the full message.
+"""
+followups = ["How do you version these models when the provider adds fields?", "Where do you count tokens?"]
+
+[[q]]
+id = "pyd-15"
+topic = "json_schema"
+level = 2
+kind = "concept"
+q = "How is pydantic used for LLM tool calling / structured outputs, and what goes wrong with the raw `model_json_schema()` output?"
+a = """
+- One model is the single source of truth: `model_json_schema()` becomes the tool's `parameters`
+  (or the `response_format` JSON schema); the LLM's `arguments` string is then validated with
+  `Model.model_validate_json(...)` before the tool runs.
+- Field `description`s and the class docstring are what the LLM reads - they matter for accuracy.
+- Gotchas with raw schemas: nested models produce `$defs`/`$ref` (some providers/strict modes
+  don't support refs -> inline them), `title` keys everywhere (noise tokens), objects need
+  `additionalProperties: false` and all fields `required` for OpenAI strict mode, recursive models
+  can't be inlined, some keywords (pattern, format, minimum) are unsupported by some providers.
+- Libraries (Instructor, OpenAI SDK `.parse()`, Agents SDK `function_tool`) do this
+  transformation + a retry-on-validation-error loop.
+"""
+
+[[q]]
+id = "pyd-16"
+topic = "settings"
+level = 2
+kind = "debug"
+q = '''
+Startup crashes with `SettingsError: error parsing value for field "allowed_models" from source "EnvSettingsSource"`. Why, and how do you fix it?
+```python
+class Settings(BaseSettings):
+    allowed_models: list[str] = ["gpt-4o-mini"]
+    debug: bool = False
+
+# environment:  ALLOWED_MODELS=gpt-4o,gpt-4o-mini   DEBUG=yes
+```
+'''
+a = """
+- pydantic-settings treats env values for **complex fields** (list, dict, nested models) as
+  **JSON**. `gpt-4o,gpt-4o-mini` is not valid JSON -> SettingsError.
+- Fixes: set `ALLOWED_MODELS='["gpt-4o","gpt-4o-mini"]'`, or annotate
+  `Annotated[list[str], NoDecode]` and split the string in a `field_validator(mode="before")`.
+- `DEBUG=yes` is fine: bool coercion accepts 1/0, true/false, yes/no, on/off.
+- Related: nested models can also come from `LLM__MODEL=...` with `env_nested_delimiter="__"`.
+"""
+
+[[q]]
+id = "pyd-17"
+topic = "settings"
+level = 3
+kind = "design"
+q = "Design configuration management for an LLM service deployed to dev/staging/prod. What does pydantic-settings give you and what do you add?"
+a = """
+- One `BaseSettings` class, `env_prefix="APP_"`, `env_nested_delimiter="__"` for grouped
+  settings (`APP_LLM__MODEL`), optional `.env` for local dev only (never committed).
+- **Precedence**: init kwargs > env vars > .env file > secrets dir > defaults; in k8s secrets come
+  in as env vars or mounted files (`secrets_dir`).
+- **Fail fast**: validate everything at startup - types, constraints (timeouts > 0),
+  cross-field rules in a model_validator (prod requires api_key and debug=False; chosen model
+  must be in the allow-list).
+- **Secrets**: `SecretStr` so they're masked in repr/logs/dumps; a `public_dict()` for a /config
+  debug endpoint that also redacts passwords inside URLs.
+- **Singleton**: `@lru_cache def get_settings()` + FastAPI `Depends(get_settings)`; tests
+  override via env/monkeypatch and `get_settings.cache_clear()` or dependency overrides.
+- Don't scatter `os.getenv` calls; don't read config at import time in library code.
+"""
+followups = ["How would you rotate an API key without a restart?", "Where do feature flags live?"]
+
+[[q]]
+id = "pyd-18"
+topic = "api_validation"
+level = 3
+kind = "design"
+q = "An LLM must return JSON that matches a schema. Design a robust parse pipeline. What do you do when validation fails?"
+a = """
+- Prefer provider-side structured outputs / JSON mode / tool calls when available - but still
+  validate: you can still get truncation (max_tokens hit), refusals, or schema-violating values.
+- **Extract**: strip ``` fences and prose, find the first complete JSON value
+  (`json.JSONDecoder().raw_decode` - handles braces inside strings), detect truncation
+  (`finish_reason == "length"`).
+- **Validate** with `Model.model_validate_json` -> typed object or `ValidationError` with
+  machine-readable `errors()` (loc/msg/type/input).
+- **Repair loop**: send the errors back ("priority: Input should be <= 5 (got 9)"), bounded
+  retries (2-3), keep the original conversation immutable, don't echo huge inputs (tokens).
+  Optionally a cheap deterministic repair first (json_repair, lowercasing enums).
+- **Fallbacks** after budget: default/abstain value, human review queue, or raise a typed error;
+  log raw output + errors for evals; track validation-failure rate per prompt version.
+- Discriminated unions for multi-action agents give precise errors and O(1) dispatch.
+"""
+
+[[q]]
+id = "pyd-19"
+topic = "constraints"
+level = 3
+kind = "concept"
+q = "Where does validation cost come from in pydantic v2, and how do you keep it fast on a hot path (e.g. validating 10k embedding responses per second)?"
+a = """
+- v2's core is **pydantic-core (Rust)**: schemas are compiled once per model/TypeAdapter; the
+  expensive part is building that validator, not using it.
+- Do: define models/`TypeAdapter`s at module level (never inside a request handler), use
+  `model_validate_json` on raw bytes (no intermediate dicts), prefer declarative constraints
+  (`Field(gt=0)`, `Literal`, `Annotated`) - they run in Rust - over Python `@field_validator`s,
+  use discriminated unions instead of plain unions of models.
+- Avoid: `validate_assignment` on hot objects, deeply nested `wrap` validators, `model_dump()`
+  round-trips between layers; for large float vectors consider validating shape only
+  (`list[float]` per element is costly) or using `model_construct` for trusted internal data.
+- Measure with a benchmark - and remember HTTP latency usually dominates.
+"""
+
+[[q]]
+id = "pyd-20"
+topic = "basemodel"
+level = 2
+kind = "compare"
+q = "You're migrating a pydantic v1 codebase to v2. What are the main API renames and behaviour changes that bite?"
+a = """
+- `.dict()`/`.json()` -> `model_dump()`/`model_dump_json()`; `parse_obj`/`parse_raw` ->
+  `model_validate`/`model_validate_json`; `copy()` -> `model_copy()`; `schema()` -> `model_json_schema()`.
+- `@validator`/`@root_validator` -> `@field_validator`/`@model_validator` (explicit `mode`, and
+  `@classmethod` stacking).
+- `class Config:` -> `model_config = ConfigDict(...)`; `orm_mode` -> `from_attributes`;
+  `allow_population_by_field_name` -> `populate_by_name` / `validate_by_name`.
+- Behaviour: `Optional[X]` no longer implies a default; floats with fractions are no longer
+  truncated into ints; unions use smart mode; TypeError in validators is no longer wrapped;
+  `BaseSettings` moved to the separate `pydantic-settings` package.
+- `bump-pydantic` automates much of it; `pydantic.v1` namespace allows gradual migration.
+"""

@@ -1,0 +1,571 @@
+[track]
+id = "py"
+title = "Python for Generative AI Engineering"
+order = 1
+description = "Core + advanced Python, async I/O, data tooling and code quality - the base every later track builds on."
+
+[[module]]
+slug = "fundamentals"
+num = 1
+title = "Python Fundamentals"
+status = "covered"
+topics = [
+  ["variables", "Variables and Basic Data Types"],
+  ["type_conversion", "Type Conversion"],
+  ["mutability", "Mutable vs Immutable Objects"],
+  ["identity_equality", "Identity vs Equality (is vs ==)"],
+  ["truthiness", "Truthy and Falsy Values"],
+  ["none", "None and NoneType"],
+  ["operators", "Operators"],
+  ["conditionals", "Conditional Statements"],
+  ["loops", "Loops (for, while)"],
+  ["loop_control", "break, continue, pass"],
+  ["list_comprehensions", "List Comprehensions"],
+  ["dict_comprehensions", "Dictionary Comprehensions"],
+  ["set_comprehensions", "Set Comprehensions"],
+  ["nested_structures", "Nested Data Structures"],
+  ["strings", "String Manipulation"],
+  ["fstrings", "String Formatting (f-strings)"],
+  ["slicing", "Slicing and Indexing"],
+]
+
+[[module]]
+slug = "data_structures"
+num = 2
+title = "Python Data Structures"
+status = "covered"
+topics = [
+  ["lists", "Lists"],
+  ["dicts", "Dictionaries"],
+  ["tuples", "Tuples"],
+  ["sets", "Sets"],
+  ["list_vs_dict", "List vs Dictionary"],
+  ["dict_lookup", "Dictionary Lookup"],
+  ["set_operations", "Set Operations"],
+  ["linear_search", "Linear Search"],
+  ["binary_search", "Binary Search"],
+  ["searching", "Searching Fundamentals"],
+  ["complexity", "Time Complexity (O(1), O(n), O(log n))"],
+  ["dedup", "Deduplication Using Sets"],
+  ["stack_queue", "Stack and Queue"],
+  ["deque", "collections.deque"],
+  ["counter", "collections.Counter"],
+  ["defaultdict", "collections.defaultdict"],
+  ["ordereddict", "collections.OrderedDict"],
+  ["namedtuple", "collections.namedtuple"],
+]
+
+[[module]]
+slug = "functions"
+num = 3
+title = "Python Functions"
+status = "covered"
+topics = [
+  ["definition", "Function Definition and Function Calls"],
+  ["positional_args", "Positional Arguments"],
+  ["keyword_args", "Keyword Arguments"],
+  ["default_args", "Default Arguments"],
+  ["return_values", "Return Values"],
+  ["args", "*args"],
+  ["kwargs", "**kwargs"],
+  ["unpacking", "Argument Unpacking"],
+  ["pos_kw_only", "Positional-only and Keyword-only Arguments"],
+  ["first_class", "First-Class Functions"],
+  ["higher_order", "Higher-Order Functions"],
+  ["reference_vs_call", "Function Reference vs Function Call"],
+  ["recursion", "Recursion"],
+  ["legb", "Variable Scope (LEGB Rule)"],
+]
+
+[[module]]
+slug = "functional"
+num = 4
+title = "Functional Programming"
+status = "covered"
+topics = [
+  ["lambda", "Lambda Functions"],
+  ["map", "map()"],
+  ["filter", "filter()"],
+  ["reduce", "reduce()"],
+  ["lazy_evaluation", "Lazy Evaluation"],
+  ["iterator_consumption", "Iterator Consumption"],
+  ["concepts", "Functional Programming Concepts"],
+  ["pure_functions", "Pure Functions"],
+  ["side_effects", "Side Effects"],
+  ["immutability", "Immutability"],
+]
+
+[[module]]
+slug = "closures"
+num = 5
+title = "Closures and Scope"
+status = "covered"
+topics = [
+  ["nested_functions", "Nested Functions"],
+  ["lexical_scoping", "Lexical Scoping"],
+  ["local_global", "Local and Global Variables"],
+  ["closures", "Closures"],
+  ["free_variables", "Free Variables"],
+  ["nonlocal", "nonlocal Keyword"],
+  ["unboundlocalerror", "UnboundLocalError"],
+  ["inspection", "Closure Variable Inspection"],
+  ["co_freevars", "Function __code__.co_freevars"],
+]
+
+[[module]]
+slug = "decorators"
+num = 6
+title = "Decorators"
+status = "covered"
+topics = [
+  ["first_class", "Functions as First-Class Objects"],
+  ["higher_order", "Higher-Order Functions in Decorators"],
+  ["wrappers", "Nested Wrapper Functions"],
+  ["wrapping", "Function Wrapping"],
+  ["args_kwargs", "*args and **kwargs in Decorators"],
+  ["syntax", "@decorator Syntax"],
+  ["wraps", "functools.wraps"],
+  ["metadata", "Preserving Function Metadata"],
+  ["timing", "Execution Time Monitoring Decorator"],
+  ["with_arguments", "Decorators with Arguments"],
+  ["stacking", "Multiple Decorators"],
+  ["class_based", "Class-based Decorators"],
+]
+
+[[module]]
+slug = "iterators"
+num = 7
+title = "Iterators"
+status = "covered"
+topics = [
+  ["iterable_vs_iterator", "Iterable vs Iterator"],
+  ["iter", "iter()"],
+  ["next", "next()"],
+  ["stopiteration", "StopIteration"],
+  ["protocol", "Iterator Protocol"],
+  ["dunder_iter", "__iter__()"],
+  ["dunder_next", "__next__()"],
+  ["for_internals", "How for Loops Work Internally"],
+  ["custom", "Custom Iterator Classes"],
+  ["exhaustion", "Iterator Exhaustion"],
+  ["one_pass", "One-Pass Iterators"],
+]
+
+[[module]]
+slug = "generators"
+num = 8
+title = "Generators"
+status = "covered"
+topics = [
+  ["functions", "Generator Functions"],
+  ["yield", "yield Keyword"],
+  ["expressions", "Generator Expressions"],
+  ["lazy_evaluation", "Lazy Evaluation"],
+  ["suspension", "Generator Execution and Suspension"],
+  ["resumption", "Generator Resumption"],
+  ["exhaustion", "Generator Exhaustion"],
+  ["list_vs_generator", "List vs Generator"],
+  ["memory_efficiency", "Memory-Efficient Processing"],
+  ["pipelines", "Generator Pipelines"],
+  ["chaining", "Chained Generators"],
+  ["yield_from", "yield from"],
+  ["send", "send()"],
+  ["throw", "throw()"],
+  ["close", "close()"],
+  ["document_processing", "Document Processing Using Generators"],
+  ["rag_chunking", "RAG Chunking Using Generators"],
+  ["chunk_metadata", "Preserving Metadata in Generated Chunks"],
+]
+
+[[module]]
+slug = "oop"
+num = 9
+title = "Object-Oriented Programming"
+status = "covered"
+topics = [
+  ["classes_objects", "Classes and Objects"],
+  ["init", "Constructors (__init__)"],
+  ["instance_vars", "Instance Variables"],
+  ["class_vars", "Class Variables"],
+  ["instance_methods", "Instance Methods"],
+  ["class_methods", "Class Methods"],
+  ["static_methods", "Static Methods"],
+  ["encapsulation", "Encapsulation"],
+  ["abstraction", "Abstraction"],
+  ["inheritance", "Inheritance"],
+  ["polymorphism", "Polymorphism"],
+  ["overriding", "Method Overriding"],
+  ["super", "super()"],
+  ["mro", "Method Resolution Order (MRO)"],
+  ["composition", "Composition vs Inheritance"],
+  ["dunder", "Dunder Methods"],
+  ["property", "Properties and @property"],
+  ["abc", "Abstract Base Classes"],
+  ["dataclasses", "dataclasses"],
+  ["slots", "__slots__"],
+  ["copy", "Shallow Copy vs Deep Copy"],
+]
+
+[[module]]
+slug = "exceptions"
+num = 10
+title = "Exception Handling"
+status = "covered"
+topics = [
+  ["syntax_vs_runtime", "Syntax Errors vs Runtime Errors"],
+  ["try_except", "try, except, else, finally"],
+  ["multiple", "Multiple Exception Handling"],
+  ["hierarchy", "Exception Hierarchy"],
+  ["raising", "Raising Exceptions"],
+  ["custom", "Custom Exceptions"],
+  ["chaining", "Exception Chaining"],
+  ["assert", "assert"],
+  ["contextual", "Contextual Error Handling"],
+  ["logging", "Logging Exceptions"],
+  ["best_practices", "Best Practices for Exception Handling"],
+]
+
+[[module]]
+slug = "files"
+num = 11
+title = "File Handling"
+status = "covered"
+topics = [
+  ["open_close", "Opening and Closing Files"],
+  ["open", "open()"],
+  ["modes", "File Modes"],
+  ["read_write", "Reading and Writing Files"],
+  ["with", "with Statement"],
+  ["text_vs_binary", "Text vs Binary Files"],
+  ["csv", "CSV Handling"],
+  ["json", "JSON Handling"],
+  ["pathlib", "pathlib"],
+  ["dir_ops", "Directory and File Operations"],
+  ["tempfiles", "Temporary Files"],
+  ["encoding", "File Encoding"],
+  ["large_files", "Large File Processing"],
+]
+
+[[module]]
+slug = "context_managers"
+num = 12
+title = "Context Managers"
+status = "covered"
+topics = [
+  ["protocol", "Context Manager Protocol"],
+  ["enter", "__enter__()"],
+  ["exit", "__exit__()"],
+  ["with_internals", "with Statement Internals"],
+  ["custom", "Custom Context Managers"],
+  ["contextmanager", "contextlib.contextmanager"],
+  ["exitstack", "contextlib.ExitStack"],
+  ["resources", "Resource Management"],
+  ["cleanup", "Database and File Resource Cleanup"],
+]
+
+[[module]]
+slug = "packaging"
+num = 13
+title = "Python Modules and Packages"
+status = "covered"
+topics = [
+  ["modules", "Modules"],
+  ["packages", "Packages"],
+  ["imports", "Imports and Import System"],
+  ["abs_vs_rel", "Absolute vs Relative Imports"],
+  ["init_py", "__init__.py"],
+  ["main_guard", "__name__ == \"__main__\""],
+  ["search_path", "Python Module Search Path"],
+  ["venv", "Virtual Environments"],
+  ["pip", "pip"],
+  ["dependencies", "Dependency Management"],
+  ["pyproject", "pyproject.toml"],
+  ["requirements", "requirements.txt"],
+]
+
+[[module]]
+slug = "type_hints"
+num = 14
+title = "Python Type Hints"
+status = "covered"
+topics = [
+  ["basic", "Basic Type Annotations"],
+  ["functions", "Function Type Annotations"],
+  ["returns", "Return Type Annotations"],
+  ["optional", "Optional Types"],
+  ["union", "Union Types"],
+  ["collections", "List, Dict, Tuple and Set Annotations"],
+  ["any_vs_object", "Any vs object"],
+  ["callable", "Callable"],
+  ["typevar", "TypeVar"],
+  ["generics", "Generic Types"],
+  ["protocol", "Protocol"],
+  ["typeddict", "TypedDict"],
+  ["literal", "Literal"],
+  ["aliases", "Type Aliases"],
+  ["static_checking", "Static Type Checking"],
+  ["mypy_pyright", "mypy / Pyright"],
+]
+
+[[module]]
+slug = "pydantic"
+num = 15
+title = "Pydantic"
+status = "covered"
+topics = [
+  ["models", "Pydantic Models"],
+  ["basemodel", "BaseModel"],
+  ["field", "Field"],
+  ["required_optional", "Required vs Optional Fields"],
+  ["validation", "Field Validation"],
+  ["custom_validators", "Custom Validators"],
+  ["model_validator", "model_validator"],
+  ["constraints", "Field Constraints"],
+  ["nested", "Nested Models"],
+  ["serialization", "Serialization and Deserialization"],
+  ["model_dump", "model_dump()"],
+  ["model_validate", "model_validate()"],
+  ["json_schema", "JSON Schema Generation"],
+  ["settings", "Settings Management"],
+  ["api_validation", "Pydantic for API Request/Response Validation"],
+]
+
+[[module]]
+slug = "async"
+num = 16
+title = "Asynchronous Programming"
+status = "covered"
+topics = [
+  ["sync_vs_async", "Synchronous vs Asynchronous Programming"],
+  ["blocking", "Blocking vs Non-Blocking Operations"],
+  ["io_bound", "I/O-Bound Operations"],
+  ["async_keyword", "async Keyword"],
+  ["await", "await Keyword"],
+  ["coroutine_functions", "Coroutine Functions"],
+  ["coroutine_objects", "Coroutine Objects"],
+  ["asyncio_run", "asyncio.run()"],
+  ["event_loop", "Event Loop Fundamentals"],
+  ["asyncio_sleep", "asyncio.sleep()"],
+  ["sleep_vs_sleep", "time.sleep() vs asyncio.sleep()"],
+  ["suspension", "Coroutine Suspension and Resumption"],
+  ["sequential_vs_concurrent", "Sequential vs Concurrent Execution"],
+  ["create_task", "asyncio.create_task()"],
+  ["scheduling", "Task Scheduling"],
+  ["gather", "asyncio.gather()"],
+  ["gather_ordering", "gather() Result Ordering"],
+  ["dependencies", "Concurrent Execution with Dependencies"],
+  ["gather_exceptions", "gather() Exception Handling"],
+  ["return_exceptions", "return_exceptions=True"],
+  ["cancellation", "Task Cancellation"],
+  ["task_cancel", "task.cancel()"],
+  ["cancellederror", "CancelledError"],
+  ["cleanup_finally", "Task Cleanup Using finally"],
+  ["task_done", "task.done()"],
+  ["task_cancelled", "task.cancelled()"],
+  ["run_shutdown", "asyncio.run() Event Loop Shutdown"],
+  ["wait_for", "asyncio.wait_for()"],
+  ["timeouts", "Timeout Handling"],
+  ["timeout_cancellation", "Coroutine Cancellation on Timeout"],
+  ["wait", "asyncio.wait()"],
+  ["all_completed", "ALL_COMPLETED"],
+  ["first_completed", "FIRST_COMPLETED"],
+  ["first_exception", "FIRST_EXCEPTION"],
+  ["done_pending", "Done and Pending Tasks"],
+  ["as_completed", "asyncio.as_completed()"],
+  ["completion_order", "Completion Order vs Input Order"],
+  ["semaphore", "asyncio.Semaphore"],
+  ["lock", "asyncio.Lock"],
+  ["queue", "asyncio.Queue"],
+  ["event", "asyncio.Event"],
+  ["condition", "asyncio.Condition"],
+  ["taskgroup", "asyncio.TaskGroup"],
+  ["asyncio_timeout", "asyncio.timeout()"],
+  ["async_generators", "Async Generators"],
+  ["async_iterators", "Async Iterators"],
+  ["async_for", "async for"],
+  ["async_context_managers", "Async Context Managers"],
+  ["async_with", "async with"],
+  ["async_comprehensions", "Async Comprehensions"],
+  ["resource_management", "Async Resource Management"],
+  ["graceful_shutdown", "Graceful Shutdown"],
+  ["best_practices", "Cancellation and Timeout Best Practices"],
+]
+
+[[module]]
+slug = "http"
+num = 17
+title = "Async HTTP and API Integration"
+status = "covered"
+topics = [
+  ["fundamentals", "HTTP Fundamentals"],
+  ["sync_vs_async", "Synchronous vs Asynchronous HTTP Requests"],
+  ["requests_vs_httpx", "requests vs httpx"],
+  ["client", "httpx Client"],
+  ["async_client", "httpx AsyncClient"],
+  ["get_post", "Async GET and POST Requests"],
+  ["pooling", "Connection Pooling"],
+  ["reuse", "Connection Reuse"],
+  ["connect_timeouts", "Connection Timeouts"],
+  ["request_timeouts", "Request Timeouts"],
+  ["status_codes", "HTTP Status Codes"],
+  ["error_handling", "API Error Handling"],
+  ["retries", "Retry Mechanisms"],
+  ["backoff", "Exponential Backoff"],
+  ["retry_limits", "Retry Limits"],
+  ["rate_limiting", "Rate Limiting"],
+  ["concurrency_limits", "Concurrency Limits"],
+  ["batching", "API Request Batching"],
+  ["concurrent_calls", "Concurrent API Calls"],
+  ["partial_failures", "Handling Partial Failures"],
+  ["response_validation", "API Response Validation with Pydantic"],
+]
+
+[[module]]
+slug = "memory"
+num = 18
+title = "Python Memory Management"
+status = "covered"
+topics = [
+  ["object_model", "Python Object Model"],
+  ["references", "References and Object Identity"],
+  ["refcounting", "Reference Counting"],
+  ["gc", "Garbage Collection"],
+  ["cycles", "Cyclic References"],
+  ["allocation", "Memory Allocation"],
+  ["stack_heap", "Stack vs Heap (Conceptual)"],
+  ["copy", "Shallow Copy vs Deep Copy"],
+  ["profiling", "Memory Profiling"],
+  ["efficient_processing", "Memory-Efficient Data Processing"],
+  ["generator_memory", "Generator Memory Efficiency"],
+  ["weakref", "Weak References"],
+]
+
+[[module]]
+slug = "internals"
+num = 19
+title = "Python Internals and Performance"
+status = "covered"
+topics = [
+  ["cpython", "CPython Fundamentals"],
+  ["bytecode", "Bytecode"],
+  ["dis", "dis Module"],
+  ["gil", "GIL (Global Interpreter Lock)"],
+  ["threading", "Threading"],
+  ["multiprocessing", "Multiprocessing"],
+  ["futures", "Concurrent Futures"],
+  ["threadpool", "ThreadPoolExecutor"],
+  ["processpool", "ProcessPoolExecutor"],
+  ["cpu_vs_io", "CPU-Bound vs I/O-Bound Tasks"],
+  ["concurrency_models", "Asyncio vs Threading vs Multiprocessing"],
+  ["profiling", "Performance Profiling"],
+  ["cprofile", "cProfile"],
+  ["timeit", "timeit"],
+  ["optimization", "Optimization Techniques"],
+]
+
+[[module]]
+slug = "numpy"
+num = 20
+title = "Data Processing with NumPy"
+status = "covered"
+topics = [
+  ["arrays", "NumPy Arrays"],
+  ["ndarray", "ndarray"],
+  ["creation", "Array Creation"],
+  ["attributes", "Array Attributes"],
+  ["indexing", "Indexing and Slicing"],
+  ["reshaping", "Reshaping Arrays"],
+  ["broadcasting", "Broadcasting"],
+  ["vectorization", "Vectorization"],
+  ["aggregation", "Aggregation Functions"],
+  ["axis", "Axis Operations"],
+  ["boolean_indexing", "Boolean Indexing"],
+  ["random", "Random Number Generation"],
+  ["math", "Mathematical Operations"],
+  ["linalg", "Linear Algebra Basics"],
+  ["matmul", "Matrix Multiplication"],
+  ["vs_lists", "NumPy vs Python Lists"],
+]
+
+[[module]]
+slug = "pandas"
+num = 21
+title = "Data Processing with Pandas"
+status = "covered"
+topics = [
+  ["series_dataframe", "Series and DataFrames"],
+  ["creation", "DataFrame Creation"],
+  ["io", "Reading CSV and JSON"],
+  ["inspection", "Data Inspection"],
+  ["selection", "Selecting and Filtering Data"],
+  ["loc_iloc", "loc and iloc"],
+  ["missing", "Handling Missing Values"],
+  ["duplicates", "Duplicate Handling"],
+  ["cleaning", "Data Cleaning"],
+  ["dtypes", "Data Type Conversion"],
+  ["sorting", "Sorting"],
+  ["groupby", "GroupBy"],
+  ["aggregations", "Aggregations"],
+  ["merge_join", "Merging and Joining"],
+  ["concat", "Concatenation"],
+  ["apply_map", "Apply and Map"],
+  ["string_ops", "String Operations"],
+  ["datetime", "Date and Time Operations"],
+  ["analysis", "Basic Data Analysis"],
+  ["export", "Exporting Data"],
+]
+
+[[module]]
+slug = "testing"
+num = 22
+title = "Testing and Code Quality"
+status = "covered"
+topics = [
+  ["unit", "Unit Testing"],
+  ["integration", "Integration Testing"],
+  ["pytest", "pytest"],
+  ["fixtures", "Fixtures"],
+  ["parametrize", "Parametrized Tests"],
+  ["mocking", "Mocking"],
+  ["unittest_mock", "unittest.mock"],
+  ["async_testing", "Async Testing"],
+  ["testing_async_functions", "Testing Async Functions"],
+  ["coverage", "Code Coverage"],
+  ["debugging", "Debugging"],
+  ["logging", "Logging"],
+  ["logging_module", "Python Logging Module"],
+  ["formatting", "Code Formatting"],
+  ["linting", "Linting"],
+  ["type_checking", "Type Checking"],
+  ["pep8", "PEP 8"],
+  ["clean_code", "Clean Code Principles"],
+  ["dependency_management", "Dependency Management"],
+]
+
+[[module]]
+slug = "genai"
+num = 23
+title = "Python for Generative AI Applications"
+status = "covered"
+topics = [
+  ["structured_data", "Working with JSON and Structured Data"],
+  ["text_processing", "Text Processing"],
+  ["normalization", "String Normalization"],
+  ["regex", "Regular Expressions"],
+  ["tokenization", "Tokenization Fundamentals"],
+  ["document_processing", "Document Processing"],
+  ["chunking", "Chunking Strategies"],
+  ["batching", "Batch Processing"],
+  ["async_llm_calls", "Async LLM API Calls"],
+  ["concurrent_embeddings", "Concurrent Embedding Generation"],
+  ["rate_limits", "API Rate Limit Handling"],
+  ["retry_backoff", "Retry and Backoff Strategies"],
+  ["structured_output", "Structured Output Validation"],
+  ["streaming", "Streaming API Responses"],
+  ["env_vars", "Environment Variables"],
+  ["secrets", "Secrets Management"],
+  ["config", "Configuration Management"],
+  ["logging_tracking", "Logging and Error Tracking"],
+  ["pipelines", "Memory-Efficient Data Pipelines"],
+  ["packages", "Building Reusable Python Packages"],
+]

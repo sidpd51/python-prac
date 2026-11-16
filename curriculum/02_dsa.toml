@@ -1,0 +1,54 @@
+[track]
+id = "dsa"
+title = "DSA for Coding Rounds"
+order = 2
+description = "Pattern-based problem solving. Run in parallel with every other track: 3-5 problems/week."
+
+[[module]]
+slug = "arrays_hashing"
+num = 1
+title = "Arrays & Hashing"
+status = "planned"
+topics = [["hashmap_patterns", "Hash map counting / grouping"], ["prefix_sums", "Prefix sums"], ["in_place", "In-place array manipulation"]]
+
+[[module]]
+slug = "two_pointers_window"
+num = 2
+title = "Two Pointers & Sliding Window"
+status = "planned"
+topics = [["two_pointers", "Two pointers"], ["fixed_window", "Fixed-size sliding window"], ["variable_window", "Variable-size sliding window"]]
+
+[[module]]
+slug = "stacks_queues"
+num = 3
+title = "Stacks, Queues & Monotonic Stack"
+status = "planned"
+topics = [["stack_problems", "Stack problems (parsing, matching)"], ["monotonic_stack", "Monotonic stack"], ["bfs_queue", "Queue / BFS level order"]]
+
+[[module]]
+slug = "heaps"
+num = 4
+title = "Heaps & Top-K"
+status = "planned"
+topics = [["heapq", "heapq API"], ["top_k", "Top-K / K-way merge"], ["two_heaps", "Two heaps (running median)"]]
+
+[[module]]
+slug = "trees_graphs"
+num = 5
+title = "Trees & Graphs"
+status = "planned"
+topics = [["tree_traversal", "Tree traversal (DFS/BFS)"], ["bst", "Binary search trees"], ["graph_bfs_dfs", "Graph BFS/DFS"], ["topo_sort", "Topological sort"], ["union_find", "Union-Find"], ["shortest_path", "Dijkstra"]]
+
+[[module]]
+slug = "dp"
+num = 6
+title = "Dynamic Programming & Backtracking"
+status = "planned"
+topics = [["memoization", "Top-down memoization"], ["tabulation", "Bottom-up tabulation"], ["backtracking", "Backtracking"], ["classic_dp", "Classic DP (knapsack, LCS, edit distance)"]]
+
+[[module]]
+slug = "design_problems"
+num = 7
+title = "Design-a-Class Problems"
+status = "planned"
+topics = [["lru_cache", "LRU / LFU cache"], ["rate_limiter", "Rate limiter (token bucket, sliding log)"], ["trie", "Trie / autocomplete"], ["iterator_design", "Iterator / stream design"]]

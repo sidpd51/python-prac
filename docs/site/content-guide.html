@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content guide - AI Eng Prep Notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
+  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="content-guide.html" aria-current="page">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+</header>
+<p class="src">docs/CONTENT_GUIDE.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#workflow-for-a-module">Workflow for a module</a></li><li><a href="#exercises">Exercises</a></li><li><a href="#question-bank-questionstracknn_moduletoml">Question bank (questions/&amp;lt;track&amp;gt;/&amp;lt;NN_module&amp;gt;.toml)</a></li><li><a href="#python-version">Python version</a></li></ol></nav><article class="prose"><h1 id="content-guide-how-a-modules-practice-material-is-built">Content guide - how a module's practice material is built</h1>
+<p>Use this when adding exercises/questions for any module (now or for future tracks:
+ML, LLM, RAG, agents, prod...). The reference module is <strong><code>py.generators</code></strong>:</p>
+<ul>
+<li><code>solutions/py/08_generators/ex0N_*.py</code>  - reference solutions (spec lives in the docstring)</li>
+<li><code>exercises/py/08_generators/test_ex0N_*.py</code> - tests</li>
+<li><code>exercises/py/08_generators/ex0N_*.py</code> - stubs, <strong>generated</strong> from solutions</li>
+<li><code>questions/py/08_generators.toml</code> - interview question bank</li>
+</ul>
+<h2 id="workflow-for-a-module">Workflow for a module</h2>
+<div class="widget" data-widget="flow">
+  <h3 class="w-title">One module, five commands</h3>
+  <p class="w-sub">The loop that keeps solutions, tests, stubs and questions honest.</p>
+  <ol class="flow">
+    <li data-title="Write the solution" data-body="The docstring is the full problem spec. Put it in solutions/&lt;track&gt;/&lt;NN_module&gt;/exNN_name.py as idiomatic, typed code." data-cmd="solutions/py/08_generators/ex01_log_pipeline.py"><b>1</b><span>Solution</span></li>
+    <li data-title="Write the tests" data-body="Tests load the exercise through study.loader.load and carry @pytest.mark.topic with full topic ids. Test behaviour and the concept, not the implementation." data-cmd="exercises/py/08_generators/test_ex01_log_pipeline.py"><b>2</b><span>Tests</span></li>
+    <li data-title="Verify" data-body="Runs your tests against the reference solutions. Everything must pass, otherwise the test is wrong, not the learner." data-cmd="study verify generators"><b>3</b><span>Verify</span></li>
+    <li data-title="Generate stubs" data-body="Bodies become raise NotImplementedError, private helpers are dropped, imports are pruned. Existing files are never overwritten, so your work is safe." data-cmd="study stubs generators"><b>4</b><span>Stubs</span></li>
+    <li data-title="Check" data-body="Every test on an unsolved stub must show as skipped (TODO). Then study check confirms every topic has an exercise or a question." data-cmd="study check generators"><b>5</b><span>Check</span></li>
+  </ol>
+  <div class="panel" data-panel aria-live="polite"><strong>Pick a step.</strong></div>
+</div>
+
+
+<div class="hl"><pre><span></span><code>study<span class="w"> </span>scaffold<span class="w"> </span>&lt;module&gt;<span class="w">                </span><span class="c1"># only for brand-new modules (creates templates)</span>
+<span class="c1"># 1. write solutions/&lt;track&gt;/&lt;NN_module&gt;/exNN_name.py   (docstring = full problem spec)</span>
+<span class="c1"># 2. write exercises/&lt;track&gt;/&lt;NN_module&gt;/test_exNN_name.py</span>
+study<span class="w"> </span>verify<span class="w"> </span>&lt;module&gt;<span class="w">                  </span><span class="c1"># tests must ALL pass against the solutions</span>
+study<span class="w"> </span>stubs<span class="w"> </span>&lt;module&gt;<span class="w">                   </span><span class="c1"># generates exercise stubs (never overwrites)</span>
+pytest<span class="w"> </span>exercises/&lt;track&gt;/&lt;NN_module&gt;<span class="w"> </span>--no-record<span class="w">   </span><span class="c1"># every test must show as skipped (TODO)</span>
+<span class="c1"># 3. write questions/&lt;track&gt;/&lt;NN_module&gt;.toml</span>
+study<span class="w"> </span>check<span class="w"> </span>&lt;module&gt;<span class="w">                   </span><span class="c1"># validates; aim for "topics w/o any content: none"</span>
+</code></pre></div>
+
+<h2 id="exercises">Exercises</h2>
+<p><strong>File naming</strong>: <code>exNN_short_name.py</code> + <code>test_exNN_short_name.py</code>. 4-7 exercises per module,
+ordered easy -&gt; hard. Each exercise may contain 1-4 functions/classes.</p>
+<p><strong>Docstring header</strong> (copy this shape exactly - <code>study exercises</code> shows line 2):</p>
+<div class="hl"><pre><span></span><code>"""
+Exercise 08.2 - RAG chunker with metadata                       level: ★★☆
+topics: generators.rag_chunking, generators.chunk_metadata
+
+Problem
+-------
+precise spec: signatures, inputs/outputs, edge cases, what must raise what, rules
+("don't use X"), so a learner can solve it WITHOUT reading the tests.
+
+Interviewers look for
+---------------------
+* the concept underneath, the trade-off, the classic bug this exercise guards against
+
+Hints (only after 15 honest minutes)       &lt;- optional
+------------------------------------
+1. ...
+"""
+</code></pre></div>
+
+<p>Levels: ★☆☆ fundamentals, ★★☆ working-engineer, ★★★ senior/3-4 YOE interview level.
+Aim for roughly 1-2 / 2-3 / 1-2 across a module. <strong>Prefer realistic, AI-engineering-flavoured
+scenarios</strong> (documents, chunks, embeddings, LLM responses, API clients, configs, logs, eval
+results) over toy "foo/bar" - but the exercise must still isolate the module's concept.</p>
+<p>Good exercise shapes:</p>
+<ul>
+<li><strong>implement</strong> - a function/class with tricky edge cases (LRU cache, retry decorator, rate limiter)</li>
+<li><strong>fix the bug</strong> - solution docstring contains the buggy version in the spec; learner writes the fixed one</li>
+<li><strong>refactor</strong> - make something lazy/thread-safe/typed while keeping behaviour</li>
+<li><strong>write tests</strong> (testing module) - learner writes a test suite; our tests run it against the
+  correct implementation (must pass) and against mutants (must fail)</li>
+</ul>
+<p><strong>Solutions</strong>: idiomatic, typed, production-quality Python 3.12+ (the venv runs 3.13). They are
+the learner's reference for "how a senior would write it". Comments explain <em>why</em>, sparingly.
+Private helpers named <code>_x</code> are dropped from stubs; use <code>__stub_keep__ = ["Name"]</code> for scaffolding
+(given classes/helpers) that must stay verbatim in the stub.</p>
+<p><strong>Tests</strong>:</p>
+<ul>
+<li>import via <code>from study.loader import load; ex = load(__file__, "exNN_name")</code> - never import directly.</li>
+<li>every test has <code>@pytest.mark.topic("&lt;track&gt;.&lt;module&gt;.&lt;slug&gt;", ...)</code> with <strong>full</strong> topic ids
+  that exist in <code>curriculum/*.toml</code> (unknown ids abort the run). Tests in one module may also tag
+  topics of other modules when genuinely exercised (e.g. <code>py.decorators.wraps</code>).</li>
+<li>test behaviour + the concept (laziness, eager validation, no over-consumption, ordering,
+  cancellation, cleanup ran...), not implementation details. Test edge cases.</li>
+<li><strong>never</strong> <code>pytest.raises(Exception)</code> / <code>RuntimeError</code> / <code>BaseException</code> / bare excepts - they'd
+  swallow the stub's <code>NotImplementedError</code> (a subclass of <code>RuntimeError</code>) and pass on unsolved
+  stubs. Use the specific exception, and make a valid call first when testing bad-call errors.</li>
+<li>tag topics with <strong>literal</strong> ids (<code>"py.x.y"</code>), never f-strings: <code>study check</code> greps for literals.</li>
+<li>stubs keep class bodies, constants and signatures verbatim: put answers only inside function
+  bodies, or in <code>_private</code> top-level helpers (dropped from stubs).</li>
+<li>deterministic &amp; fast: whole module &lt; ~10 s; async timing tests use small sleeps (≤0.2 s) and
+  generous tolerances; seed randomness; no network (use <code>httpx.MockTransport</code>); files via <code>tmp_path</code>.</li>
+<li>async tests: plain <code>async def test_...</code> (pytest-asyncio auto mode is on).</li>
+<li>ProcessPoolExecutor: functions defined in exercise modules can't be pickled by child processes
+  (modules are loaded by path); design such exercises so workers are stdlib/builtin callables or
+  keep them thread-based.</li>
+</ul>
+
+<div class="widget" data-widget="anatomy">
+<h3 class="w-title">One exercise, four views</h3>
+<p class="w-sub">Real files from <code>py.generators</code>, exercise 08.1. The stub is generated from the solution, never written by hand.</p>
+<div class="tabset">
+<div class="tabpanel" data-label="Spec"><pre><code>Exercise 08.1 - Lazy log-processing pipeline                     level: ★☆☆
+topics: generators.pipelines, generators.lazy_evaluation, generators.chaining
+
+Problem
+-------
+Build three small generator stages that chain into a pipeline:
+
+    parse(lines)            -&gt; yields dicts {&quot;level&quot;: str, &quot;msg&quot;: str} from lines like
+                               &quot;ERROR  disk full&quot;. Skip blank lines and lines starting with &quot;#&quot;.
+                               Level is the first whitespace-separated word, upper-cased;
+                               msg is the rest of the line, stripped.
+    only(records, *levels)  -&gt; yields records whose level is in `levels`
+    take(n, iterable)       -&gt; yields at most n items, then STOPS pulling from the source
+
+    take(2, only(parse(lines), &quot;ERROR&quot;))
+
+The whole point: the pipeline must be lazy. Pulling 2 errors from a 10 GB log
+must only read as many lines as needed to find those 2 errors.
+
+Rules: no lists that hold the whole input. Don&#x27;t use itertools.islice in `take`
+(write it yourself once; use islice in real life).
+
+Interviewers look for
+---------------------
+* Why pull-based pipelines use O(1) memory regardless of input size.
+* That `take` must not call next() one extra time (that would consume an item
+  from a shared iterator).</code></pre>
+<p class="tabcap">The docstring is the whole problem statement. You can solve the exercise without reading the tests.</p></div>
+<div class="tabpanel" data-label="Solution"><div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Iterator</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="n">lines</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span> <span class="ow">or</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"#"</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">level</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s2">" "</span><span class="p">)</span>
+        <span class="k">yield</span> <span class="p">{</span><span class="s2">"level"</span><span class="p">:</span> <span class="n">level</span><span class="o">.</span><span class="n">upper</span><span class="p">(),</span> <span class="s2">"msg"</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">strip</span><span class="p">()}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">only</span><span class="p">(</span><span class="n">records</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span> <span class="o">*</span><span class="n">levels</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+    <span class="n">wanted</span> <span class="o">=</span> <span class="p">{</span><span class="n">lv</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="k">for</span> <span class="n">lv</span> <span class="ow">in</span> <span class="n">levels</span><span class="p">}</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">records</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">"level"</span><span class="p">]</span> <span class="ow">in</span> <span class="n">wanted</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">iterable</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">iterable</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="n">item</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">n</span><span class="p">:</span>
+            <span class="k">return</span>
+</code></pre></div>
+<p class="tabcap">Idiomatic, typed code you compare with after your own attempt. Private helpers (leading underscore) would be removed from the stub.</p></div>
+<div class="tabpanel" data-label="Stub (what you get)"><div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Iterator</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parse</span><span class="p">(</span><span class="n">lines</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+    <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">only</span><span class="p">(</span><span class="n">records</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span> <span class="o">*</span><span class="n">levels</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+    <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">iterable</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+</code></pre></div>
+<p class="tabcap">Signatures and imports survive, bodies become <code>NotImplementedError</code>. Tests report this as TODO, not as a failure.</p></div>
+<div class="tabpanel" data-label="Test excerpt"><div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">CountingSource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Iterator that records how many items were pulled from it."""</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">items</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">items</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pulled</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_it</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pulled</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">item</span>
+
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">"py.generators.lazy_evaluation"</span><span class="p">,</span> <span class="s2">"py.generators.memory_efficiency"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_pipeline_pulls_minimum</span><span class="p">():</span>
+    <span class="n">src</span> <span class="o">=</span> <span class="n">CountingSource</span><span class="p">(</span><span class="n">LINES</span><span class="p">)</span>
+    <span class="n">first_error</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ex</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">ex</span><span class="o">.</span><span class="n">only</span><span class="p">(</span><span class="n">ex</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="n">src</span><span class="p">),</span> <span class="s2">"ERROR"</span><span class="p">)))</span>
+    <span class="k">assert</span> <span class="n">first_error</span> <span class="o">==</span> <span class="p">[{</span><span class="s2">"level"</span><span class="p">:</span> <span class="s2">"ERROR"</span><span class="p">,</span> <span class="s2">"msg"</span><span class="p">:</span> <span class="s2">"disk full"</span><span class="p">}]</span>
+    <span class="k">assert</span> <span class="n">src</span><span class="o">.</span><span class="n">pulled</span> <span class="o">==</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">"pipeline read more lines than needed"</span>
+
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">topic</span><span class="p">(</span><span class="s2">"py.generators.exhaustion"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_take_does_not_overconsume_shared_iterator</span><span class="p">():</span>
+    <span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+    <span class="k">assert</span> <span class="nb">list</span><span class="p">(</span><span class="n">ex</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">it</span><span class="p">))</span> <span class="o">==</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="k">assert</span> <span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">"take() pulled one item too many"</span>
+    <span class="k">assert</span> <span class="nb">list</span><span class="p">(</span><span class="n">ex</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">it</span><span class="p">))</span> <span class="o">==</span> <span class="p">[]</span>
+    <span class="k">assert</span> <span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span>
+</code></pre></div>
+<p class="tabcap">Tests check the concept, here laziness and not over-consuming, and are tagged with the topic ids that update your mastery.</p></div>
+</div></div>
+
+<div class="widget" data-widget="badtest">
+  <h3 class="w-title">Spot the bad test</h3>
+  <p class="w-sub">An unsolved stub raises <code>NotImplementedError</code>. A good test makes that show as TODO. Which of these tests would give a wrong result on a stub?</p>
+  <div class="bt-list">
+    <div class="bt" data-bad="true" data-why="NotImplementedError is an Exception, so the stub satisfies this test and it passes without any work.">
+<pre><code>def test_rejects_none():
+    with pytest.raises(Exception):
+        ex.parse(None)</code></pre></div>
+    <div class="bt" data-bad="true" data-why="NotImplementedError is a subclass of RuntimeError, so this still catches the stub's error.">
+<pre><code>def test_budget_exceeded():
+    with pytest.raises(RuntimeError):
+        tracker.spend(10**9)</code></pre></div>
+    <div class="bt" data-bad="true" data-why="The stub keeps the real signature, so a bad call raises TypeError before the body runs and the test passes. Make a valid call first.">
+<pre><code>def test_needs_two_args():
+    with pytest.raises(TypeError):
+        ex.take(1, 2, 3)</code></pre></div>
+    <div class="bt" data-bad="false" data-why="The call reaches the stub body, which raises NotImplementedError. The plugin records it as TODO, exactly what you want.">
+<pre><code>def test_take_stops_early():
+    it = iter(range(10))
+    assert list(ex.take(3, it)) == [0, 1, 2]
+    assert next(it) == 3</code></pre></div>
+  </div>
+</div>
+
+<h2 id="question-bank-questionstracknn_moduletoml">Question bank (<code>questions/&lt;track&gt;/&lt;NN_module&gt;.toml</code>)</h2>
+<div class="hl"><pre><span></span><code><span class="k">[[q]]</span>
+<span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"gen-01"</span><span class="w">            </span><span class="c1"># &lt;short module prefix&gt;-NN, unique in file</span>
+<span class="n">topic</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"functions"</span><span class="w">      </span><span class="c1"># topic slug of THIS module (or a full id from another module)</span>
+<span class="n">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="w">                </span><span class="c1"># 1 fundamentals | 2 mid | 3 senior (3-4 YOE)</span>
+<span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"concept"</span><span class="w">         </span><span class="c1"># concept | predict | debug | design | compare</span>
+<span class="n">q</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''question; may include ```python fenced code```'''</span>
+<span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'''model answer as bullet points - exactly what a strong candidate says, incl. gotchas'''</span>
+<span class="n">followups</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"what the interviewer asks next"</span><span class="p">]</span><span class="w">     </span><span class="c1"># optional</span>
+</code></pre></div>
+
+<p>Per module: 12-20 questions, about 30% L1 / 45% L2 / 25% L3, with at least 3 <code>predict</code>
+(show code, ask exact output), 2 <code>debug</code>, and <code>design</code>/<code>compare</code> where meaningful.
+Answers must be <strong>correct</strong> - run every <code>predict</code> snippet with the venv Python (and 3.14 if it may differ) and paste the real
+output. Use <code>'''</code> for q/a strings that contain <code>"""</code>.</p>
+<p>Together, exercises + questions should touch <strong>every topic</strong> in the module (<code>study check</code>).</p>
+<h2 id="python-version">Python version</h2>
+<p>The venv runs CPython 3.13; <code>/usr/bin/python3.14</code> exists separately. Run <code>predict</code> snippets on
+both when behaviour could differ, and say so in the answer.</p></article></div>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

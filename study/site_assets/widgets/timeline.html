@@ -1,0 +1,8 @@
+<div class="widget" data-widget="timeline">
+  <h3 class="w-title">Sequential, gather and semaphore</h3>
+  <p class="w-sub">Eight embedding calls of different lengths. Pick how they are awaited.</p>
+  <div class="seg" role="group" aria-label="Mode"><button type="button" data-mode="seq" class="on">await in a loop</button><button type="button" data-mode="gather">gather</button><button type="button" data-mode="sem">gather + Semaphore</button></div>
+  <div class="sliders"><label data-limit-wrap hidden>Semaphore limit <output data-o="limit">3</output><input type="range" min="1" max="8" value="3" data-in="limit"></label></div>
+  <div class="gantt" role="img" aria-label="Timeline of eight calls"></div>
+  <p class="w-note" data-note></p>
+</div>

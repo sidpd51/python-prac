@@ -1,0 +1,550 @@
+# Interview question bank - Python Fundamentals
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "fun-01"
+topic = "identity_equality"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+a = [1, 2]
+b = a
+c = [1, 2]
+print(a == c, a is c, a is b)
+b.append(3)
+print(a, c)
+```
+'''
+a = '''
+```
+True False True
+[1, 2, 3] [1, 2]
+```
+- `==` compares **values** (calls `__eq__`); `is` compares **identity** (same object, same `id()`).
+- `b = a` does not copy - it binds a second name to the same list, so `b.append` is visible via `a`.
+- `c` is a different list that happens to be equal.
+- Rule: use `is` only for singletons (`None`, `True`/`False`, sentinels), `==` for everything else.
+'''
+followups = ["How would you make b an independent copy? Is that copy deep or shallow?"]
+
+[[q]]
+id = "fun-02"
+topic = "identity_equality"
+level = 2
+kind = "predict"
+q = '''
+CPython 3.14. What does this print?
+```python
+a = 256
+b = 256
+print(a is b)
+x = int("257")
+y = int("257")
+print(x is y, x == y)
+s1 = "hello"
+s2 = "hel" + "lo"
+print(s1 is s2)
+t = "".join(["hel", "lo"])
+print(s1 is t, s1 == t)
+```
+'''
+a = '''
+```
+True
+False True
+True
+False True
+```
+- CPython caches small ints **-5..256**, so every 256 is the same object; 257 built at runtime
+  gives two distinct objects.
+- `"hel" + "lo"` is **constant-folded** at compile time to `"hello"`, and identifier-like string
+  literals are interned, so `s1 is s2` is True.
+- `"".join(...)` builds a new string at runtime - equal, not identical.
+- All of this is an **implementation detail** (it changes between REPL vs file, versions,
+  PyPy). Code that relies on `is` for ints/strings is a bug; `sys.intern()` exists if you
+  genuinely need interning (e.g. millions of repeated token strings).
+'''
+followups = ["Why can `x is 257` behave differently in the REPL than in a script?", "What does SyntaxWarning 'is with a literal' tell you?"]
+
+[[q]]
+id = "fun-03"
+topic = "mutability"
+level = 1
+kind = "concept"
+q = "Which built-in types are mutable and which are immutable? Why does it matter in practice?"
+a = '''
+- Immutable: int, float, complex, bool, str, bytes, tuple, frozenset, None, range.
+- Mutable: list, dict, set, bytearray, most user-defined objects.
+- Why it matters:
+  * only **hashable** (typically immutable) objects can be dict keys / set members;
+  * mutable objects shared between names (aliases), default arguments, class attributes or
+    threads change "at a distance";
+  * immutable values are safe to share/cache; "modifying" them creates a new object
+    (`s += "x"` rebinds `s`).
+- Gotcha: a tuple is immutable but can **contain** mutable objects - `([1], 2)` is not hashable.
+'''
+followups = ["Is a frozen dataclass deeply immutable?"]
+
+[[q]]
+id = "fun-04"
+topic = "mutability"
+level = 3
+kind = "predict"
+q = '''
+What does this print?
+```python
+t = ([1], 2)
+try:
+    t[0] += [3]
+except TypeError as e:
+    print("TypeError:", e)
+print(t)
+```
+'''
+a = '''
+```
+TypeError: 'tuple' object does not support item assignment
+([1, 3], 2)
+```
+- `t[0] += [3]` is `tmp = t[0]; tmp = tmp.__iadd__([3]); t[0] = tmp`.
+- `list.__iadd__` mutates the list **in place** (succeeds), then the item assignment back into
+  the tuple fails. So you get an exception **and** a mutation.
+- Lesson: augmented assignment = in-place operation + rebinding; a tuple only freezes which
+  objects it references, not their contents.
+'''
+followups = ["What would `t[0].extend([3])` do instead?"]
+
+[[q]]
+id = "fun-05"
+topic = "truthiness"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+print(bool("False"), bool(0.0), bool([]), bool([0]), bool(" "), bool(None))
+x = 0
+print(x or 10, x and 10, "" or None, [] or {} or "default")
+```
+'''
+a = '''
+```
+True False False True True False
+10 0 None default
+```
+- Falsy: `None`, `False`, zero of any numeric type, empty containers/strings. Everything else
+  is truthy - including `"False"`, `" "` and `[0]`.
+- `or` / `and` return one of their **operands**, not a bool: `a or b` -> first truthy operand
+  (else the last one); `a and b` -> first falsy operand (else the last one).
+- Custom classes control truthiness via `__bool__`, falling back to `__len__`.
+'''
+
+[[q]]
+id = "fun-06"
+topic = "none"
+level = 2
+kind = "debug"
+q = '''
+Users report that setting `temperature: 0` in their config has no effect - the model is still
+creative. Find the bug and fix it.
+```python
+def build_params(cfg: dict) -> dict:
+    return {
+        "model": cfg.get("model") or "small",
+        "temperature": cfg.get("temperature") or 0.7,
+        "max_tokens": cfg.get("max_tokens") or 512,
+    }
+```
+'''
+a = '''
+- `x or default` substitutes the default for **every falsy value**, so `0`, `0.0`, `False`
+  and `""` are treated as "not set". `temperature=0` becomes 0.7.
+- Fix - distinguish "missing/None" from "falsy":
+  ```python
+  temp = cfg.get("temperature")
+  temperature = 0.7 if temp is None else temp
+  # or, if None is not a legal value: cfg.get("temperature", 0.7)
+  ```
+- Note `dict.get(k, default)` only applies the default when the key is **absent**; an explicit
+  `None` value still comes back as None - decide which semantics you want.
+- Better long-term: a typed settings object (pydantic / dataclass) with explicit defaults and
+  validation (`0 <= temperature <= 2`).
+'''
+followups = ["When is `or default` actually fine?"]
+
+[[q]]
+id = "fun-07"
+topic = "type_conversion"
+level = 1
+kind = "predict"
+q = '''
+What does each expression evaluate to (or raise)?
+```python
+int("3.9")      int(3.9)      int(-3.9)     int("  42\n")
+float("1e3")    round(2.5)    round(3.5)    bool("0")      int(True)
+```
+'''
+a = '''
+```
+int("3.9")     -> ValueError: invalid literal for int() with base 10: '3.9'
+int(3.9)       -> 3
+int(-3.9)      -> -3
+int("  42\n")  -> 42
+float("1e3")   -> 1000.0
+round(2.5)     -> 2
+round(3.5)     -> 4
+bool("0")      -> True
+int(True)      -> 1
+```
+- `int(str)` parses an integer literal only (surrounding whitespace allowed); `int(float)`
+  **truncates toward zero** (use `math.floor` for floor).
+- `round()` uses banker's rounding (round-half-to-even).
+- `bool(str)` is True for every non-empty string - parse env flags explicitly.
+- `bool` is a subclass of `int`, so `True == 1` and `isinstance(True, int)` is True (a common
+  validation hole).
+'''
+
+[[q]]
+id = "fun-08"
+topic = "operators"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+print(-7 // 2, -7 % 2, 7 // -2, 7 % -3)
+print(2 ** -1, 10 / 5, True + True)
+print(1 < 2 < 3, 1 < 3 > 2, 0.1 + 0.2 == 0.3)
+print(1 or 2, 0 and 1/0)
+```
+'''
+a = '''
+```
+-4 1 -4 -2
+0.5 2.0 2
+True True False
+1 0
+```
+- `//` floors toward **negative infinity** (not toward zero like C); `%` takes the sign of
+  the divisor, so `a == (a // b) * b + a % b` always holds.
+- `/` always returns a float; `**` with a negative exponent returns a float.
+- Chained comparisons: `a < b < c` means `a < b and b < c` (b evaluated once).
+- Floats are binary: compare with `math.isclose`, never `==`.
+- `and`/`or` short-circuit: `1/0` is never evaluated.
+'''
+followups = ["How do you do ceiling division on ints without floats?"]
+
+[[q]]
+id = "fun-09"
+topic = "loop_control"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+for k in [3, 5, 8, 10]:
+    if k % 2 == 0:
+        print("first even:", k)
+        break
+else:
+    print("no even number")
+
+for k in [1, 3]:
+    if k % 2 == 0:
+        break
+else:
+    print("no even number")
+
+while False:
+    pass
+else:
+    print("while-else runs too")
+```
+'''
+a = '''
+```
+first even: 8
+no even number
+while-else runs too
+```
+- A loop's `else` block runs when the loop finishes **without `break`** (including zero
+  iterations). Think of it as "nobreak".
+- Idiomatic for search loops: "found -> break; else -> not found" without a flag variable.
+- `continue` skips to the next iteration; `pass` does nothing (a syntactic placeholder).
+'''
+followups = ["How would you write the same search with next() and a generator expression?"]
+
+[[q]]
+id = "fun-10"
+topic = "loops"
+level = 2
+kind = "debug"
+q = '''
+This is supposed to drop empty documents. What does it print, and how do you fix it?
+```python
+docs = ["", "a", "", "", "b"]
+for d in docs:
+    if not d:
+        docs.remove(d)
+print(docs)
+```
+'''
+a = '''
+Prints `['a', '', 'b']` - one empty doc survives.
+- The for loop walks the list by **index**. Removing an item shifts everything left, so the
+  element right after each removed one is skipped.
+- Fix: never mutate a list while iterating it - build a new one:
+  `docs = [d for d in docs if d]`, or iterate over a copy (`for d in docs[:]`), or
+  `docs[:] = [...]` to keep the same list object for other references.
+- Same family: changing a dict's size during iteration raises
+  `RuntimeError: dictionary changed size during iteration`.
+'''
+
+[[q]]
+id = "fun-11"
+topic = "list_comprehensions"
+level = 2
+kind = "compare"
+q = "List comprehension vs `for` loop with `.append` vs `map`/`filter`: when do you choose which? What are the scoping rules of the comprehension variable?"
+a = '''
+- Comprehension: one expression building a new list, readable for map+filter shapes, slightly
+  faster than append in a loop (no attribute lookup / call per item).
+- Plain loop: when there are side effects, multiple statements, try/except, or early break -
+  don't cram those into a comprehension.
+- `map(f, xs)` is nice with an existing function (`map(str.strip, lines)`), lazy; with a
+  lambda a comprehension is usually clearer.
+- Nested order matches nested loops: `[x for row in matrix for x in row]`.
+- Scope: the loop variable does **not** leak (`x` is undefined after the comprehension);
+  PEP 709 (3.12) inlines comprehensions for speed but keeps that isolation.
+- Use a generator expression instead when the result is consumed once (`sum(x*x for x in xs)`).
+'''
+
+[[q]]
+id = "fun-12"
+topic = "dict_comprehensions"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+words = ["rag", "llm", "agent", "rag"]
+print({w: len(w) for w in words})
+print({len(w) for w in words})
+print({w: i for i, w in enumerate(words)})
+```
+'''
+a = '''
+```
+{'rag': 3, 'llm': 3, 'agent': 5}
+{3, 5}
+{'rag': 3, 'llm': 1, 'agent': 2}
+```
+- Dict comprehension: duplicate keys keep their **first insertion position** but the **last
+  value** wins (`rag -> 3`, the index of the second "rag").
+- Set comprehension `{...}` deduplicates; sets are unordered (small ints just happen to print
+  sorted).
+- `{}` alone is an empty **dict**, not a set - use `set()`.
+'''
+followups = ["How would you map each word to its FIRST index?"]
+
+[[q]]
+id = "fun-13"
+topic = "strings"
+level = 2
+kind = "compare"
+q = '''
+Explain the outputs and the trade-offs:
+```python
+"a  b ".split(" ")   # ['a', '', 'b', '']
+"a  b ".split()      # ['a', 'b']
+"key=a=b".split("=", 1)  # ['key', 'a=b']
+```
+Also: why is building a long prompt with `s += piece` in a loop discouraged?
+'''
+a = '''
+- `split()` with no argument splits on **runs** of any whitespace and drops leading/trailing
+  empties; `split(" ")` splits on every single space and keeps empty strings.
+- `maxsplit=1` (or `str.partition`) for "key=value" where the value may contain the separator.
+- Strings are immutable: `s += piece` creates a new string each time - O(n^2) worst case
+  (CPython sometimes optimises it in place, but don't rely on it). Collect pieces in a list and
+  `"".join(parts)` once, or use `io.StringIO`.
+- Other everyday tools: `strip/lstrip/rstrip(chars)` (strip a *set of chars*, not a prefix!),
+  `removeprefix/removesuffix` (3.9+), `casefold()` for case-insensitive compare,
+  `str.translate` for bulk character mapping.
+'''
+followups = ['What does "xxhixx".strip("x") return? And "prefix_name".strip("prefix_")?']
+
+[[q]]
+id = "fun-14"
+topic = "fstrings"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+temperature = 0.25
+name = "gpt"
+print(f"{3.14159:.2f}|{42:>5}|{'x':*^5}|{1234567:,}|{0.256:.1%}")
+print(f"{temperature=}, {name!r:>8}")
+width = 6
+print(f"[{7:0{width}d}]")
+```
+'''
+a = '''
+```
+3.14|   42|**x**|1,234,567|25.6%
+temperature=0.25,    'gpt'
+[000007]
+```
+- Format spec: `[[fill]align][sign][width][,][.precision][type]` - `.2f` fixed decimals,
+  `>5` right-align in 5, `*^5` centre with `*`, `,` thousands separator, `%` multiplies by 100.
+- `{x=}` (3.8+) prints `x=<repr>` - great for debug logging.
+- `!r` applies `repr()` before formatting; nested `{width}` lets the spec be dynamic.
+- 3.12+ (PEP 701): f-strings may reuse the same quote type inside and span lines.
+- Don't use f-strings for logging calls (`log.info("x=%s", x)` defers formatting) or SQL
+  (injection) - and be careful building prompts from untrusted text (prompt injection).
+'''
+
+[[q]]
+id = "fun-15"
+topic = "slicing"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+s = "abcdef"
+print(s[::-1], s[1:-1], s[-2:], repr(s[10:]), s[::2], s[-0:])
+xs = [0, 1, 2, 3, 4]
+xs[1:3] = [9]
+print(xs)
+ys = xs[:]
+ys[0] = 100
+print(xs[0], ys[0])
+print(xs[::-2])
+```
+'''
+a = '''
+```
+fedcba bcde ef '' ace abcdef
+[0, 9, 3, 4]
+0 100
+[4, 9]
+```
+- `[start:stop:step]`, stop exclusive; out-of-range slices clamp and **never raise**
+  (unlike indexing).
+- `s[-0:]` is `s[0:]` - the whole thing. So `history[-n:]` with `n == 0` returns everything.
+- Slice assignment can change the length of a list.
+- `xs[:]` is a **shallow** copy: a new list, same element objects.
+- Slicing a list/str copies (O(k)); for big buffers use `memoryview` or `itertools.islice`.
+'''
+
+[[q]]
+id = "fun-16"
+topic = "nested_structures"
+level = 3
+kind = "design"
+q = "Your service receives nested JSON from several LLM providers (choices/message/tool_calls, or content blocks). Fields are sometimes missing or null. How do you access and validate this robustly?"
+a = '''
+- Don't scatter `resp["choices"][0]["message"]["content"]` around: one boundary layer parses
+  the raw dict into a typed model and the rest of the code works with that.
+- Validation: pydantic models / TypedDict + a validator; `model_validate(resp)` gives clear
+  errors, defaults for optional fields, coercion; reject or log unknown shapes.
+- For ad-hoc access, a `get_path(obj, "choices.0.message.content", default)` helper that
+  handles dict vs list segments and distinguishes *missing* from *present-but-None*
+  (sentinel object).
+- Tool-call arguments are a JSON **string** produced by the model: `json.loads` in
+  try/except, validate against the tool's schema, and feed the error back for a retry.
+- Normalise providers into one internal shape (adapter per provider) - easier to test and
+  swap models.
+- Keep the raw payload in logs/traces for debugging; never trust it for control flow without
+  validation.
+'''
+followups = ["How would you flatten nested metadata to store it in a vector DB that only supports flat filters?"]
+
+[[q]]
+id = "fun-17"
+topic = "variables"
+level = 2
+kind = "predict"
+q = '''
+What does this print? Is Python "pass by value" or "pass by reference"?
+```python
+def f(xs, n):
+    xs.append(1)
+    xs = [99]
+    n += 1
+
+a = [0]
+b = 5
+f(a, b)
+print(a, b)
+```
+'''
+a = '''
+```
+[0, 1] 5
+```
+- Variables are **names bound to objects**; assignment never copies. Arguments are passed by
+  *object reference* ("call by sharing").
+- `xs.append(1)` mutates the caller's list (same object). `xs = [99]` only rebinds the local
+  name - the caller is unaffected.
+- `n += 1` on an int creates a new int and rebinds the local `n`; ints are immutable.
+- So: mutation is visible to the caller, rebinding is not.
+'''
+
+[[q]]
+id = "fun-18"
+topic = "conditionals"
+level = 3
+kind = "concept"
+q = '''
+You consume a stream of events from an LLM API: `{"type": "text", "text": ...}`,
+`{"type": "tool_use", "name": ..., "input": {...}}`, `{"type": "error", "code": 529}`...
+How would you dispatch on them? Show how `match` helps and what its pitfalls are.
+'''
+a = '''
+```python
+match event:
+    case {"type": "text", "text": str(text)}:
+        buf.append(text)
+    case {"type": "tool_use", "name": name, "input": dict(args)}:
+        run_tool(name, args)
+    case {"type": "error", "code": 429 | 529 as code}:
+        backoff(code)
+    case {"type": "error", **rest}:
+        raise APIError(rest)
+    case _:
+        log.warning("unknown event %r", event)
+```
+- Mapping patterns match a **subset** of keys (extra keys are fine) and can type-check and
+  bind values in one step; `|` alternatives, `as` captures, `if` guards.
+- Pitfalls: a bare name (`case code:`) is a **capture**, not a comparison - use dotted
+  constants (`case Status.OK:`) or literals; order matters (first match wins); always add
+  `case _` for forward compatibility with new event types.
+- Alternatives: a dict of handlers keyed by `type` (open for extension), or if/elif for 2-3
+  cases. Prefer early returns / guard clauses over deep nesting.
+'''
+
+[[q]]
+id = "fun-19"
+topic = "identity_equality"
+level = 3
+kind = "concept"
+q = "What is the contract between `__eq__` and `__hash__`? What breaks if you use a mutable object as a dict key, or define `__eq__` without `__hash__`?"
+a = '''
+- Contract: `a == b` implies `hash(a) == hash(b)`; the hash must not change while the object
+  is in a dict/set.
+- Defining `__eq__` without `__hash__` sets `__hash__ = None` -> instances become unhashable
+  (`TypeError: unhashable type`). That's deliberate: equality based on mutable fields can't
+  have a stable hash.
+- If you hash on mutable state and then mutate it, the entry sits in the wrong bucket: lookups
+  miss, `in` is False, yet the object is still in the dict (silent corruption).
+- Dict lookup: hash -> bucket -> identity check (`is`) first, then `==`. That's why `nan` keys
+  are findable by the same object but `float("nan") == float("nan")` is False.
+- Fixes: `@dataclass(frozen=True)` (generates eq+hash on immutable fields), use a tuple key,
+  or key on an immutable id.
+'''
+followups = ["Why is `x is None` faster and safer than `x == None`?"]

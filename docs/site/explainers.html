@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visual explainers - AI Eng Prep Notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
+  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html">Capstone roadmap</a><a class="tab" href="explainers.html" aria-current="page">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+</header>
+<p class="src">generated page: widgets plus your question banks</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#lazy-pipelines">Lazy pipelines (generators)</a></li><li><a href="#async-concurrency">Async concurrency</a></li><li><a href="#retries-and-backoff">Retries and backoff</a></li><li><a href="#predict-the-output">Predict the output</a></li></ol></nav><article class="prose"><h1 id="visual-explainers">Visual explainers</h1><p>Four ideas that come up in almost every AI-engineering interview, as things you can poke. Each one maps to exercises in the Python track.</p><h2 id="lazy-pipelines">Lazy pipelines (generators)</h2><p>A generator pipeline runs when something <em>pulls</em> from the end, and each stage asks the stage before it for one item. That is why memory stays flat on a 50 GB file, and why <code>take(2, ...)</code> must not read one item too many. Practice: <code>study test generators</code>.</p><div class="widget" data-widget="lazy">
+  <h3 class="w-title">Lazy pipelines pull, they don't push</h3>
+  <p class="w-sub">We ask for the first 2 ERROR lines through <code>take(2, only(parse(lines), "ERROR"))</code>. Step through and watch how little is read.</p>
+  <div class="lz-controls"><button type="button" class="btn" data-step>Next step</button><button type="button" class="btn ghost" data-reset>Reset</button><span class="lz-count" data-count></span></div>
+  <div class="lz-grid"><ol class="lz-lines"></ol><div class="lz-log" aria-live="polite"></div></div>
+  <p class="w-note" data-note></p>
+</div>
+<h2 id="async-concurrency">Async concurrency</h2><p>Awaiting calls one by one adds their latencies. <code>gather</code> overlaps them, but unbounded fan-out gets you rate-limited, so production code caps in-flight work with a semaphore. Practice: <code>study test async</code>.</p><div class="widget" data-widget="timeline">
+  <h3 class="w-title">Sequential, gather and semaphore</h3>
+  <p class="w-sub">Eight embedding calls of different lengths. Pick how they are awaited.</p>
+  <div class="seg" role="group" aria-label="Mode"><button type="button" data-mode="seq" class="on">await in a loop</button><button type="button" data-mode="gather">gather</button><button type="button" data-mode="sem">gather + Semaphore</button></div>
+  <div class="sliders"><label data-limit-wrap hidden>Semaphore limit <output data-o="limit">3</output><input type="range" min="1" max="8" value="3" data-in="limit"></label></div>
+  <div class="gantt" role="img" aria-label="Timeline of eight calls"></div>
+  <p class="w-note" data-note></p>
+</div>
+<h2 id="retries-and-backoff">Retries and backoff</h2><p>Retry only what can succeed later (429, 5xx, timeouts), wait longer each time, add jitter, and honour <code>Retry-After</code>. The DocMind <code>HttpEmbedder</code> implements exactly this. Practice: <code>study test http</code>.</p><div class="widget" data-widget="backoff">
+  <h3 class="w-title">Exponential backoff with full jitter</h3>
+  <p class="w-sub">Wait is <code>uniform(0, min(max_delay, base × 2^attempt))</code>. The pale bar is the cap, the solid bar is one random draw.</p>
+  <div class="sliders">
+    <label>Base delay <output data-o="base">0.5</output> s<input type="range" min="0.1" max="2" step="0.1" value="0.5" data-in="base"></label>
+    <label>Max delay <output data-o="max">20</output> s<input type="range" min="2" max="60" step="1" value="20" data-in="max"></label>
+    <label>Retries <output data-o="n">6</output><input type="range" min="1" max="10" value="6" data-in="n"></label>
+    <label>Retry-After header <output data-o="ra">off</output><input type="range" min="0" max="30" value="0" data-in="ra"></label>
+  </div>
+  <div class="bars"></div>
+  <div class="lz-controls"><button type="button" class="btn" data-resample>Draw again</button><span class="lz-count" data-total></span></div>
+  <p class="w-note">Without jitter, clients that failed together retry together and hit the API in waves. A numeric <code>Retry-After</code> overrides the formula.</p>
+</div>
+<h2 id="predict-the-output">Predict the output</h2><p>Read the code, say the output aloud, then open the answer. Pulled from your question banks, so it grows as the banks do.</p><div data-widget="predict"><div class="predict-bar"><select aria-label="Filter by module"><option value="">All modules (46 questions)</option><option value="py.fundamentals">Python Fundamentals</option><option value="py.data_structures">Python Data Structures</option><option value="py.functions">Python Functions</option><option value="py.functional">Functional Programming</option><option value="py.closures">Closures and Scope</option><option value="py.decorators">Decorators</option><option value="py.iterators">Iterators</option><option value="py.generators">Generators</option><option value="py.oop">Object-Oriented Programming</option><option value="py.exceptions">Exception Handling</option><option value="py.files">File Handling</option><option value="py.context_managers">Context Managers</option><option value="py.packaging">Python Modules and Packages</option><option value="py.type_hints">Python Type Hints</option><option value="py.pydantic">Pydantic</option><option value="py.async">Asynchronous Programming</option><option value="py.http">Async HTTP and API Integration</option><option value="py.memory">Python Memory Management</option><option value="py.internals">Python Internals and Performance</option><option value="py.numpy">Data Processing with NumPy</option><option value="py.pandas">Data Processing with Pandas</option><option value="py.testing">Testing and Code Quality</option><option value="py.genai">Python for Generative AI Applications</option></select><button type="button" class="btn ghost" data-open>Open / close all</button></div><details class="pq" data-module="py.fundamentals"><summary><span>Identity vs Equality (is vs ==)</span><span class="pq-meta">★★☆ · Python Fundamentals</span></summary><div class="pq-body"><p>CPython 3.14. What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">a</span> <span class="o">=</span> <span class="mi">256</span>
+<span class="n">b</span> <span class="o">=</span> <span class="mi">256</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="ow">is</span> <span class="n">b</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"257"</span><span class="p">)</span>
+<span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"257"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span> <span class="o">==</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">s1</span> <span class="o">=</span> <span class="s2">"hello"</span>
+<span class="n">s2</span> <span class="o">=</span> <span class="s2">"hel"</span> <span class="o">+</span> <span class="s2">"lo"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s1</span> <span class="ow">is</span> <span class="n">s2</span><span class="p">)</span>
+<span class="n">t</span> <span class="o">=</span> <span class="s2">""</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s2">"hel"</span><span class="p">,</span> <span class="s2">"lo"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s1</span> <span class="ow">is</span> <span class="n">t</span><span class="p">,</span> <span class="n">s1</span> <span class="o">==</span> <span class="n">t</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>True
+False True
+True
+False True
+</code></pre></div>
+
+<ul>
+<li>CPython caches small ints <strong>-5..256</strong>, so every 256 is the same object; 257 built at runtime
+  gives two distinct objects.</li>
+<li><code>"hel" + "lo"</code> is <strong>constant-folded</strong> at compile time to <code>"hello"</code>, and identifier-like string
+  literals are interned, so <code>s1 is s2</code> is True.</li>
+<li><code>"".join(...)</code> builds a new string at runtime - equal, not identical.</li>
+<li>All of this is an <strong>implementation detail</strong> (it changes between REPL vs file, versions,
+  PyPy). Code that relies on <code>is</code> for ints/strings is a bug; <code>sys.intern()</code> exists if you
+  genuinely need interning (e.g. millions of repeated token strings).</li>
+</ul></div></div></details><details class="pq" data-module="py.fundamentals"><summary><span>Mutable vs Immutable Objects</span><span class="pq-meta">★★★ · Python Fundamentals</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">t</span> <span class="o">=</span> <span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"TypeError:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>TypeError: 'tuple' object does not support item assignment
+([1, 3], 2)
+</code></pre></div>
+
+<ul>
+<li><code>t[0] += [3]</code> is <code>tmp = t[0]; tmp = tmp.__iadd__([3]); t[0] = tmp</code>.</li>
+<li><code>list.__iadd__</code> mutates the list <strong>in place</strong> (succeeds), then the item assignment back into
+  the tuple fails. So you get an exception <strong>and</strong> a mutation.</li>
+<li>Lesson: augmented assignment = in-place operation + rebinding; a tuple only freezes which
+  objects it references, not their contents.</li>
+</ul></div></div></details><details class="pq" data-module="py.data_structures"><summary><span>Dictionary Lookup</span><span class="pq-meta">★★☆ · Python Data Structures</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="n">d</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"x"</span> <span class="ow">in</span> <span class="n">d</span><span class="p">,</span> <span class="n">d</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span> <span class="s2">"x"</span> <span class="ow">in</span> <span class="n">d</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"b"</span><span class="p">),</span> <span class="n">c</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="p">[]),</span> <span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="mi">1</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span> <span class="s2">"a"</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">c</span><span class="p">[</span><span class="s2">"zzz"</span><span class="p">]</span>
+<span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"KeyError"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>False [] True 1
+None [] {'a': 1, 'b': []}
+False True
+KeyError 'zzz'
+</code></pre></div>
+
+<ul>
+<li>Reading a missing key from a defaultdict <strong>inserts</strong> it (<code>__missing__</code> calls the factory and
+  stores the result). <code>in</code> and <code>.get()</code> do not.</li>
+<li><code>get(k, default)</code> never inserts; <code>setdefault(k, v)</code> inserts if missing and returns the
+  stored value.</li>
+<li><code>in</code> on a dict checks <strong>keys</strong>, not values.</li>
+<li><code>d[k]</code> on a plain dict raises KeyError - good when absence is a bug; use <code>.get</code> when absence
+  is expected.</li>
+</ul></div></div></details><details class="pq" data-module="py.data_structures"><summary><span>Dictionaries</span><span class="pq-meta">★★★ · Python Data Structures</span></summary><div class="pq-body"><p>What does this print, and why?</p>
+<div class="hl"><pre><span></span><code><span class="n">d</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">,</span> <span class="kc">True</span><span class="p">:</span> <span class="s2">"b"</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">:</span> <span class="s2">"c"</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">}</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">hash</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">hash</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">==</span> <span class="nb">hash</span><span class="p">(</span><span class="kc">True</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>{1: 'c'}
+{0}
+True
+</code></pre></div>
+
+<ul>
+<li><code>1 == True == 1.0</code> and they hash the same, so they are the <strong>same key</strong>.</li>
+<li>On assignment to an existing key, the dict keeps the <strong>original key object</strong> (<code>1</code>) and
+  replaces the <strong>value</strong> - so the last value <code>"c"</code> wins but the key stays <code>1</code>. Sets likewise
+  keep the first element.</li>
+<li>Real-world impact: mixing bools and ints as keys (e.g. label maps from JSON/CSV) silently
+  merges entries.</li>
+</ul></div></div></details><details class="pq" data-module="py.functions"><summary><span>Variable Scope (LEGB Rule)</span><span class="pq-meta">★★★ · Python Functions</span></summary><div class="pq-body"><p>What does this print, and how do you fix the first one?</p>
+<div class="hl"><pre><span></span><code><span class="n">fs</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fs</span><span class="p">])</span>
+<span class="n">gs</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">g</span><span class="p">()</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">gs</span><span class="p">])</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[2, 2, 2]
+[0, 1, 2]
+</code></pre></div>
+
+<ul>
+<li>Closures capture <strong>variables (cells), not values</strong>. All three lambdas share the
+  comprehension's single <code>i</code>, looked up when they are <em>called</em> - by then it's 2.
+  ("late binding")</li>
+<li><code>lambda i=i: i</code> evaluates the default at creation time, freezing the current value.
+  Alternatives: <code>functools.partial</code>, or a factory <code>def make(i): return lambda: i</code>.</li>
+<li>Real-world version: creating callbacks/handlers or tool functions in a loop
+  (<code>for name in tools: registry[name] = lambda: run(name)</code>) - every handler runs the last tool.</li>
+</ul></div></div></details><details class="pq" data-module="py.functions"><summary><span>Recursion</span><span class="pq-meta">★★★ · Python Functions</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">flatten</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">acc</span><span class="o">=</span><span class="p">[]):</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">flatten</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">acc</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">acc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">acc</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">flatten</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="p">[</span><span class="mi">3</span><span class="p">]]]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">flatten</span><span class="p">([</span><span class="mi">4</span><span class="p">]))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[1, 2, 3]
+[1, 2, 3, 4]
+</code></pre></div>
+
+<ul>
+<li>Passing <code>acc</code> down the recursion is a legit accumulator pattern - but making it a
+  <strong>mutable default</strong> means the accumulator survives across top-level calls.</li>
+<li>Fix: <code>acc=None</code> + <code>if acc is None: acc = []</code>, or return new lists
+  (<code>out.extend(flatten(x))</code>), or a generator with <code>yield from flatten(x)</code>.</li>
+<li>Bonus: strings are iterable but must not be recursed into - check <code>isinstance(x, list)</code>
+  (or <code>(list, tuple)</code>), not "is iterable".</li>
+</ul></div></div></details><details class="pq" data-module="py.functional"><summary><span>Immutability</span><span class="pq-meta">★★★ · Functional Programming</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">FrozenInstanceError</span>
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Cfg</span><span class="p">:</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">stops</span><span class="p">:</span> <span class="nb">list</span>
+
+<span class="n">c</span> <span class="o">=</span> <span class="n">Cfg</span><span class="p">(</span><span class="s2">"m"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">])</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">c</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="s2">"x"</span>
+<span class="k">except</span> <span class="n">FrozenInstanceError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"frozen:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="n">c</span><span class="o">.</span><span class="n">stops</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"END"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">hash</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"TypeError:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>frozen: cannot assign to field 'model'
+Cfg(model='m', stops=['\n', 'END'])
+TypeError: unhashable type: 'list'
+</code></pre></div>
+
+<ul>
+<li><code>frozen=True</code> blocks <strong>attribute assignment</strong> only; the list object inside is still
+  mutable -&gt; shallow immutability.</li>
+<li>The generated <code>__hash__</code> hashes the tuple of fields, so a list field makes the instance
+  unhashable at hash time (you'd find out when using it as a cache key).</li>
+<li>Fix: <code>stops: tuple[str, ...]</code> (and convert in <code>__post_init__</code> via
+  <code>object.__setattr__(self, "stops", tuple(stops))</code> if callers pass lists).</li>
+</ul></div></div></details><details class="pq" data-module="py.functional"><summary><span>Lazy Evaluation</span><span class="pq-meta">★★★ · Functional Programming</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">x</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">gen</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="n">x</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">gen</span><span class="p">))</span>
+
+<span class="n">xs</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="n">g</span> <span class="o">=</span> <span class="p">(</span><span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">xs</span><span class="p">)</span>
+<span class="n">xs</span> <span class="o">=</span> <span class="p">[</span><span class="mi">9</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>          <span class="c1"># path holds "a\nb\n"</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">strip</span><span class="p">,</span> <span class="n">fh</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">lines</span><span class="p">))</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"ValueError:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[100, 101, 102]
+[1, 2]
+ValueError: I/O operation on closed file.
+</code></pre></div>
+
+<ul>
+<li>In a generator expression only the <strong>first iterable</strong> (<code>range(3)</code>, <code>xs</code>) is evaluated
+  immediately; everything else (<code>x + i</code>) is evaluated lazily when consumed - so it sees
+  <code>x = 100</code>.</li>
+<li><code>g</code> captured the original list object; rebinding the name <code>xs</code> later doesn't matter.</li>
+<li>Lazy iterators over a resource must be consumed <strong>while the resource is open</strong> - the <code>with</code>
+  block closed the file before <code>list(lines)</code> ran. Materialise inside the block or make the
+  whole pipeline run inside it.</li>
+<li>General pitfall: lazy code moves errors and side effects to consumption time, far from
+  where the pipeline was built.</li>
+</ul></div></div></details><details class="pq" data-module="py.closures"><summary><span>Closures</span><span class="pq-meta">★★☆ · Closures and Scope</span></summary><div class="pq-body"><p>What does this print? How would you fix the first version?</p>
+<div class="hl"><pre><span></span><code><span class="n">fns</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">])</span>
+<span class="n">fns</span> <span class="o">=</span> <span class="p">[</span><span class="k">lambda</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">:</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">f</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fns</span><span class="p">])</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[2, 2, 2]
+[0, 1, 2]
+</code></pre></div>
+
+<ul>
+<li><strong>Late binding</strong>: all three lambdas close over the same variable <code>i</code>, looked up when they
+  are <em>called</em> - after the loop, <code>i == 2</code>.</li>
+<li><code>i=i</code> evaluates the default <strong>at definition time</strong>, freezing the current value.</li>
+<li>Cleaner alternatives: a factory function (<code>def make(i): return lambda: i</code>) - each call
+  gets its own cell - or <code>functools.partial(fn, i)</code>. The default-arg trick leaks an
+  overridable parameter into the signature.</li>
+</ul></div></div></details><details class="pq" data-module="py.closures"><summary><span>Function __code__.co_freevars</span><span class="pq-meta">★★☆ · Closures and Scope</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">make</span><span class="p">():</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">inc</span><span class="p">():</span>
+        <span class="k">nonlocal</span> <span class="n">count</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">count</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">count</span>
+    <span class="k">return</span> <span class="n">inc</span><span class="p">,</span> <span class="n">get</span>
+
+<span class="n">inc</span><span class="p">,</span> <span class="n">get</span> <span class="o">=</span> <span class="n">make</span><span class="p">()</span>
+<span class="n">inc</span><span class="p">();</span> <span class="n">inc</span><span class="p">()</span>
+<span class="n">inc2</span><span class="p">,</span> <span class="n">get2</span> <span class="o">=</span> <span class="n">make</span><span class="p">()</span>
+<span class="n">inc2</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get</span><span class="p">(),</span> <span class="n">get2</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inc</span><span class="o">.</span><span class="vm">__code__</span><span class="o">.</span><span class="n">co_freevars</span><span class="p">,</span> <span class="n">make</span><span class="o">.</span><span class="vm">__code__</span><span class="o">.</span><span class="n">co_cellvars</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inc</span><span class="o">.</span><span class="vm">__closure__</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">get</span><span class="o">.</span><span class="vm">__closure__</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">inc</span><span class="o">.</span><span class="vm">__closure__</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">inc2</span><span class="o">.</span><span class="vm">__closure__</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>2 1
+('count',) ('count',)
+True False
+</code></pre></div>
+
+<ul>
+<li><code>inc</code> and <code>get</code> come from the <strong>same</strong> <code>make()</code> call, so they share one cell; the second
+  <code>make()</code> call creates a fresh cell.</li>
+<li><code>co_freevars</code> (on the inner code object) lists names captured from outside;
+  <code>co_cellvars</code> (on the outer code object) lists locals that inner functions capture.</li>
+<li><code>__closure__</code> is a tuple of cell objects aligned with <code>co_freevars</code>; <code>cell.cell_contents</code>
+  is the current value.</li>
+</ul></div></div></details><details class="pq" data-module="py.decorators"><summary><span>Multiple Decorators</span><span class="pq-meta">★★☆ · Decorators</span></summary><div class="pq-body"><p>What does this print (in order)?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">deco</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"factory"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wrap</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"decorating"</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="s2">"-&gt;"</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">inner</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"enter"</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">inner</span>
+    <span class="k">return</span> <span class="n">wrap</span>
+
+<span class="nd">@deco</span><span class="p">(</span><span class="s2">"A"</span><span class="p">)</span>
+<span class="nd">@deco</span><span class="p">(</span><span class="s2">"B"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">hello</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"hello"</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"---"</span><span class="p">)</span>
+<span class="n">hello</span><span class="p">()</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>factory A
+factory B
+decorating B -&gt; hello
+decorating A -&gt; inner
+---
+enter A
+enter B
+hello
+</code></pre></div>
+
+<ul>
+<li>The decorator <strong>expressions</strong> are evaluated top-down (<code>deco("A")</code> then <code>deco("B")</code>), but
+  they are <strong>applied</strong> bottom-up: <code>hello = A(B(hello))</code>.</li>
+<li>At call time the outermost wrapper runs first (onion).</li>
+<li><code>A</code> receives a function named <code>inner</code> - because <code>B</code> didn't use <code>functools.wraps</code>.</li>
+</ul></div></div></details><details class="pq" data-module="py.decorators"><summary><span>Class-based Decorators</span><span class="pq-meta">★★☆ · Decorators</span></summary><div class="pq-body"><p>What happens here?</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Count</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">f</span> <span class="o">=</span> <span class="n">f</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Agent</span><span class="p">:</span>
+    <span class="nd">@Count</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">"ok"</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Agent</span><span class="p">()</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"TypeError:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Agent</span><span class="o">.</span><span class="n">step</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>TypeError: Agent.step() missing 1 required positional argument: 'self'
+1
+</code></pre></div>
+
+<ul>
+<li><code>Agent.step</code> is a <code>Count</code> <strong>instance</strong>, not a function. Functions become bound methods
+  through the descriptor protocol (<code>function.__get__</code>); a plain callable object has no
+  <code>__get__</code>, so <code>Agent().step</code> returns the <code>Count</code> object unchanged and <code>self</code> is never passed.</li>
+<li>The counter was incremented before the inner call failed.</li>
+<li>Fix: implement <code>__get__</code> returning <code>types.MethodType(self, instance)</code> (or
+  <code>functools.partial(self, instance)</code>), or use a function-based decorator.</li>
+</ul></div></div></details><details class="pq" data-module="py.iterators"><summary><span>One-Pass Iterators</span><span class="pq-meta">★★☆ · Iterators</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">hits</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">upper</span><span class="p">,</span> <span class="p">[])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">bool</span><span class="p">(</span><span class="n">hits</span><span class="p">))</span>
+<span class="n">m</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="o">.</span><span class="n">upper</span><span class="p">,</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>True
+['A', 'B'] []
+</code></pre></div>
+
+<ul>
+<li>Iterator objects don't define <code>__bool__</code>/<code>__len__</code>, so they're <strong>always truthy</strong> - even if
+  empty. <code>if not results:</code> on a map/filter/generator never detects "no results".</li>
+<li><code>map</code> is a one-pass iterator: the second <code>list()</code> gets nothing.</li>
+<li>Fix: materialize (<code>results = list(...)</code>) if small, or peek with
+  <code>first = next(it, sentinel)</code> and re-attach it with <code>itertools.chain([first], it)</code>.</li>
+</ul></div></div></details><details class="pq" data-module="py.iterators"><summary><span>iter()</span><span class="pq-meta">★★☆ · Iterators</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">it</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="s2">"abcdefg"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">it</span><span class="p">,</span> <span class="n">it</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[('a', 'b'), ('c', 'd'), ('e', 'f')]
+[]
+</code></pre></div>
+
+<ul>
+<li>Both zip arguments are the <strong>same</strong> iterator, so each tuple takes two consecutive items -
+  the classic "chunk into pairs" idiom (<code>zip(*[iter(xs)] * n)</code>).</li>
+<li><code>'g'</code> is lost: zip pulled it for the first slot, then the second slot hit StopIteration,
+  so the partial tuple is dropped - and 'g' is already consumed. Use
+  <code>zip(..., strict=True)</code> to make length mismatches an error, or <code>itertools.batched</code>
+  (3.12+) to keep the short last chunk.</li>
+</ul></div></div></details><details class="pq" data-module="py.generators"><summary><span>Generator Exhaustion</span><span class="pq-meta">★☆☆ · Generators</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">squares</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">squares</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">squares</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">squares</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>14
+0
+[]
+</code></pre></div>
+
+<p>A generator is a <strong>one-pass iterator</strong>. The first <code>sum</code> exhausts it; afterwards every
+consumer sees an empty iterator (no error!). Silent empty results are a classic bug when
+a generator is passed to two consumers - materialize with <code>list()</code> or recreate it, or use
+<code>itertools.tee</code> (which buffers).</p></div></div></details><details class="pq" data-module="py.generators"><summary><span>Lazy Evaluation</span><span class="pq-meta">★★☆ · Generators</span></summary><div class="pq-body"><p>What does this print, and why?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">gen</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"start"</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="mi">1</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"middle"</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="mi">2</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"end"</span><span class="p">)</span>
+
+<span class="n">g</span> <span class="o">=</span> <span class="n">gen</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"created"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">g</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>created
+start
+1
+middle
+end
+[2]
+</code></pre></div>
+
+<p>Nothing runs on <code>gen()</code>. <code>next</code> runs to the first yield. <code>list()</code> resumes, prints middle,
+collects 2, resumes again, prints end, gets StopIteration -&gt; <code>[2]</code>.</p></div></div></details><details class="pq" data-module="py.oop"><summary><span>Method Resolution Order (MRO)</span><span class="pq-meta">★★☆ · Object-Oriented Programming</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Base</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Base"</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">A</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"A"</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">B</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"B"</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">C</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"C"</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+
+<span class="n">C</span><span class="p">()</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">([</span><span class="n">k</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">C</span><span class="o">.</span><span class="vm">__mro__</span><span class="p">])</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>C
+A
+B
+Base
+['C', 'A', 'B', 'Base', 'object']
+</code></pre></div>
+
+<ul>
+<li><code>super()</code> means <strong>the next class in the MRO of <code>type(self)</code></strong>, not "my parent". Inside <code>A</code>,
+  for a <code>C</code> instance, the next class is <code>B</code> - even though <code>A</code> doesn't know <code>B</code> exists.</li>
+<li>C3 linearization keeps children before parents and preserves the base order, so <code>Base</code>
+  runs exactly <strong>once</strong> - that's the point of cooperative multiple inheritance.</li>
+<li>If <code>A</code> called <code>Base.setup(self)</code> directly, <code>B.setup</code> would be skipped.</li>
+</ul></div></div></details><details class="pq" data-module="py.oop"><summary><span>Method Resolution Order (MRO)</span><span class="pq-meta">★★★ · Object-Oriented Programming</span></summary><div class="pq-body"><p>What happens?</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Base</span><span class="p">:</span> <span class="k">pass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">A</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span> <span class="k">pass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">X</span><span class="p">(</span><span class="n">Base</span><span class="p">,</span> <span class="n">A</span><span class="p">):</span> <span class="k">pass</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>TypeError: Cannot create a consistent method resolution order (MRO) for bases Base, A
+</code></pre></div>
+
+<ul>
+<li>C3 linearization must keep (1) each class before its parents and (2) the listed base order.
+  <code>X(Base, A)</code> demands Base before A, but A is a subclass of Base, so A must come before
+  Base - contradiction.</li>
+<li>Fix: list more specific classes first: <code>class X(A, Base)</code> (or just <code>class X(A)</code>).</li>
+<li>Practical rule: mixins go <strong>left</strong>, the concrete base class goes <strong>right</strong>:
+  <code>class SafeClient(RedactMixin, LoggingMixin, BaseClient)</code>.</li>
+</ul></div></div></details><details class="pq" data-module="py.exceptions"><summary><span>Multiple Exception Handling</span><span class="pq-meta">★★★ · Exception Handling</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ExceptionGroup</span><span class="p">(</span><span class="s2">"batch"</span><span class="p">,</span> <span class="p">[</span><span class="ne">ValueError</span><span class="p">(</span><span class="s2">"a"</span><span class="p">),</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"b"</span><span class="p">),</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"c"</span><span class="p">)])</span>
+    <span class="k">except</span><span class="o">*</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"values:"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">])</span>
+    <span class="k">except</span><span class="o">*</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"types:"</span><span class="p">,</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"after"</span><span class="p">)</span>
+
+<span class="n">run</span><span class="p">()</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ExceptionGroup</span><span class="p">(</span><span class="s2">"batch"</span><span class="p">,</span> <span class="p">[</span><span class="ne">ValueError</span><span class="p">(</span><span class="s2">"a"</span><span class="p">),</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s2">"k"</span><span class="p">)])</span>
+    <span class="k">except</span><span class="o">*</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"handled ValueError"</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ExceptionGroup</span> <span class="k">as</span> <span class="n">rest</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"left:"</span><span class="p">,</span> <span class="n">rest</span><span class="o">.</span><span class="n">exceptions</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>values: ['a', 'c']
+types: ['b']
+after
+handled ValueError
+left: (KeyError('k'),)
+</code></pre></div>
+
+<ul>
+<li>Unlike <code>except</code>, <strong>every</strong> matching <code>except*</code> clause runs, each receiving a <em>sub-group</em>
+  of the matching leaves (always an ExceptionGroup, even for one leaf).</li>
+<li>Leaves nobody matched are re-raised automatically as a new ExceptionGroup.</li>
+<li><code>return</code>/<code>break</code>/<code>continue</code> are a SyntaxError inside <code>except*</code> (several clauses may run,
+  so "which one returns" would be ambiguous).</li>
+<li>You meet this with <code>asyncio.TaskGroup</code>: failures come out as an ExceptionGroup, so an
+  <code>except ValueError</code> around it silently stops matching.</li>
+</ul></div></div></details><details class="pq" data-module="py.exceptions"><summary><span>try, except, else, finally</span><span class="pq-meta">★★★ · Exception Handling</span></summary><div class="pq-body"><p>What happens here, and why did CPython design it this way?</p>
+<div class="hl"><pre><span></span><code><span class="n">err</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="mi">1</span> <span class="o">/</span> <span class="mi">0</span>
+<span class="k">except</span> <span class="ne">ZeroDivisionError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="k">pass</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>NameError: name 'err' is not defined
+</code></pre></div>
+
+<ul>
+<li>At the end of an <code>except ... as name:</code> block Python implicitly does <code>del name</code> -
+  even if the name existed before.</li>
+<li>Reason: the exception holds its traceback, which holds the frame, which holds the local
+  <code>err</code> -&gt; a <strong>reference cycle</strong> that would keep every local in the frame alive until the
+  cyclic GC runs (big tensors, open sockets...).</li>
+<li>If you need it later, assign to another name inside the block: <code>saved = err</code>
+  (and be aware you now keep the frame alive).</li>
+</ul></div></div></details><details class="pq" data-module="py.files"><summary><span>Text vs Binary Files</span><span class="pq-meta">★★☆ · File Handling</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="n">s</span> <span class="o">=</span> <span class="s2">"naïve ☕"</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)),</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-16"</span><span class="p">)))</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="p">[:</span><span class="mi">4</span><span class="p">])</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">b</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">UnicodeDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"error:"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">reason</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">"replace"</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>7 10 16
+b'na\xc3\xaf'
+error: unexpected end of data
+na�
+</code></pre></div>
+
+<p>(the last line prints <code>na</code> followed by the replacement character U+FFFD)</p>
+<ul>
+<li><code>str</code> = code points, <code>bytes</code> = encoded bytes. "ï" is 2 bytes and "☕" 3 bytes in UTF-8;
+  UTF-16 = 2-byte BOM + 2 bytes per BMP char.</li>
+<li>Slicing bytes can cut a character in half -&gt; decode error. That's why chunked binary
+  readers must decode at line/whole boundaries (or use an incremental decoder).</li>
+<li>Text mode = binary + a codec + newline translation; binary mode gives raw bytes and
+  meaningful byte offsets for seek()/tell().</li>
+<li>Token/byte limits (embedding APIs, Content-Length) are about bytes or tokens, not len(str).</li>
+</ul></div></div></details><details class="pq" data-module="py.files"><summary><span>JSON Handling</span><span class="pq-meta">★★☆ · File Handling</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"t"</span><span class="p">:</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="s2">"n"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"ok"</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="o">==</span> <span class="n">data</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="s2">"nan"</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="s2">"café"</span><span class="p">),</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="s2">"café"</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>{"1": "a", "t": [1, 2], "n": null, "ok": true}
+False
+NaN
+"caf\u00e9" "café"
+</code></pre></div>
+
+<ul>
+<li>JSON object keys are always strings (int 1 -&gt; "1"), tuples become arrays -&gt; the
+  round trip is <strong>lossy</strong>, so <code>loads(dumps(x)) != x</code>.</li>
+<li><code>NaN</code>/<code>Infinity</code> are emitted by default but are <strong>not valid JSON</strong> - other parsers
+  (JS, Go, many APIs) reject them. Use <code>allow_nan=False</code> to fail fast.</li>
+<li><code>ensure_ascii=True</code> (default) escapes non-ASCII; <code>ensure_ascii=False</code> keeps it
+  readable/smaller - then the file must be written as UTF-8.</li>
+<li>datetime/Decimal/set aren't serializable -&gt; <code>default=</code> hook or pydantic <code>model_dump_json</code>.</li>
+</ul></div></div></details><details class="pq" data-module="py.context_managers"><summary><span>__exit__()</span><span class="pq-meta">★★☆ · Context Managers</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Quiet</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"enter"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">"value"</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"exit"</span><span class="p">,</span> <span class="n">exc_type</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">if</span> <span class="n">exc_type</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">"yes"</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">f</span><span class="p">():</span>
+    <span class="k">with</span> <span class="n">Quiet</span><span class="p">()</span> <span class="k">as</span> <span class="n">q</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">q</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lost"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"after with"</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">f</span><span class="p">())</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>enter
+value
+exit ValueError
+after with
+</code></pre></div>
+
+<ul>
+<li><code>__exit__</code> receives <code>(type, value, traceback)</code> of the in-flight exception (or three
+  Nones). A <strong>truthy</strong> return value <strong>suppresses</strong> the exception - here the non-empty
+  string <code>"yes"</code> is truthy, so the ValueError silently disappears and execution continues
+  after the <code>with</code> block.</li>
+<li>Only return True deliberately (like <code>contextlib.suppress</code>). Return None/False to let it
+  propagate - forgetting that and writing <code>return self</code> or <code>return result</code> is a real bug.</li>
+<li>On success, the return value of <code>__exit__</code> is ignored.</li>
+</ul></div></div></details><details class="pq" data-module="py.context_managers"><summary><span>__exit__()</span><span class="pq-meta">★★★ · Context Managers</span></summary><div class="pq-body"><p>What does this print? What does it mean for writing <code>__exit__</code>?</p>
+<div class="hl"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Flaky</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">et</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">tb</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">OSError</span><span class="p">(</span><span class="s2">"cleanup failed"</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">with</span> <span class="n">Flaky</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"real problem"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">err</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="s2">"|"</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">err</span><span class="o">.</span><span class="n">__context__</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>OSError | ValueError('real problem')
+</code></pre></div>
+
+<ul>
+<li>An exception raised inside <code>__exit__</code> <strong>replaces</strong> the in-flight one. The original is
+  only kept as <code>__context__</code> (shown as "During handling of the above exception...").
+  Callers that <code>except ValueError</code> no longer catch it; alerts show the cleanup error.</li>
+<li>Good <code>__exit__</code> code: keep cleanup minimal, catch and log cleanup failures when an
+  exception is already propagating (or attach them with <code>add_note</code>), and never let a
+  secondary failure mask the primary one.</li>
+<li>ExitStack follows the same rules and keeps running the remaining callbacks even if one
+  of them raises.</li>
+</ul></div></div></details><details class="pq" data-module="py.packaging"><summary><span>__init__.py</span><span class="pq-meta">★★☆ · Python Modules and Packages</span></summary><div class="pq-body"><p><code>pkg/__init__.py</code>:</p>
+<div class="hl"><pre><span></span><code><span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"public"</span><span class="p">]</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">public</span><span class="p">():</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">helper</span><span class="p">():</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_private</span><span class="p">():</span> <span class="o">...</span>
+</code></pre></div>
+
+<p><code>pkg2.py</code> (no <code>__all__</code>):</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">helper</span><span class="p">():</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_private</span><span class="p">():</span> <span class="o">...</span>
+</code></pre></div>
+
+<p>What do these print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pkg</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">dir</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">n</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"__"</span><span class="p">)))</span>
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pkg2</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">dir</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">n</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"__"</span><span class="p">)))</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pkg</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pkg</span><span class="o">.</span><span class="n">_private</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>['public']
+</code></pre></div>
+
+<div class="hl"><pre><span></span><code>['helper']
+_private
+</code></pre></div>
+
+<ul>
+<li>With <code>__all__</code>, <code>import *</code> takes exactly those names (even if they start with <code>_</code>).</li>
+<li>Without <code>__all__</code>, <code>import *</code> takes every name not starting with an underscore -
+  including anything the module itself imported (<code>os</code>, <code>json</code>...), which is why
+  <code>__all__</code> matters for a clean public API.</li>
+<li>Underscore names are a <em>convention</em>: <code>pkg._private</code> is still accessible.</li>
+<li><code>__all__</code> also tells linters/IDEs/docs what's public; re-exported names in
+  <code>__init__.py</code> should be listed there (ruff/pyright treat unlisted re-exports as unused).</li>
+</ul></div></div></details><details class="pq" data-module="py.packaging"><summary><span>Dependency Management</span><span class="pq-meta">★★☆ · Python Modules and Packages</span></summary><div class="pq-body"><p>Which of the versions <code>2.0.5, 2.1.0, 2.1.9, 2.10.0, 3.0.0</code> satisfy each specifier?</p>
+<div class="hl"><pre><span></span><code>~=2.1
+~=2.1.0
+==2.*
+&gt;=2.1,&lt;3
+!=2.1.*
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>~=2.1       2.1.0  2.1.9  2.10.0
+~=2.1.0     2.1.0  2.1.9
+==2.*       2.0.5  2.1.0  2.1.9  2.10.0
+&gt;=2.1,&lt;3    2.1.0  2.1.9  2.10.0
+!=2.1.*     2.0.5  2.10.0  3.0.0
+</code></pre></div>
+
+<ul>
+<li><code>~=</code> is the "compatible release" operator: <code>~=2.1</code> == <code>&gt;=2.1, ==2.*</code>;
+  <code>~=2.1.0</code> == <code>&gt;=2.1.0, ==2.1.*</code> - the last given component may grow.</li>
+<li>Versions compare numerically per component (PEP 440): 2.10.0 &gt; 2.9 &gt; 2.1.</li>
+<li>Pre-releases (2.11.0rc1) are excluded by installers unless requested (<code>--pre</code>) or
+  pinned explicitly.</li>
+<li>Interview angle: for a library, <code>&gt;=2.1,&lt;3</code> (semver-ish major cap) is a judgment call;
+  upper caps often cause more resolver pain than they prevent.</li>
+</ul></div></div></details><details class="pq" data-module="py.type_hints"><summary><span>Union Types</span><span class="pq-meta">★★☆ · Python Type Hints</span></summary><div class="pq-body"><p>What does this print (3.13 and 3.14 agree)?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">types</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">get_args</span><span class="p">,</span> <span class="n">get_origin</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">get_origin</span><span class="p">(</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]),</span> <span class="n">get_args</span><span class="p">(</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get_origin</span><span class="p">(</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="n">types</span><span class="o">.</span><span class="n">UnionType</span><span class="p">,</span> <span class="n">get_args</span><span class="p">(</span><span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">==</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">get_args</span><span class="p">(</span><span class="n">Literal</span><span class="p">[</span><span class="s2">"user"</span><span class="p">,</span> <span class="s2">"assistant"</span><span class="p">]))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>&lt;class 'list'&gt; (&lt;class 'str'&gt;, list[int])
+True (&lt;class 'int'&gt;, &lt;class 'NoneType'&gt;)
+True
+('user', 'assistant')
+</code></pre></div>
+
+<ul>
+<li><code>get_origin</code> / <code>get_args</code> are how runtime tools (pydantic, FastAPI, your own validators)
+  take annotations apart: <code>list[int]</code> -&gt; (list, (int,)).</li>
+<li><code>X | Y</code> (PEP 604, 3.10+) and <code>Union[X, Y]</code> / <code>Optional[X]</code> are equal; None shows up as
+  <code>NoneType</code> in the args. (In 3.14 <code>Union[...]</code> itself produces a <code>types.UnionType</code>.)</li>
+<li><code>get_args(Literal[...])</code> gives the allowed values - a single source of truth for
+  runtime validation of roles, finish reasons, etc.</li>
+</ul></div></div></details><details class="pq" data-module="py.type_hints"><summary><span>Static Type Checking</span><span class="pq-meta">★★★ · Python Type Hints</span></summary><div class="pq-body"><p>What happens with Python 3.13, and with Python 3.14?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="n">doc</span><span class="p">:</span> <span class="n">Document</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">[]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"defined"</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Document</span><span class="p">:</span> <span class="o">...</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">embed</span><span class="o">.</span><span class="vm">__annotations__</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><ul>
+<li><strong>3.13</strong>: <code>NameError: name 'Document' is not defined</code> - annotations are evaluated when
+  the <code>def</code> executes, and Document doesn't exist yet. Nothing is printed.</li>
+<li><strong>3.14</strong> (PEP 649/749, deferred evaluation): annotations are evaluated lazily on first
+  access, so it prints</li>
+</ul>
+<div class="hl"><pre><span></span><code>defined
+{'doc': &lt;class '__main__.Document'&gt;, 'return': list[float]}
+</code></pre></div>
+
+<ul>
+<li>Pre-3.14 fixes: quote it (<code>doc: "Document"</code>) or <code>from __future__ import annotations</code>
+  (all annotations stored as strings; tools must call <code>typing.get_type_hints()</code> to resolve
+  them - which breaks for names only imported under <code>if TYPE_CHECKING:</code>).</li>
+<li>3.14 adds <code>annotationlib.get_annotations(obj, format=Format.FORWARDREF / STRING)</code> for
+  tools that must cope with still-undefined names.</li>
+<li>Static checkers don't care either way - this is about <em>runtime</em> introspection
+  (pydantic, FastAPI, dataclasses).</li>
+</ul></div></div></details><details class="pq" data-module="py.pydantic"><summary><span>model_dump()</span><span class="pq-meta">★★☆ · Pydantic</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Req</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">temperature</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">user</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">r</span> <span class="o">=</span> <span class="n">Req</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">"gpt-4o"</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">model_dump</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_unset</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>{'model': 'gpt-4o', 'temperature': None, 'user': None}
+{'model': 'gpt-4o'}
+{'model': 'gpt-4o', 'user': None}
+</code></pre></div>
+
+<ul>
+<li><code>seed=42</code> vanished: default <code>extra="ignore"</code> silently drops unknown keys (use <code>extra="forbid"</code>
+  on request models to catch typos, <code>extra="allow"</code> to keep them).</li>
+<li><code>exclude_none</code> drops every None. <code>exclude_unset</code> drops fields the caller didn't pass -
+  <code>user=None</code> was explicitly set, so it stays.</li>
+<li>That's exactly the PATCH semantics difference: "not provided" vs "set to null".</li>
+</ul></div></div></details><details class="pq" data-module="py.pydantic"><summary><span>model_validate()</span><span class="pq-meta">★★★ · Pydantic</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">date</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">ValidationError</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Event</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">day</span><span class="p">:</span> <span class="n">date</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">Event</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="s1">'{"day": "2024-05-01"}'</span><span class="p">))</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">Event</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="s1">'{"day": "2024-05-01"}'</span><span class="p">))</span>
+<span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">errors</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"type"</span><span class="p">])</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>day=datetime.date(2024, 5, 1)
+date_type
+</code></pre></div>
+
+<ul>
+<li>Strict mode is <strong>input-format aware</strong>: JSON has no date type, so a date string is the only
+  way to encode one and is accepted by <code>model_validate_json</code>.</li>
+<li>In Python mode strict means "must already be a <code>date</code> instance" -&gt; the str is rejected.</li>
+<li>Lesson: validate raw HTTP/LLM bodies with <code>model_validate_json</code>; json.loads + model_validate
+  is slower and has different (python-mode) semantics.</li>
+</ul></div></div></details><details class="pq" data-module="py.async"><summary><span>Task Cancellation</span><span class="pq-meta">★★★ · Asynchronous Programming</span></summary><div class="pq-body"><p>What does this print? What problem does <code>shield</code> solve, and what does it NOT do?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">commit</span><span class="p">():</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"committed"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"ok"</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">inner</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">commit</span><span class="p">())</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">shield</span><span class="p">(</span><span class="n">inner</span><span class="p">),</span> <span class="mf">0.05</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TimeoutError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"timed out; inner cancelled?"</span><span class="p">,</span> <span class="n">inner</span><span class="o">.</span><span class="n">cancelled</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="k">await</span> <span class="n">inner</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>timed out; inner cancelled? False
+committed
+ok
+</code></pre></div>
+
+<ul>
+<li><code>shield(aw)</code> protects the inner task from cancellation coming <strong>from the awaiter</strong>: the
+  timeout cancels the outer shield future, the caller gets TimeoutError, but <code>inner</code> keeps
+  running (e.g. finish writing a payment record / saving the conversation turn).</li>
+<li>It does NOT make it un-cancellable: <code>inner.cancel()</code> directly still cancels it, and at
+  <code>asyncio.run</code> shutdown it is cancelled with everything else.</li>
+<li>You must keep a reference to the inner task (otherwise it can be GC'd) and usually await it or
+  hand it to a background set; otherwise its exceptions go unobserved.</li>
+<li>Overuse is a smell: if many things need shielding, the design probably needs a queue/worker that
+  owns the work.</li>
+</ul></div></div></details><details class="pq" data-module="py.async"><summary><span>asyncio.TaskGroup</span><span class="pq-meta">★★★ · Asynchronous Programming</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fail</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">delay</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">slow</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"slow cleaned up"</span><span class="p">)</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">async</span> <span class="k">with</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">TaskGroup</span><span class="p">()</span> <span class="k">as</span> <span class="n">tg</span><span class="p">:</span>
+            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">slow</span><span class="p">())</span>
+            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">fail</span><span class="p">(</span><span class="s2">"a"</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">))</span>
+            <span class="n">tg</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">fail</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">))</span>
+    <span class="k">except</span><span class="o">*</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">eg</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">([</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">eg</span><span class="o">.</span><span class="n">exceptions</span><span class="p">])</span>
+    <span class="k">except</span><span class="o">*</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"never"</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>slow cleaned up
+['a']
+</code></pre></div>
+
+<ul>
+<li>First failure (<code>a</code> at 10 ms) makes the TaskGroup <strong>cancel all other children</strong> (<code>slow</code> and
+  <code>b</code>) and wait for them - <code>slow</code>'s finally runs before the group exits.</li>
+<li><code>b</code> was cancelled before raising, so only <code>a</code> is in the group. Cancellations are not reported
+  as errors; only real exceptions are collected into an <code>ExceptionGroup</code>.</li>
+<li><code>except*</code> matches by type <em>inside</em> the group (could run several handlers); the KeyError handler
+  doesn't match. A plain <code>except ValueError</code> would NOT catch an ExceptionGroup.</li>
+<li>vs gather: gather would have let <code>slow</code> and <code>b</code> keep running. TaskGroup guarantees no child
+  outlives the <code>async with</code> block (structured concurrency, like trio nurseries).</li>
+</ul></div></div></details><details class="pq" data-module="py.http"><summary><span>Handling Partial Failures</span><span class="pq-meta">★★☆ · Async HTTP and API Integration</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">handler</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="s2">"/bad"</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">500</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">httpx</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"path"</span><span class="p">:</span> <span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="o">.</span><span class="n">path</span><span class="p">})</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="n">client</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">r</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">r</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">"path"</span><span class="p">]</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">httpx</span><span class="o">.</span><span class="n">AsyncClient</span><span class="p">(</span><span class="n">base_url</span><span class="o">=</span><span class="s2">"https://x"</span><span class="p">,</span> <span class="n">transport</span><span class="o">=</span><span class="n">httpx</span><span class="o">.</span><span class="n">MockTransport</span><span class="p">(</span><span class="n">handler</span><span class="p">))</span> <span class="k">as</span> <span class="n">c</span><span class="p">:</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s2">"/a"</span><span class="p">),</span> <span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s2">"/bad"</span><span class="p">),</span> <span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s2">"/c"</span><span class="p">),</span> <span class="n">return_exceptions</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">([</span><span class="n">r</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="nb">type</span><span class="p">(</span><span class="n">r</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">])</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s2">"/a"</span><span class="p">),</span> <span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="s2">"/bad"</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">httpx</span><span class="o">.</span><span class="n">HTTPStatusError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"raised:"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>['/a', 'HTTPStatusError', '/c']
+raised: 500
+</code></pre></div>
+
+<ul>
+<li>gather keeps <strong>input order</strong>; with <code>return_exceptions=True</code> exceptions are returned in their
+  slot -&gt; successes and failures side by side (partial-failure handling).</li>
+<li>Without it, the first exception propagates out of gather and the other results are lost to
+  the caller (the other coroutines are NOT cancelled - they keep running).</li>
+<li><code>raise_for_status()</code> raises <code>httpx.HTTPStatusError</code> for 4xx/5xx; transport problems (timeouts,
+  connect errors) raise <code>httpx.TransportError</code> subclasses instead - both are <code>httpx.HTTPError</code>.</li>
+</ul></div></div></details><details class="pq" data-module="py.http"><summary><span>Exponential Backoff</span><span class="pq-meta">★★☆ · Async HTTP and API Integration</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">delays</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">cap</span><span class="p">,</span> <span class="n">retries</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="n">cap</span><span class="p">,</span> <span class="n">base</span> <span class="o">*</span> <span class="mi">2</span><span class="o">**</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">retries</span><span class="p">)]</span>
+
+<span class="n">d</span> <span class="o">=</span> <span class="n">delays</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="nb">sum</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+</code></pre></div>
+
+<p>And why would you NOT use these delays as-is in production?</p><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[0.5, 1.0, 2.0, 4.0, 8.0, 8.0] 23.5
+</code></pre></div>
+
+<ul>
+<li>Capped exponential backoff: doubling per retry, capped at <code>max_delay</code>; worst case ~23.5 s of
+  sleeping for 6 retries - bound it by an overall deadline too.</li>
+<li>Without <strong>jitter</strong>, every client that failed at the same moment (e.g. a provider blip) retries
+  at exactly the same instants -&gt; synchronized retry storms (thundering herd).</li>
+<li>Full jitter: <code>random.uniform(0, min(cap, base * 2**n))</code>; "equal jitter" keeps half fixed;
+  "decorrelated jitter" uses the previous delay. AWS's analysis shows full jitter minimises total
+  work.</li>
+<li>If the server sends <code>Retry-After</code>, prefer it over your own schedule.</li>
+</ul></div></div></details><details class="pq" data-module="py.memory"><summary><span>References and Object Identity</span><span class="pq-meta">★★☆ · Python Memory Management</span></summary><div class="pq-body"><p>What does this print, and why?</p>
+<div class="hl"><pre><span></span><code><span class="n">grid</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span>
+<span class="n">grid</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">)]</span>
+<span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[[1, 0, 0], [1, 0, 0], [1, 0, 0]]
+[[1, 0, 0], [0, 0, 0], [0, 0, 0]]
+</code></pre></div>
+
+<ul>
+<li><code>[inner] * 3</code> copies the <strong>reference</strong> three times: all three rows are the same list object.</li>
+<li>The comprehension evaluates <code>[0] * 3</code> on each iteration, so three distinct lists.</li>
+<li><code>[0] * 3</code> itself is fine because ints are immutable - you can only rebind a slot, never
+  mutate the shared int.</li>
+</ul></div></div></details><details class="pq" data-module="py.memory"><summary><span>Memory Allocation</span><span class="pq-meta">★★☆ · Python Memory Management</span></summary><div class="pq-body"><p>What does this print on CPython, and why?</p>
+<div class="hl"><pre><span></span><code><span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"256"</span><span class="p">);</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"256"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"257"</span><span class="p">);</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="s2">"257"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="n">y</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span> <span class="o">==</span> <span class="n">y</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>True
+False
+True
+</code></pre></div>
+
+<ul>
+<li>CPython preallocates the <strong>small-int cache</strong> (-5..256); any operation producing 256 returns
+  the same cached object.</li>
+<li>257 is created fresh each time at runtime -&gt; two distinct objects with equal value.</li>
+<li>(Literals in the same compiled code object may be deduplicated by the compiler, which is why
+  <code>257 is 257</code> in one file can print True - another reason never to use <code>is</code> for value
+  comparison. Only use <code>is</code> for singletons: None, True/False, sentinels.)</li>
+</ul></div></div></details><details class="pq" data-module="py.internals"><summary><span>ThreadPoolExecutor</span><span class="pq-meta">★★☆ · Python Internals and Performance</span></summary><div class="pq-body"><p>What does this print (and in what order)?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">work</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span> <span class="o">*</span> <span class="p">(</span><span class="mi">3</span> <span class="o">-</span> <span class="n">n</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done"</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">n</span> <span class="o">*</span> <span class="mi">10</span>
+
+<span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span><span class="n">max_workers</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span> <span class="k">as</span> <span class="n">pool</span><span class="p">:</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"submitted"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">results</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>submitted
+done 2
+done 1
+done 0
+[0, 10, 20]
+</code></pre></div>
+
+<ul>
+<li><code>Executor.map</code> <strong>submits all tasks immediately</strong> and returns a lazy iterator, so
+  "submitted" prints first.</li>
+<li>Tasks run concurrently; the shortest sleep (n=2) finishes first, so the "done" lines appear in
+  <strong>completion order</strong>.</li>
+<li>The results iterator yields in <strong>input order</strong> regardless (it waits on each future in turn).
+  Use <code>as_completed</code> if you want results as they finish.</li>
+</ul></div></div></details><details class="pq" data-module="py.internals"><summary><span>Concurrent Futures</span><span class="pq-meta">★★☆ · Python Internals and Performance</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
+
+<span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">()</span> <span class="k">as</span> <span class="n">pool</span><span class="p">:</span>
+    <span class="n">it</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="p">[</span><span class="s2">"1"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"3"</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"error:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">it</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>1
+error: invalid literal for int() with base 10: 'x'
+[]
+</code></pre></div>
+
+<ul>
+<li>The exception raised in the worker is stored in the future and <strong>re-raised when you reach
+  that result</strong> in the iterator.</li>
+<li>The map iterator is a generator; once it has raised, it is <strong>finished</strong> - the successful
+  result for "3" is silently lost (<code>list(it)</code> is empty).</li>
+<li>For per-item error handling use <code>submit()</code> + <code>as_completed()</code> (or wrap the function to return
+  <code>(ok, value_or_exc)</code>).</li>
+</ul></div></div></details><details class="pq" data-module="py.numpy"><summary><span>Indexing and Slicing</span><span class="pq-meta">★★☆ · Data Processing with NumPy</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span>
+<span class="n">v</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]</span>
+<span class="n">f</span> <span class="o">=</span> <span class="n">x</span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]]</span>
+<span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">100</span>
+<span class="n">f</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">shares_memory</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">shares_memory</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">x</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[  0 100   2   3   4   5]
+True False
+</code></pre></div>
+
+<ul>
+<li><strong>Basic slicing</strong> (<code>start:stop:step</code>, integers, <code>None</code>, <code>...</code>) returns a <strong>view</strong> - same buffer,
+  different shape/strides - so writing through <code>v</code> changes <code>x</code>.</li>
+<li><strong>Fancy indexing</strong> (integer lists/arrays) and <strong>boolean masks</strong> always return a <strong>copy</strong>, so
+  writing to <code>f</code> doesn't touch <code>x</code>.</li>
+<li>Gotcha both ways: a view of a huge array keeps the whole buffer alive (<code>.copy()</code> a small slice
+  you want to keep), and mutating a "slice" silently mutates the source.</li>
+<li>(Assignment <em>through</em> fancy indexing, <code>x[[1, 2]] = 0</code>, does modify <code>x</code> - that's <code>__setitem__</code>.)</li>
+</ul></div></div></details><details class="pq" data-module="py.numpy"><summary><span>NumPy Arrays</span><span class="pq-meta">★★☆ · Data Processing with NumPy</span></summary><div class="pq-body"><p>What does this print (NumPy 2.x)?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">2.9</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">200</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b</span> <span class="o">+</span> <span class="mi">100</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[2 2 3]
+[44]
+[0.5 1. ]
+</code></pre></div>
+
+<ul>
+<li>An array has <strong>one fixed dtype</strong>; assigning 2.9 into an int64 array <strong>truncates silently</strong>.</li>
+<li><code>uint8</code> arithmetic <strong>wraps around</strong> (300 mod 256 = 44) with no error. Under NumPy 2's NEP 50
+  promotion rules the Python int 100 is "weak", so the result stays <code>uint8</code>.</li>
+<li><code>/</code> is true division and always gives floats; <code>//</code> keeps ints.</li>
+<li>Lesson: check <code>dtype</code> at boundaries (images as uint8, token ids as int32, embeddings float32);
+  cast explicitly with <code>astype</code> before arithmetic that can overflow.</li>
+</ul></div></div></details><details class="pq" data-module="py.pandas"><summary><span>Series and DataFrames</span><span class="pq-meta">★★☆ · Data Processing with Pandas</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="n">a</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">])</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s2">"y"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>w     NaN
+x     NaN
+y    12.0
+z    23.0
+dtype: float64
+</code></pre></div>
+
+<ul>
+<li>Arithmetic <strong>aligns on index labels</strong>: the result index is the (sorted) union; labels present
+  in only one operand give NaN, which also turns the int dtype into float64.</li>
+<li>Use <code>a.add(b, fill_value=0)</code> to treat missing as 0, or <code>.to_numpy()</code> / <code>reset_index(drop=True)</code>
+  if you really mean positional arithmetic.</li>
+<li>This is a frequent silent bug after filtering/sorting one frame and assigning a column computed
+  from another.</li>
+</ul></div></div></details><details class="pq" data-module="py.pandas"><summary><span>Handling Missing Values</span><span class="pq-meta">★★☆ · Data Processing with Pandas</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="n">s</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">s</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="n">s</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="n">s</span><span class="o">.</span><span class="n">count</span><span class="p">(),</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"Int64"</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>float64 2.0 4.0 2 3
+[1, &lt;NA&gt;, 3]
+</code></pre></div>
+
+<ul>
+<li><code>None</code> in numeric data becomes <code>NaN</code>, which forces <strong>float64</strong>.</li>
+<li>Reductions skip missing values: mean = (1+3)/2, sum = 4.0; <code>count()</code> counts <strong>non-missing</strong>
+  values while <code>len()</code> counts rows.</li>
+<li>The nullable <code>Int64</code> dtype keeps integers and uses <code>pd.NA</code> for missing.</li>
+<li>Gotcha: <code>sum()</code> of an all-NaN column is 0.0 (use <code>min_count=1</code> to get NaN).</li>
+</ul></div></div></details><details class="pq" data-module="py.testing"><summary><span>Fixtures</span><span class="pq-meta">★★☆ · Testing and Code Quality</span></summary><div class="pq-body"><p>Run with <code>pytest -s</code>. In what order are the lines printed?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s2">"module"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">db</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"db setup"</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="s2">"db"</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"db teardown"</span><span class="p">)</span>
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">session</span><span class="p">(</span><span class="n">db</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"session setup"</span><span class="p">)</span>
+    <span class="k">yield</span> <span class="s2">"s"</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"session teardown"</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_a</span><span class="p">(</span><span class="n">session</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"test_a"</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">test_b</span><span class="p">(</span><span class="n">session</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"test_b"</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>db setup
+session setup
+test_a
+session teardown
+session setup
+test_b
+session teardown
+db teardown
+</code></pre></div>
+
+<ul>
+<li>Module-scoped <code>db</code> is created once, before the first test that needs it, and torn down
+  after the last test in the module.</li>
+<li>Function-scoped <code>session</code> is rebuilt for every test; teardown (code after <code>yield</code>) runs
+  in reverse order of setup, right after each test - even if the test fails.</li>
+<li>A fixture can depend on fixtures of the same or wider scope, never narrower
+  (module fixture using a function fixture -&gt; ScopeMismatch).</li>
+</ul></div></div></details><details class="pq" data-module="py.testing"><summary><span>unittest.mock</span><span class="pq-meta">★★☆ · Testing and Code Quality</span></summary><div class="pq-body"><p>What does this print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">unittest.mock</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mock</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Mock</span><span class="p">(</span><span class="n">side_effect</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"boom"</span><span class="p">),</span> <span class="mi">3</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">())</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">m</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"caught"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">(),</span> <span class="n">m</span><span class="o">.</span><span class="n">call_count</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">m</span><span class="p">()</span>
+<span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"StopIteration"</span><span class="p">,</span> <span class="n">m</span><span class="o">.</span><span class="n">call_count</span><span class="p">)</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>1
+caught boom
+3 3
+StopIteration 4
+</code></pre></div>
+
+<ul>
+<li>An iterable <code>side_effect</code> yields one item per call; an item that is an exception
+  (instance or class) is <strong>raised</strong> instead of returned. That's how you script
+  "fail, then succeed" for retry tests.</li>
+<li>The call that raises is still recorded -&gt; call_count counts it.</li>
+<li>Exhausting the iterable raises StopIteration (call is recorded too) - a common surprise
+  when the code under test retries more often than the script expects.</li>
+<li><code>side_effect</code> takes precedence over <code>return_value</code>; a callable side_effect computes the result.</li>
+</ul></div></div></details><details class="pq" data-module="py.genai"><summary><span>Regular Expressions</span><span class="pq-meta">★★☆ · Python for Generative AI Applications</span></summary><div class="pq-body"><p>You extract code blocks from an LLM reply. What does each line print?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="n">text</span> <span class="o">=</span> <span class="s2">"```py</span><span class="se">\n</span><span class="s2">A</span><span class="se">\n</span><span class="s2">```</span><span class="se">\n</span><span class="s2">text</span><span class="se">\n</span><span class="s2">```py</span><span class="se">\n</span><span class="s2">B</span><span class="se">\n</span><span class="s2">```"</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">"```py\n(.*)```"</span><span class="p">,</span> <span class="n">text</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">"```py\n(.*)```"</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">"```py\n(.*?)```"</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">))</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>[]
+['A\n```\ntext\n```py\nB\n']
+['A\n', 'B\n']
+</code></pre></div>
+
+<ul>
+<li>Without DOTALL, <code>.</code> doesn't match <code>\n</code>; the closing fence is on the next line -&gt; no match.</li>
+<li>With DOTALL, greedy <code>.*</code> runs to the LAST ``` -&gt; one giant match swallowing both blocks.</li>
+<li>Non-greedy <code>.*?</code> stops at the first closing fence -&gt; one match per block.</li>
+<li>Production extra care: optional language tag (<code>[\w+-]*</code>), <code>\r\n</code>, unclosed final fence
+  (streams cut off at max_tokens), and nested ``` inside strings.</li>
+</ul></div></div></details><details class="pq" data-module="py.genai"><summary><span>Async LLM API Calls</span><span class="pq-meta">★★☆ · Python for Generative AI Applications</span></summary><div class="pq-body"><p>What is printed, in what order?</p>
+<div class="hl"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">call</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">delay</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"done"</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">i</span>
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">gather</span><span class="p">(</span><span class="n">call</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">),</span> <span class="n">call</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">),</span> <span class="n">call</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+<span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
+</code></pre></div><div class="pq-ans"><strong>Answer</strong><div class="hl"><pre><span></span><code>done 2
+done 3
+done 1
+[1, 2, 3]
+</code></pre></div>
+
+<ul>
+<li>The three "LLM calls" run concurrently; they <strong>finish</strong> in latency order (2, 3, 1)...</li>
+<li>...but <code>gather</code> returns results in <strong>argument order</strong>, so you can zip them back to inputs.
+  <code>asyncio.as_completed</code> gives completion order instead (useful for streaming progress).</li>
+<li>Total time ~0.03 s (max), not 0.06 s (sum) - the point of async for I/O-bound API calls.</li>
+<li>Unbounded <code>gather</code> over 10k prompts = 10k simultaneous requests -&gt; 429s; bound it with a
+  Semaphore or a worker pool. With <code>return_exceptions=False</code>, the first error propagates but
+  other tasks keep running (TaskGroup cancels them).</li>
+</ul></div></div></details></div></article></div>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

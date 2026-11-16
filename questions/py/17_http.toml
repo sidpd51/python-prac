@@ -1,0 +1,437 @@
+# Interview question bank - Async HTTP and API integration (httpx)
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "http-01"
+topic = "fundamentals"
+level = 1
+kind = "concept"
+q = "Walk through what happens when your code calls `POST https://api.openai.com/v1/embeddings`. Which parts are slow?"
+a = """
+- DNS lookup -> TCP connect (1 RTT) -> TLS handshake (1-2 RTTs) -> send request line, headers
+  (`Authorization`, `Content-Type: application/json`) and body -> server processes (model
+  inference: by far the slowest part for LLMs) -> response status line, headers, body.
+- With keep-alive the connection is reused: the next request skips DNS/TCP/TLS (that's why you
+  reuse a Client). HTTP/2 additionally multiplexes many requests over one connection.
+- Methods: GET (read, safe, idempotent, params in the URL), POST (create/compute, not
+  idempotent), PUT/DELETE (idempotent), PATCH (partial update).
+- Status classes: 2xx success, 3xx redirect, 4xx client error, 5xx server error.
+"""
+followups = ["What does 'idempotent' mean, and why does it matter for retries?"]
+
+[[q]]
+id = "http-02"
+topic = "status_codes"
+level = 1
+kind = "concept"
+q = "Which status codes should an LLM API client treat specially, and what should it do for each?"
+a = """
+- **400** malformed request / **422** semantically invalid (e.g. context too long): bug in our
+  request - don't retry, log, surface the provider's message.
+- **401** bad/missing key, **403** key valid but not allowed (model access, org policy): don't
+  retry; alert - retrying burns time.
+- **404** wrong model/endpoint name. **409** conflict (sometimes transient - retryable).
+- **408** request timeout, **429** rate limited (honour `Retry-After`; distinguish RPM/TPM limit
+  from "insufficient quota", which never succeeds on retry).
+- **500/502/503/504**: server/gateway problems, usually transient -> retry with backoff
+  (503 often carries Retry-After). Some providers use **529** (overloaded).
+- Map them to typed exceptions once, in the client layer (RateLimitError, AuthenticationError...)
+  and keep the request id for support tickets.
+"""
+
+[[q]]
+id = "http-03"
+topic = "requests_vs_httpx"
+level = 1
+kind = "compare"
+q = "requests vs httpx vs aiohttp: which would you pick for an async FastAPI service calling LLM APIs, and why?"
+a = """
+- **requests**: sync only, very mature. Inside `async def` it blocks the event loop - every
+  other request on that worker stalls. Fine for scripts/notebooks.
+- **httpx**: requests-like API with both `Client` and `AsyncClient`, HTTP/2, strict default
+  timeouts (5 s; requests has NO default timeout), `MockTransport` for testing, typed. It's what
+  the OpenAI and Anthropic Python SDKs use.
+- **aiohttp**: async only, very fast, client + server, different API (session.get returns an
+  async context manager).
+- Pick httpx for one API across sync/async code and easy testing; aiohttp if you've measured
+  that raw throughput matters.
+- Differences that bite when migrating: httpx does NOT follow redirects by default;
+  `response.raise_for_status()` raises `httpx.HTTPStatusError`.
+"""
+
+[[q]]
+id = "http-04"
+topic = "client"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+from urllib.parse import urljoin
+import httpx
+
+client = httpx.Client(base_url="https://api.example.com/v1")
+print(client.build_request("GET", "/models").url)
+print(client.build_request("GET", "models").url)
+print(urljoin("https://api.example.com/v1", "/models"))
+print(urljoin("https://api.example.com/v1/", "models"))
+```
+'''
+a = """
+```
+https://api.example.com/v1/models
+https://api.example.com/v1/models
+https://api.example.com/models
+https://api.example.com/v1/models
+```
+- httpx's `base_url` treats the request path as relative to the base path - with or
+  without a leading slash (it adds a trailing slash to the base for you).
+- `urllib.parse.urljoin` follows RFC 3986: a leading "/" replaces the whole path, and without
+  a trailing slash on the base the last segment ("v1") is replaced. That's a classic source of
+  404s when building URLs by hand (e.g. with requests).
+"""
+
+[[q]]
+id = "http-05"
+topic = "client"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import httpx
+
+def handler(request):
+    if request.url.path == "/old":
+        return httpx.Response(301, headers={"location": "/new"})
+    return httpx.Response(200, text="new")
+
+client = httpx.Client(base_url="https://api.example.com", transport=httpx.MockTransport(handler))
+r = client.get("/old")
+print(r.status_code, r.is_redirect, r.is_success)
+r = client.get("/old", follow_redirects=True)
+print(r.status_code, r.text, len(r.history))
+print(httpx.Client().timeout)
+```
+'''
+a = """
+```
+301 True False
+200 new 1
+Timeout(timeout=5.0)
+```
+- Unlike requests, **httpx does not follow redirects by default**; pass `follow_redirects=True`
+  per request or on the client. `r.history` keeps the intermediate responses.
+- httpx has a **default timeout of 5 s** for every phase (connect/read/write/pool); requests has
+  none (it can hang forever). For LLM calls 5 s read is usually too short - configure it.
+- `httpx.MockTransport(handler)` is the idiomatic way to unit-test HTTP code with no network.
+"""
+
+[[q]]
+id = "http-06"
+topic = "sync_vs_async"
+level = 1
+kind = "debug"
+q = '''
+Under load this FastAPI endpoint serialises all users: p99 latency = number of users x LLM latency. Why?
+```python
+@app.post("/answer")
+async def answer(q: Question):
+    r = requests.post(LLM_URL, json={"prompt": q.text}, timeout=60)
+    return r.json()
+```
+'''
+a = """
+- `requests.post` is **blocking I/O inside an `async def`**: it holds the event loop thread for
+  the whole LLM call, so no other coroutine (request) can run on that worker.
+- Fixes: use `httpx.AsyncClient` and `await client.post(...)` (shared client created at startup,
+  closed at shutdown via lifespan); or declare the endpoint with plain `def` so FastAPI runs it in
+  a threadpool; or `await asyncio.to_thread(requests.post, ...)` as a stopgap.
+- Also: one client per process (connection reuse), and explicit timeouts.
+"""
+followups = ["How would you detect blocking calls in an event loop? (asyncio debug mode, slow callback warnings)"]
+
+[[q]]
+id = "http-07"
+topic = "async_client"
+level = 2
+kind = "concept"
+q = "How should an `httpx.AsyncClient` be created and shut down in a long-running service? What goes wrong if you get it wrong?"
+a = """
+- Create **one** client per process (or per upstream API) at startup, share it, close it at
+  shutdown: FastAPI `lifespan` -> `async with httpx.AsyncClient(...) as client: app.state.client
+  = client; yield`. Or wrap it in your own class with `__aenter__/__aexit__`.
+- `async with httpx.AsyncClient() as c:` *per request* works but loses pooling: every call pays
+  TCP+TLS setup and you churn sockets (TIME_WAIT, ephemeral port exhaustion under load).
+- Never closing it leaks connections/file descriptors and produces "Unclosed client" warnings.
+- A client is bound to the event loop it was used in - don't share one across
+  `asyncio.run()` calls or threads with different loops (common in tests/Celery workers).
+- Configure base_url, auth headers, timeouts and limits once on the client.
+"""
+
+[[q]]
+id = "http-08"
+topic = "pooling"
+level = 2
+kind = "debug"
+q = '''
+A batch job fires 5,000 embedding requests with `asyncio.gather` over one AsyncClient. Many fail with `httpx.PoolTimeout` even though the API is healthy. Explain and fix.
+```python
+async with httpx.AsyncClient() as client:
+    results = await asyncio.gather(*(embed(client, chunk) for chunk in chunks))
+```
+'''
+a = """
+- The client's pool allows **100 connections by default** (`httpx.Limits(max_connections=100,
+  max_keepalive_connections=20)`). The other 4,900 requests queue for a free connection; the
+  **pool timeout** (default 5 s) expires while they wait -> PoolTimeout.
+- It's a client-side problem: unbounded concurrency. Fix: cap in-flight requests with an
+  `asyncio.Semaphore` (sized to the provider's rate limits, e.g. 8-32), batch many texts per
+  request, and/or use a worker pool fed by an `asyncio.Queue`.
+- Optionally tune `Limits` / `Timeout(pool=...)` - but raising them just moves the overload to the
+  provider (429s).
+- Also add partial-failure handling (`return_exceptions=True` or per-task try/except) so one
+  failure doesn't discard thousands of results.
+"""
+
+[[q]]
+id = "http-09"
+topic = "reuse"
+level = 2
+kind = "compare"
+q = "Connection pooling vs connection reuse vs HTTP/2 multiplexing - what's the difference and what do you configure in httpx?"
+a = """
+- **Reuse (keep-alive)**: after a response, the TCP/TLS connection stays open and the next
+  request to the same host reuses it - no handshake. Needs the response body fully read/closed
+  (`response.aclose()` or reading it), otherwise the connection can't go back to the pool.
+- **Pooling**: the client keeps a set of open connections per host; `httpx.Limits(
+  max_connections, max_keepalive_connections, keepalive_expiry)` bounds it. Pool exhaustion ->
+  waiting -> PoolTimeout.
+- **HTTP/2** (`AsyncClient(http2=True)`, needs `h2`): many concurrent requests (streams) over ONE
+  connection; fewer sockets, but head-of-line blocking at TCP level and per-connection stream limits.
+- Only one Client instance gets any of these benefits - module-level `httpx.get()` creates a new
+  client (and connection) for every call.
+"""
+
+[[q]]
+id = "http-10"
+topic = "request_timeouts"
+level = 2
+kind = "concept"
+q = "Explain httpx's timeout phases. You set `timeout=30` on a streaming chat completion and a request still ran for 3 minutes - how?"
+a = """
+- `httpx.Timeout(read=..., connect=..., write=..., pool=...)`:
+  **connect** = establishing TCP/TLS; **read** = max wait for the NEXT chunk of bytes;
+  **write** = max wait to send a chunk; **pool** = waiting for a free pooled connection.
+- `timeout=30` sets each phase to 30 s - it is **not a total deadline**. A stream that emits a
+  token every 10 s never trips the read timeout, however long it runs.
+- For a total budget wrap the call: `async with asyncio.timeout(60): ...` (or `asyncio.wait_for`).
+- Typical LLM config: short connect (2-5 s - fail fast on network issues), long read (60-600 s
+  for long generations), plus an overall deadline per user request.
+- Connect timeouts are always safe to retry (request never sent); read timeouts on POST are not.
+"""
+
+[[q]]
+id = "http-11"
+topic = "partial_failures"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import asyncio
+import httpx
+
+def handler(request):
+    if request.url.path == "/bad":
+        return httpx.Response(500)
+    return httpx.Response(200, json={"path": request.url.path})
+
+async def get(client, path):
+    r = await client.get(path)
+    r.raise_for_status()
+    return r.json()["path"]
+
+async def main():
+    async with httpx.AsyncClient(base_url="https://x", transport=httpx.MockTransport(handler)) as c:
+        results = await asyncio.gather(get(c, "/a"), get(c, "/bad"), get(c, "/c"), return_exceptions=True)
+        print([r if isinstance(r, str) else type(r).__name__ for r in results])
+        try:
+            await asyncio.gather(get(c, "/a"), get(c, "/bad"))
+        except httpx.HTTPStatusError as e:
+            print("raised:", e.response.status_code)
+
+asyncio.run(main())
+```
+'''
+a = """
+```
+['/a', 'HTTPStatusError', '/c']
+raised: 500
+```
+- gather keeps **input order**; with `return_exceptions=True` exceptions are returned in their
+  slot -> successes and failures side by side (partial-failure handling).
+- Without it, the first exception propagates out of gather and the other results are lost to
+  the caller (the other coroutines are NOT cancelled - they keep running).
+- `raise_for_status()` raises `httpx.HTTPStatusError` for 4xx/5xx; transport problems (timeouts,
+  connect errors) raise `httpx.TransportError` subclasses instead - both are `httpx.HTTPError`.
+"""
+
+[[q]]
+id = "http-12"
+topic = "error_handling"
+level = 3
+kind = "design"
+q = "Design the error-handling layer of an internal LLM client library used by several teams."
+a = """
+- One place that converts transport + HTTP failures into a **typed hierarchy**: `APIError` ->
+  `APIConnectionError` (-> `APITimeoutError`), `APIStatusError` -> `BadRequestError`,
+  `AuthenticationError`, `PermissionDeniedError`, `NotFoundError`, `RateLimitError(retry_after)`,
+  `InternalServerError`; plus `ResponseValidationError` for 200s with bad bodies.
+- Each carries status, provider error message/code, request id, and the cause chain (`raise ... from`).
+- Retry policy lives in the client (transient only), callers see one final exception after the
+  retry budget; expose `is_retryable` for callers that queue work.
+- Map provider-specific codes (context_length_exceeded, content_filter, insufficient_quota) to
+  distinct exceptions - they need different handling (truncate, show refusal, page someone).
+- Observability: structured log per attempt (status, latency, attempt n, request id), metrics for
+  error rate per type, never log API keys or full prompts with PII.
+"""
+
+[[q]]
+id = "http-13"
+topic = "backoff"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+def delays(base, cap, retries):
+    return [min(cap, base * 2**n) for n in range(retries)]
+
+d = delays(0.5, 8.0, 6)
+print(d, sum(d))
+```
+And why would you NOT use these delays as-is in production?
+'''
+a = """
+```
+[0.5, 1.0, 2.0, 4.0, 8.0, 8.0] 23.5
+```
+- Capped exponential backoff: doubling per retry, capped at `max_delay`; worst case ~23.5 s of
+  sleeping for 6 retries - bound it by an overall deadline too.
+- Without **jitter**, every client that failed at the same moment (e.g. a provider blip) retries
+  at exactly the same instants -> synchronized retry storms (thundering herd).
+- Full jitter: `random.uniform(0, min(cap, base * 2**n))`; "equal jitter" keeps half fixed;
+  "decorrelated jitter" uses the previous delay. AWS's analysis shows full jitter minimises total
+  work.
+- If the server sends `Retry-After`, prefer it over your own schedule.
+"""
+
+[[q]]
+id = "http-14"
+topic = "retries"
+level = 3
+kind = "debug"
+q = '''
+After adding this retry wrapper, finance reports duplicate fine-tuning jobs (each costing $$$). What's wrong?
+```python
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+def create_job(payload):
+    r = httpx.post(f"{BASE}/fine_tuning/jobs", json=payload, timeout=10)
+    r.raise_for_status()
+    return r.json()
+```
+'''
+a = """
+- It retries **everything** - including a `ReadTimeout` on a **non-idempotent POST**: the server
+  may have created the job and only the response was slow/lost. Each retry creates another job.
+- It also retries 400/401/422 (pointless, they fail identically) and uses a fixed wait (no
+  backoff, no jitter, ignores Retry-After); 10 s read timeout is short for a create call.
+- Fixes: send an **Idempotency-Key** header (same key on every retry; server dedupes), retry only
+  transient failures (connect errors, 429, 503, and 5xx/read timeouts *only* when idempotent),
+  exponential backoff + jitter, honour Retry-After, or after a timeout *query* whether the job
+  exists before re-creating it.
+- Reuse a client instead of `httpx.post` per call.
+"""
+followups = ["How does a server implement idempotency keys?", "Which errors are safe to retry for a POST?"]
+
+[[q]]
+id = "http-15"
+topic = "rate_limiting"
+level = 3
+kind = "compare"
+q = "Token bucket vs fixed window vs sliding window vs leaky bucket for client-side rate limiting against an LLM provider's RPM/TPM limits."
+a = """
+- **Fixed window** (N per minute, counter resets on the minute): trivial, but allows 2N in a short
+  span across a window boundary.
+- **Sliding window log**: store timestamps, count those in the last 60 s - exact, O(N) memory.
+  Sliding window counter approximates it with two buckets.
+- **Token bucket**: capacity C, refill rate r tokens/s; allows bursts up to C, long-run average r;
+  O(1) state, lazily refilled from a monotonic clock. Cost-weighted acquire fits TPM limits
+  (cost = estimated prompt + max output tokens).
+- **Leaky bucket**: queue drained at a constant rate - smooth output, no bursts, adds latency.
+- In practice: token bucket for RPM and another for TPM, a Semaphore for concurrency, FIFO waiting
+  so big requests aren't starved, and still handle 429 (other processes share the quota -> a
+  shared limiter in Redis or split the quota per worker). Adapt using `x-ratelimit-remaining-*`
+  response headers.
+"""
+
+[[q]]
+id = "http-16"
+topic = "concurrency_limits"
+level = 2
+kind = "compare"
+q = "asyncio.Semaphore vs a rate limiter vs httpx.Limits: what does each bound, and do you need all three?"
+a = """
+- **Semaphore(n)**: max n operations *in flight* at once (concurrency). Throughput then depends on
+  latency: n / latency requests/s.
+- **Rate limiter** (token bucket): max requests (or tokens) *per unit of time*, independent of
+  latency - matches provider RPM/TPM quotas.
+- **httpx.Limits**: max open/keep-alive *connections* in the client pool; excess requests wait
+  for a connection (PoolTimeout). It's a resource guard, not a policy.
+- Typical: Semaphore to protect yourself (memory, sockets, downstream) and keep latency stable,
+  rate limiter to stay under quota, Limits >= semaphore size so the pool isn't the bottleneck.
+- Hold the semaphore around the request only - not around post-processing or the retry *sleep*
+  (or you'll idle slots while sleeping, depending on intent).
+"""
+
+[[q]]
+id = "http-17"
+topic = "batching"
+level = 3
+kind = "design"
+q = "Design an ingestion step that embeds 2 million chunks with a hosted embedding API as fast and cheaply as possible, robust to failures."
+a = """
+- **Batch** inputs per request (e.g. 64-2048 texts, respecting max inputs and max tokens per
+  request; token-aware packing). Dedupe identical chunks and skip ones already embedded
+  (content-hash cache) - cheapest request is the one you don't send.
+- **Concurrency**: one shared AsyncClient, Semaphore / worker pool over an asyncio.Queue, token
+  bucket for RPM and TPM; adapt on 429 / rate-limit headers.
+- **Retries** per batch for transient errors with backoff + jitter; on 400 for a batch (one bad
+  input) split the batch to isolate the poison item.
+- **Partial failures**: results keyed by input index (the API's `index` field, not list order);
+  record failures with their input ids; write successes incrementally (checkpointing) so a crash
+  resumes instead of restarting; a dead-letter list for a later pass.
+- **Validation**: dimensions, count == batch size, no NaNs; model name/version stored with vectors.
+- Consider the provider's async Batch API (~50% cheaper, 24 h SLA) when latency doesn't matter.
+"""
+
+[[q]]
+id = "http-18"
+topic = "response_validation"
+level = 2
+kind = "concept"
+q = "Why validate API responses with pydantic when the provider has a documented schema? How do you do it without breaking on harmless changes?"
+a = """
+- 200 OK doesn't mean usable: proxies return HTML error pages, gateways truncate bodies, providers
+  ship schema changes, mocks drift. Without validation the failure surfaces far away as a
+  `KeyError`/`TypeError` (or a silently wrong vector in your index).
+- `Model.model_validate_json(response.content)` at the client boundary -> typed object or one
+  clear `ResponseValidationError` (keep the raw body + request id for debugging; chain the cause).
+- Add semantic checks the schema can't express: number of embeddings == inputs, indices 0..n-1,
+  expected dimensions, finish_reason handling.
+- Be tolerant where it's safe: `extra="ignore"` for new fields, optional fields for things that
+  may be absent, `str` fallback for enums that grow (`Literal[...] | str`) - strict on what you
+  actually use.
+- Contract tests / recorded fixtures catch drift in CI.
+"""

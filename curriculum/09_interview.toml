@@ -1,0 +1,26 @@
+[track]
+id = "interview"
+title = "Interview Readiness"
+order = 9
+description = "System design, project storytelling and behavioral prep for 3-4 YOE AI-engineer roles."
+
+[[module]]
+slug = "system_design"
+num = 1
+title = "AI System Design"
+status = "planned"
+topics = [["framework", "Design interview framework (requirements -> scale -> tradeoffs)"], ["rag_design", "Design a RAG / enterprise search system"], ["chatbot_design", "Design a customer-support agent"], ["llm_gateway", "Design an LLM gateway"], ["eval_platform", "Design an evaluation platform"], ["classic_sd", "Classic system design fundamentals"]]
+
+[[module]]
+slug = "storytelling"
+num = 2
+title = "Project Deep-Dives"
+status = "planned"
+topics = [["star", "STAR stories"], ["tradeoffs", "Explaining tradeoffs & decisions"], ["failures", "Incidents, debugging stories"], ["metrics_impact", "Quantifying impact"]]
+
+[[module]]
+slug = "behavioral"
+num = 3
+title = "Behavioral"
+status = "planned"
+topics = [["ownership", "Ownership & ambiguity"], ["collaboration", "Collaboration & conflict"], ["learning", "Learning & growth"]]

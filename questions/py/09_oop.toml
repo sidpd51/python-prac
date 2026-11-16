@@ -1,0 +1,464 @@
+# Interview question bank - Object-Oriented Programming
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "oop-01"
+topic = "init"
+level = 1
+kind = "concept"
+q = "What does `__init__` do? Is it the constructor? How does it relate to `__new__`?"
+a = '''
+- `ClassName(args)` calls `type.__call__`, which runs `__new__(cls, ...)` to **create** the
+  instance and then `__init__(self, ...)` to **initialise** it (set instance variables,
+  validate arguments). `__init__` must return None.
+- So `__init__` is an initialiser; `__new__` is the actual constructor. You override `__new__`
+  only for immutable types (subclassing `str`/`tuple`), singletons/caching, or metaclass work.
+- Instance variables are created by assigning `self.x = ...` (usually in `__init__`); they
+  live in the instance `__dict__` (or slots).
+- `copy`/`pickle` create objects **without** calling `__init__` - don't put essential
+  invariants only there if you customise those.
+'''
+
+[[q]]
+id = "oop-02"
+topic = "class_vars"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+class Agent:
+    tools = []
+    calls = 0
+
+    def __init__(self, name):
+        self.name = name
+
+    def use(self, tool):
+        self.tools.append(tool)
+        self.calls += 1
+
+a, b = Agent("a"), Agent("b")
+a.use("search")
+b.use("calc")
+print(a.tools, b.tools, Agent.tools)
+print(a.calls, b.calls, Agent.calls)
+```
+'''
+a = '''
+```
+['search', 'calc'] ['search', 'calc'] ['search', 'calc']
+1 1 0
+```
+- `self.tools.append` finds the **class** attribute (lookup goes instance -> class) and
+  mutates the one shared list - every agent sees every tool.
+- `self.calls += 1` is `self.calls = self.calls + 1`: it reads the class value 0, then
+  **assigns an instance attribute**, shadowing the class one. `Agent.calls` stays 0.
+- Fix: create per-instance state in `__init__` (`self.tools = []`); update shared counters
+  explicitly via the class (`Agent.calls += 1`).
+'''
+
+[[q]]
+id = "oop-03"
+topic = "static_methods"
+level = 1
+kind = "compare"
+q = "Instance method vs `@classmethod` vs `@staticmethod`: what does each receive and when do you use it?"
+a = '''
+- **Instance method** - receives `self`; reads/changes the object's state. The default.
+- **`@classmethod`** - receives `cls` (the class it was called on, possibly a subclass).
+  Use for **alternative constructors** (`from_dict`, `from_env`, `from_pretrained`) and for
+  class-level state/registries. Return `cls(...)`, not a hard-coded class name, so
+  subclasses get instances of themselves.
+- **`@staticmethod`** - receives nothing implicit; a plain function namespaced in the class
+  (a parser/validator closely tied to the class). If it doesn't relate to the class, make
+  it a module-level function.
+- All three are callable on the class and on instances.
+'''
+
+[[q]]
+id = "oop-04"
+topic = "encapsulation"
+level = 1
+kind = "concept"
+q = "Python has no `private`. How is encapsulation done? What do `_x` and `__x` mean?"
+a = '''
+- By **convention and API design**: `_x` means "internal, don't touch" (not enforced; also
+  excluded from `from m import *`).
+- `__x` inside a class triggers **name mangling** to `_ClassName__x` - meant to avoid
+  accidental clashes with subclass attributes, not to provide security.
+- Use **`@property`** to keep a simple attribute API while adding validation or computed
+  values later - no getters/setters needed upfront.
+- Expose small, intention-revealing methods; return copies of internal mutable state; make
+  value objects immutable (frozen dataclasses, read-only properties, `__slots__`).
+'''
+
+[[q]]
+id = "oop-05"
+topic = "polymorphism"
+level = 1
+kind = "concept"
+q = "What is polymorphism in Python, and how does duck typing relate to it?"
+a = '''
+- Polymorphism: the same call works on objects of different types, each doing its own thing -
+  `llm.generate(prompt)` for an OpenAI/Anthropic/local model object; `len(x)` for list/str/
+  your class.
+- Python resolves methods **at runtime by name** - so any object with the right methods works
+  (**duck typing**: "if it has `.generate()`, it's an LLM"); no shared base class required.
+- Inheritance-based polymorphism (subclasses overriding methods) is one way to get it; ABCs
+  and `typing.Protocol` make the expected interface explicit.
+- Anti-pattern: `if isinstance(llm, OpenAI): ... elif isinstance(llm, Claude): ...` - push
+  the behaviour into the classes instead.
+'''
+
+[[q]]
+id = "oop-06"
+topic = "mro"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+class Base:
+    def setup(self):
+        print("Base")
+
+class A(Base):
+    def setup(self):
+        print("A")
+        super().setup()
+
+class B(Base):
+    def setup(self):
+        print("B")
+        super().setup()
+
+class C(A, B):
+    def setup(self):
+        print("C")
+        super().setup()
+
+C().setup()
+print([k.__name__ for k in C.__mro__])
+```
+'''
+a = '''
+```
+C
+A
+B
+Base
+['C', 'A', 'B', 'Base', 'object']
+```
+- `super()` means **the next class in the MRO of `type(self)`**, not "my parent". Inside `A`,
+  for a `C` instance, the next class is `B` - even though `A` doesn't know `B` exists.
+- C3 linearization keeps children before parents and preserves the base order, so `Base`
+  runs exactly **once** - that's the point of cooperative multiple inheritance.
+- If `A` called `Base.setup(self)` directly, `B.setup` would be skipped.
+'''
+
+[[q]]
+id = "oop-07"
+topic = "super"
+level = 2
+kind = "concept"
+q = "How do you design classes for cooperative multiple inheritance (mixins) so that `__init__` works for every combination?"
+a = '''
+- Every class calls `super().__init__(**kwargs)` - never a named parent.
+- Each `__init__` takes the **keyword-only** arguments it understands and forwards the rest:
+  `def __init__(self, *, log_prefix="llm", **kwargs): super().__init__(**kwargs)`.
+- A common root class at the bottom of the MRO consumes nothing and rejects leftovers
+  (`if kwargs: raise TypeError(...)`) - `object.__init__` would also raise on extra args.
+- Methods that participate (e.g. `process`) have the same signature in every class and
+  call `super().process(...)`.
+- Order the bases deliberately - it's behaviour (redaction before logging, auth before cache).
+- If this gets complex, prefer composition: a list of middleware objects run in order.
+'''
+
+[[q]]
+id = "oop-08"
+topic = "dunder"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+class Doc:
+    def __init__(self, doc_id):
+        self.doc_id = doc_id
+
+    def __eq__(self, other):
+        return isinstance(other, Doc) and self.doc_id == other.doc_id
+
+print(Doc(1) == Doc(1), Doc.__hash__)
+try:
+    unique = {Doc(1), Doc(1)}
+except TypeError as e:
+    print("TypeError:", e)
+```
+'''
+a = '''
+```
+True None
+TypeError: unhashable type: 'Doc'
+```
+- Defining `__eq__` without `__hash__` sets `__hash__ = None`: objects that compare equal must
+  hash equal, and the default identity hash would violate that.
+- Fix: `def __hash__(self): return hash(self.doc_id)` - hash exactly the fields used in
+  `__eq__`, and keep them immutable (mutating a key inside a set/dict corrupts it).
+- `@dataclass(frozen=True)` (or `eq=True, unsafe_hash=True`) generates a consistent pair.
+- Better `__eq__` style: `if not isinstance(other, Doc): return NotImplemented`.
+'''
+
+[[q]]
+id = "oop-09"
+topic = "dunder"
+level = 2
+kind = "concept"
+q = "Why should `__add__`/`__eq__` return `NotImplemented` instead of raising TypeError for unsupported operands? And `__repr__` vs `__str__`?"
+a = '''
+- `NotImplemented` tells Python "I don't know how": it then tries the **reflected** method on
+  the other operand (`other.__radd__(self)`), and only if that also returns NotImplemented
+  raises the standard `TypeError: unsupported operand type(s)`. For `==` it falls back to
+  identity comparison (-> False).
+- Raising directly blocks other types from interoperating (e.g. `2 * vec` needs
+  `int.__mul__` -> NotImplemented -> `Vec.__rmul__`). `sum(vectors)` starts with `0 + v`, so it
+  needs `__radd__` handling 0.
+- `__repr__`: unambiguous, for developers/logs, ideally `eval`-able
+  (`Embedding([0.1, 0.2], model='m')`). `__str__`: readable, for end users; falls back to
+  `__repr__`. Containers show their items' `repr`.
+'''
+
+[[q]]
+id = "oop-10"
+topic = "copy"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import copy
+
+config = {"model": "m", "stop": ["###"]}
+shallow = copy.copy(config)
+deep = copy.deepcopy(config)
+shallow["model"] = "x"
+shallow["stop"].append("END")
+print(config)
+print(deep)
+```
+'''
+a = '''
+```
+{'model': 'm', 'stop': ['###', 'END']}
+{'model': 'm', 'stop': ['###']}
+```
+- `copy.copy` creates a **new outer dict** whose values are the **same objects**: rebinding a
+  key (`shallow["model"] = ...`) is independent, but mutating the shared inner list leaks
+  into the original.
+- `copy.deepcopy` recursively copies (with a `memo` dict to handle cycles/shared refs).
+- Same shallow behaviour: `dict(d)`, `d.copy()`, `list(xs)`, `xs[:]`, `{**d}`.
+- Classic AI-app bug: building per-request message lists/configs from a shallow copy of a
+  template and mutating nested parts.
+'''
+
+[[q]]
+id = "oop-11"
+topic = "copy"
+level = 2
+kind = "debug"
+q = '''
+You want three independent batches/rows, but every update hits all of them. Why?
+```python
+grid = [[0] * 3] * 3
+grid[0][0] = 1
+print(grid)   # [[1, 0, 0], [1, 0, 0], [1, 0, 0]]
+```
+'''
+a = '''
+- `[row] * 3` repeats **references**: the outer list holds the *same* inner list three times.
+  (`[0] * 3` is fine: ints are immutable.)
+- Fix: build distinct inner objects - `[[0] * 3 for _ in range(3)]`, e.g.
+  `batches = [[] for _ in range(n)]`.
+- Same family: `dict.fromkeys(keys, [])` shares one list for all keys; default arguments
+  `def f(x=[])` share one list across calls; shallow copies share nested objects.
+'''
+
+[[q]]
+id = "oop-12"
+topic = "property"
+level = 2
+kind = "debug"
+q = '''
+Creating this object crashes with `RecursionError: maximum recursion depth exceeded`. Why?
+```python
+class LLM:
+    def __init__(self, t):
+        self.temperature = t
+
+    @property
+    def temperature(self):
+        return self.temperature
+
+    @temperature.setter
+    def temperature(self, v):
+        if not 0 <= v <= 2:
+            raise ValueError("bad temperature")
+        self.temperature = v
+```
+'''
+a = '''
+- `property` is a **data descriptor** on the class, so `self.temperature = v` inside the
+  setter calls the setter again (and the getter's `self.temperature` calls the getter
+  again) -> infinite recursion.
+- Fix: store the value under a different, internal name:
+  `self._temperature = v` / `return self._temperature`.
+- Keep `self.temperature = t` in `__init__` - going through the setter is good: validation
+  runs at construction too.
+- Properties let you start with a plain attribute and add validation later without changing
+  callers.
+'''
+
+[[q]]
+id = "oop-13"
+topic = "abc"
+level = 2
+kind = "concept"
+q = "What do `abc.ABC` and `@abstractmethod` give you? When is the error raised?"
+a = '''
+- A class with unimplemented `@abstractmethod`s **can't be instantiated**: TypeError at
+  instantiation time, e.g. `Can't instantiate abstract class Impl without an implementation
+  for abstract method 'run'` - not later when the method is called.
+- Documents and enforces the interface for subclasses (a `BaseLLM` with `complete` and
+  `count_tokens`), while the base can still provide concrete shared logic (template
+  method: `generate()` validates, calls `complete`, counts tokens).
+- Abstract methods can have a body (called via `super()`); `@property` + `@abstractmethod`
+  makes abstract properties.
+- `ABC.register(SomeClass)` makes virtual subclasses (isinstance works, no enforcement).
+'''
+
+[[q]]
+id = "oop-14"
+topic = "dataclasses"
+level = 2
+kind = "concept"
+q = "What does `@dataclass` generate, and what do `frozen`, `slots`, `order` and `field(default_factory=...)` do?"
+a = '''
+- Generates `__init__`, `__repr__`, `__eq__` from annotated fields (plus `__match_args__`).
+- `frozen=True`: assignment raises `FrozenInstanceError`; with `eq=True` also generates
+  `__hash__` -> usable as dict/cache keys. Inside `__post_init__` use
+  `object.__setattr__(self, ...)` to normalise fields.
+- `slots=True` (3.10+): generates `__slots__` -> less memory, no accidental new attributes.
+- `order=True`: `<, <=, >, >=` comparing fields as a tuple in definition order (exclude
+  fields with `field(compare=False)`, or add a `sort_key` field with `init=False`).
+- Mutable defaults are rejected: `results: list = []` -> `ValueError: mutable default <class
+  'list'> for field results is not allowed: use default_factory`. Use
+  `field(default_factory=list)` - a fresh list per instance.
+- `__post_init__` for validation; `dataclasses.replace(obj, **changes)` for modified copies
+  (re-runs `__init__`/`__post_init__`); `kw_only=True` for keyword-only fields.
+'''
+
+[[q]]
+id = "oop-15"
+topic = "slots"
+level = 3
+kind = "compare"
+q = "What does `__slots__` do? When would you use it, and what are the gotchas?"
+a = '''
+- Declares a fixed set of attributes stored in a compact per-instance array instead of a
+  `__dict__`: noticeably less memory per object and slightly faster attribute access;
+  typos like `obj.temprature = 1` raise AttributeError
+  (`'P' object has no attribute 'y' and no __dict__ for setting new attributes`).
+- Use for **many small objects**: millions of chunks/tokens/embedding records, graph nodes.
+- Gotchas:
+  - every class in the hierarchy must declare `__slots__`, otherwise a `__dict__` comes back;
+  - no `__weakref__` unless listed; no `functools.cached_property` (needs `__dict__`);
+  - class attributes with the same name as a slot conflict (so no class-level defaults);
+  - multiple inheritance from two classes with non-empty slots fails (layout conflict);
+  - pickling/copy work, but custom `__getstate__` code may assume `__dict__`.
+- `@dataclass(slots=True)` generates them for you.
+'''
+
+[[q]]
+id = "oop-16"
+topic = "composition"
+level = 3
+kind = "compare"
+q = "Composition vs inheritance: how do you decide? Give an example from an LLM application."
+a = '''
+- **Inheritance** = "is-a" and shares implementation; couples the subclass to the parent's
+  internals (fragile base class), hard to combine variants (class explosion:
+  `CachedLoggingRetryingOpenAIClient`).
+- **Composition** = "has-a" and delegates: `Conversation` *has* a client, a `RAGPipeline`
+  *has* a retriever, a reranker and an LLM - each swappable (another vendor, a mock in tests)
+  and shareable (one HTTP client for thousands of conversations).
+- Rule of thumb: inherit for a true subtype that honours the base contract (Liskov) - e.g.
+  providers implementing an abstract `BaseLLM`; compose for everything else - features,
+  policies, resources.
+- Composition + small interfaces (`Protocol`) + dependency injection = testable systems.
+'''
+
+[[q]]
+id = "oop-17"
+topic = "abc"
+level = 3
+kind = "compare"
+q = "`abc.ABC` vs `typing.Protocol` for defining an LLM client interface: which do you choose?"
+a = '''
+- **ABC (nominal)**: implementations must **inherit**; enforcement at instantiation; can
+  ship shared concrete code (template methods, helpers). Good when you own the hierarchy
+  (your own provider adapters).
+- **Protocol (structural)**: any class with matching methods satisfies it - no inheritance,
+  checked by the **type checker** (mypy/pyright). Perfect for third-party SDK objects you can't
+  change, and for test fakes. `@runtime_checkable` enables `isinstance` but only checks that
+  method names exist, not signatures.
+- Common combo: a `Protocol` for what callers depend on (`class Completer(Protocol): def
+  complete(self, messages) -> str`), plus an optional ABC base that real implementations
+  inherit for shared behaviour.
+'''
+
+[[q]]
+id = "oop-18"
+topic = "mro"
+level = 3
+kind = "predict"
+q = '''
+What happens?
+```python
+class Base: pass
+class A(Base): pass
+class X(Base, A): pass
+```
+'''
+a = '''
+```
+TypeError: Cannot create a consistent method resolution order (MRO) for bases Base, A
+```
+- C3 linearization must keep (1) each class before its parents and (2) the listed base order.
+  `X(Base, A)` demands Base before A, but A is a subclass of Base, so A must come before
+  Base - contradiction.
+- Fix: list more specific classes first: `class X(A, Base)` (or just `class X(A)`).
+- Practical rule: mixins go **left**, the concrete base class goes **right**:
+  `class SafeClient(RedactMixin, LoggingMixin, BaseClient)`.
+'''
+
+[[q]]
+id = "oop-19"
+topic = "inheritance"
+level = 3
+kind = "design"
+q = "Design the class structure for supporting several LLM providers (OpenAI, Anthropic, a local model) behind one interface. What goes where?"
+a = '''
+- An interface/ABC `BaseLLM` with the minimal abstract surface: `complete(messages, **opts)`,
+  `stream(...)`, `count_tokens(text)`; concrete shared logic in the base: input validation,
+  retries/backoff policy hooks, usage accounting (template method).
+- One adapter subclass per provider translating our `Message`/`Completion` dataclasses
+  to/from the vendor SDK - vendor types never leak into app code.
+- Construction: `BaseLLM.from_config(cfg)` / a registry `{"openai": OpenAILLM, ...}` (or
+  `__init_subclass__` registration); config as a frozen dataclass/pydantic model from env.
+- Cross-cutting concerns (cache, rate limiting, logging, tracing, fallback to another
+  provider) by **composition/decorators** around any `BaseLLM`, not by deeper inheritance.
+- Async-first (`async def complete`), share one HTTP client per provider, explicit timeouts.
+- Testability: a `FakeLLM` implementing the same interface; contract tests run against every
+  adapter.
+'''

@@ -1,0 +1,47 @@
+[track]
+id = "llm"
+title = "LLMs & Transformers"
+order = 5
+description = "How LLMs work internally and how to integrate them reliably."
+
+[[module]]
+slug = "transformers"
+num = 1
+title = "Transformer Architecture"
+status = "planned"
+topics = [["attention", "Self-attention (Q, K, V)"], ["multi_head", "Multi-head attention"], ["positional", "Positional encodings / RoPE"], ["encoder_decoder", "Encoder vs decoder vs encoder-decoder"], ["kv_cache", "KV cache"], ["scaling", "Scaling laws, context length"]]
+
+[[module]]
+slug = "pretraining_finetuning"
+num = 2
+title = "Pretraining & Fine-tuning"
+status = "planned"
+topics = [["pretraining", "Pretraining objectives"], ["sft", "Supervised fine-tuning"], ["rlhf_dpo", "RLHF / DPO"], ["peft_lora", "PEFT / LoRA / QLoRA"], ["quantization", "Quantization"]]
+
+[[module]]
+slug = "inference"
+num = 3
+title = "Inference & Decoding"
+status = "planned"
+topics = [["sampling", "Temperature, top-k, top-p"], ["decoding", "Greedy / beam search"], ["latency_cost", "Latency, throughput, cost"], ["serving", "vLLM / TGI / Ollama serving"]]
+
+[[module]]
+slug = "apis"
+num = 4
+title = "LLM APIs & Integration"
+status = "planned"
+topics = [["chat_api", "Chat/messages APIs"], ["streaming", "Streaming responses"], ["tool_calling", "Tool / function calling"], ["structured_outputs", "Structured outputs & JSON mode"], ["prompt_caching", "Prompt caching"], ["multimodal", "Multimodal inputs"], ["provider_abstraction", "Provider abstraction layers"]]
+
+[[module]]
+slug = "prompting"
+num = 5
+title = "Prompt Engineering"
+status = "planned"
+topics = [["fundamentals", "System prompts, few-shot"], ["cot", "Chain-of-thought & reasoning"], ["templates", "Prompt templates & versioning"], ["injection", "Prompt injection & defenses"]]
+
+[[module]]
+slug = "huggingface"
+num = 6
+title = "Hugging Face Ecosystem"
+status = "planned"
+topics = [["transformers_lib", "transformers library"], ["tokenizers", "tokenizers"], ["datasets", "datasets"], ["hub", "Model hub"]]

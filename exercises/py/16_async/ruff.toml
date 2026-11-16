@@ -1,0 +1,9 @@
+# Generated stubs keep the solution's imports but drop the bodies that used them
+# (study.stubgen strips comments, so `# noqa` can't survive). Learners need those imports.
+extend = "../../../pyproject.toml"
+
+[lint.per-file-ignores]
+"ex*.py" = ["F401"]
+
+[lint.isort]
+known-first-party = ["study"]  # nested config moves the project root; keep `study` first-party

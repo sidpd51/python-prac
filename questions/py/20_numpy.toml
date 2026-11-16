@@ -1,0 +1,418 @@
+# Interview question bank - Data Processing with NumPy
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "np-01"
+topic = "vs_lists"
+level = 1
+kind = "compare"
+q = "Why is NumPy so much faster and smaller than a Python list of floats for embedding math?"
+a = """
+- **Memory layout**: an ndarray is one contiguous, typed buffer (+ shape, strides, dtype). A list
+  is an array of pointers to separately allocated, boxed `float` objects: ~8 bytes pointer +
+  24 bytes object per element vs 4 bytes (float32) or 8 bytes (float64) in NumPy.
+- **Execution**: an operation like `a @ b` or `a * 2` runs as a compiled C loop (or BLAS, often
+  SIMD + multi-threaded) over raw memory - no per-element bytecode dispatch, type checks or
+  refcounting. Typically 10-100x+ faster.
+- Contiguous memory is cache-friendly and can be handed zero-copy to C/GPU libraries (FAISS,
+  torch via `from_numpy`).
+- Trade-offs: fixed dtype and size (appending is O(n) - preallocate or collect then convert),
+  element-wise Python access (`arr[i]` in a loop) is *slower* than with lists because each access
+  boxes a new scalar.
+"""
+
+[[q]]
+id = "np-02"
+topic = "broadcasting"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import numpy as np
+a = np.arange(3).reshape(3, 1)
+b = np.arange(4)
+print((a + b).shape)
+print(a + b)
+```
+'''
+a = """
+```
+(3, 4)
+[[0 1 2 3]
+ [1 2 3 4]
+ [2 3 4 5]]
+```
+Broadcasting rules: align shapes from the **right**; dimensions are compatible if equal or one of
+them is 1 (missing leading dims count as 1). `(3, 1)` and `(4,)` -> `(3, 1)` and `(1, 4)` ->
+`(3, 4)`. Sizes of 1 are virtually stretched without copying memory.
+"""
+followups = ["What happens with shapes (3,) and (4,)?", "How would you compute all pairwise differences of two point sets?"]
+
+[[q]]
+id = "np-03"
+topic = "indexing"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import numpy as np
+x = np.arange(6)
+v = x[1:4]
+f = x[[1, 2, 3]]
+v[0] = 100
+f[1] = 200
+print(x)
+print(np.shares_memory(v, x), np.shares_memory(f, x))
+```
+'''
+a = """
+```
+[  0 100   2   3   4   5]
+True False
+```
+- **Basic slicing** (`start:stop:step`, integers, `None`, `...`) returns a **view** - same buffer,
+  different shape/strides - so writing through `v` changes `x`.
+- **Fancy indexing** (integer lists/arrays) and **boolean masks** always return a **copy**, so
+  writing to `f` doesn't touch `x`.
+- Gotcha both ways: a view of a huge array keeps the whole buffer alive (`.copy()` a small slice
+  you want to keep), and mutating a "slice" silently mutates the source.
+- (Assignment *through* fancy indexing, `x[[1, 2]] = 0`, does modify `x` - that's `__setitem__`.)
+"""
+
+[[q]]
+id = "np-04"
+topic = "axis"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import numpy as np
+m = np.array([[1, 2, 3], [4, 5, 6]])
+print(m.sum(axis=0), m.sum(axis=1), m.mean(axis=1, keepdims=True).shape)
+```
+'''
+a = """
+```
+[5 7 9] [ 6 15] (2, 1)
+```
+- `axis=k` means "reduce **along** axis k" - that axis disappears. `axis=0` collapses rows (one
+  result per column); `axis=1` collapses columns (one result per row).
+- `keepdims=True` keeps the reduced axis with size 1, so the result broadcasts back against `m`
+  (e.g. `m / m.sum(axis=1, keepdims=True)` normalises each row).
+- For embeddings `(n, d)`: per-vector norms use `axis=1` (or `-1`); per-dimension mean uses `axis=0`.
+"""
+
+[[q]]
+id = "np-05"
+topic = "arrays"
+level = 2
+kind = "predict"
+q = '''
+What does this print (NumPy 2.x)?
+```python
+import numpy as np
+a = np.array([1, 2, 3])
+a[0] = 2.9
+print(a)
+b = np.array([200], dtype=np.uint8)
+print(b + 100)
+print(np.array([1, 2]) / 2)
+```
+'''
+a = """
+```
+[2 2 3]
+[44]
+[0.5 1. ]
+```
+- An array has **one fixed dtype**; assigning 2.9 into an int64 array **truncates silently**.
+- `uint8` arithmetic **wraps around** (300 mod 256 = 44) with no error. Under NumPy 2's NEP 50
+  promotion rules the Python int 100 is "weak", so the result stays `uint8`.
+- `/` is true division and always gives floats; `//` keeps ints.
+- Lesson: check `dtype` at boundaries (images as uint8, token ids as int32, embeddings float32);
+  cast explicitly with `astype` before arithmetic that can overflow.
+"""
+
+[[q]]
+id = "np-06"
+topic = "random"
+level = 2
+kind = "concept"
+q = "How should you generate random numbers in modern NumPy for reproducible experiments, including in parallel workers?"
+a = """
+- Use the **Generator API**: `rng = np.random.default_rng(seed)`; then `rng.standard_normal`,
+  `rng.integers`, `rng.choice`, `rng.permutation`, `rng.shuffle`. Pass `rng` explicitly into
+  functions (dependency injection) instead of relying on global state.
+- Avoid the legacy global `np.random.seed()` / `np.random.rand()`: one hidden global stream that
+  any library can consume or reseed, so results depend on call order.
+- Default bit generator is PCG64 (fast, good statistics); `MT19937` only for legacy reproduction.
+- Parallel: don't give workers `seed + i` naively - use `np.random.SeedSequence(seed).spawn(n)`
+  (or `rng.spawn(n)`) to get statistically independent child streams.
+- Reproducibility also needs fixed library versions; torch/Python `random` have their own seeds.
+- `rng.standard_normal(shape, dtype=np.float32)` generates float32 directly (no float64 temp).
+"""
+
+[[q]]
+id = "np-07"
+topic = "vectorization"
+level = 2
+kind = "concept"
+q = "What does 'vectorise your code' mean? Is `np.vectorize` vectorisation?"
+a = """
+- Express the computation as **whole-array operations** (ufuncs like `np.exp`, arithmetic,
+  reductions, `@`, boolean masks, `np.where`, `np.take_along_axis`) so the loop runs in C, not in
+  the Python interpreter.
+- Typical rewrites: loop of dot products -> one matmul; `if` per element -> `np.where`/mask;
+  per-row normalisation -> broadcasting with `keepdims`; counting -> `np.bincount`/`np.unique`.
+- **`np.vectorize` is NOT vectorisation** - it's a convenience wrapper that calls your Python
+  function once per element (it only adds broadcasting semantics). Same speed as a loop.
+- Costs: vectorised code can create large temporaries (memory) - use `out=` parameters,
+  in-place ops (`x /= n`), or process in chunks. Some algorithms with sequential dependencies
+  don't vectorise (use Numba there).
+"""
+
+[[q]]
+id = "np-08"
+topic = "broadcasting"
+level = 3
+kind = "debug"
+q = '''
+A teammate normalises a batch of embeddings like this. In tests with a (3, 3) batch it "works"
+but cosine scores look wrong; with (8, 384) it crashes. What's going on? Fix it.
+```python
+def normalize(emb):                 # emb: (n, d)
+    return emb / np.linalg.norm(emb, axis=1)
+```
+'''
+a = """
+- `np.linalg.norm(emb, axis=1)` has shape `(n,)`. Broadcasting aligns from the **right**, so
+  `(n, d) / (n,)` is treated as `(n, d) / (1, n)`: it divides **columns** by row norms.
+  - If `n != d` -> `ValueError: operands could not be broadcast together with shapes (8,384) (8,)`.
+  - If `n == d` (the square test fixture!) it **silently** computes garbage.
+- Fix: keep the reduced axis so it broadcasts per row, and guard zero vectors:
+  ```python
+  norms = np.linalg.norm(emb, axis=1, keepdims=True)            # (n, 1)
+  return np.divide(emb, norms, out=np.zeros_like(emb), where=norms > 0)
+  ```
+- Lesson: test with non-square shapes, assert shapes (`assert out.shape == emb.shape`), and check
+  invariants (`np.allclose(np.linalg.norm(out, axis=1), 1)`).
+"""
+
+[[q]]
+id = "np-09"
+topic = "matmul"
+level = 2
+kind = "compare"
+q = "Compare `a * b`, `a @ b`, `np.dot(a, b)` and `np.einsum`. How do you compute attention scores for a batch `q (B, T, D)`, `k (B, S, D)`?"
+a = """
+- `*` is **element-wise** (Hadamard) with broadcasting.
+- `@` / `np.matmul`: matrix product over the **last two axes**, broadcasting the leading (batch)
+  axes. 1-D operands are treated as vectors.
+- `np.dot`: same as `@` for 2-D, but for N-D it's a sum-product over the last axis of `a` and
+  second-to-last of `b` - producing a different, larger shape. Prefer `@`.
+- `np.einsum("btd,bsd->bts", q, k)`: explicit index notation - readable for complex contractions,
+  sometimes slower unless `optimize=True`.
+- Attention: `scores = q @ k.swapaxes(-1, -2) / np.sqrt(D)` -> `(B, T, S)`. **Not `k.T`**: on a
+  3-D array `.T` reverses all axes to `(D, S, B)`.
+- For performance all of these call BLAS for float32/float64; keep arrays contiguous and in the
+  same dtype (mixing float32 and float64 upcasts and copies).
+"""
+
+[[q]]
+id = "np-10"
+topic = "linalg"
+level = 2
+kind = "concept"
+q = "Which `np.linalg` tools matter for working with embeddings, and what are the common pitfalls?"
+a = """
+- `np.linalg.norm(x, axis=-1, keepdims=True)` - vector norms (L2 default; `ord=1`, `np.inf`).
+  Cosine similarity = dot product of L2-normalised vectors.
+- `np.linalg.svd` / PCA (centre, then SVD) - dimensionality reduction, visualising embedding
+  spaces, removing a dominant "common direction" (improves isotropy).
+- `np.linalg.solve(A, b)` instead of `inv(A) @ b` (faster, numerically more stable);
+  `np.linalg.lstsq` for least squares (e.g. a linear probe / linear adapter on embeddings).
+- `np.linalg.eigh` for symmetric matrices (covariance), `matrix_rank`, `cond` (ill-conditioning).
+- Pitfalls: float32 loses precision (~7 significant digits) - compare with `np.allclose`, not
+  `==`; zero vectors make normalisation divide by zero; `norm` without `axis` flattens the
+  whole matrix (Frobenius norm).
+"""
+
+[[q]]
+id = "np-11"
+topic = "boolean_indexing"
+level = 1
+kind = "predict"
+q = '''
+What does this print? What happens if you replace `&` with `and`?
+```python
+import numpy as np
+scores = np.array([0.2, 0.8, 0.5, 0.9])
+mask = scores > 0.4
+print(mask)
+print(scores[mask])
+print(scores[(scores > 0.4) & (scores < 0.85)])
+```
+'''
+a = """
+```
+[False  True  True  True]
+[0.8 0.5 0.9]
+[0.8 0.5]
+```
+- Comparisons are element-wise and produce a **boolean array**; indexing with it selects the
+  True positions (always returns a **copy**, 1-D).
+- Combine masks with `&`, `|`, `~` and **parentheses** (`&` binds tighter than `>`).
+- `and`/`or` call `bool()` on the whole array -> `ValueError: The truth value of an array with
+  more than one element is ambiguous. Use a.any() or a.all()`.
+- Useful companions: `np.flatnonzero(mask)`, `mask.sum()` (count), `mask.mean()` (fraction),
+  `np.where(mask, x, y)`, `np.isin(ids, excluded)`.
+"""
+
+[[q]]
+id = "np-12"
+topic = "aggregation"
+level = 3
+kind = "design"
+q = "You need exact top-10 cosine search over 10 M chunk embeddings (dim 768) on one machine. Estimate memory and design it with NumPy. When do you switch to an ANN index?"
+a = """
+- Memory: 10 M x 768 x 4 bytes (float32) = **~30.7 GB**; float64 would be ~61 GB; a full
+  similarity row per query is 40 MB.
+- Design: L2-normalise once at ingest; store as float32 (or float16 / int8 scalar-quantised,
+  2-4x smaller with a small recall loss) in a `np.memmap` / `.npy` file.
+- Query: score in **chunks** (e.g. 500 k rows): `chunk @ q`, `np.argpartition` to take each
+  chunk's top-k, keep a running candidate set, final sort of k x n_chunks candidates. Batch many
+  queries into one `(Q, d) @ (d, chunk)` matmul to use BLAS efficiently.
+- Filters: boolean masks on metadata arrays before ranking (pre-filtering).
+- Brute force is O(N*d) per query (~7.7 G multiply-adds here): fine for offline eval and as **ground truth**;
+  for low-latency serving use ANN - FAISS (HNSW, IVF-PQ), ScaNN, or a vector DB
+  (pgvector/Qdrant) - and measure recall@k against the brute-force results.
+"""
+
+[[q]]
+id = "np-13"
+topic = "math"
+level = 3
+kind = "concept"
+q = "Why do we subtract the max in softmax, and what other numerical-stability issues show up in embedding/LLM code?"
+a = """
+- `exp` overflows quickly (float64 above ~709, float32 above ~88) -> `inf/inf = nan`.
+  `softmax(x) == softmax(x - c)` for any constant c, so subtracting the row max makes the largest
+  exponent `exp(0) = 1` and nothing overflows; tiny values underflow harmlessly to 0.
+- **log-sum-exp**: `log(sum(exp(x))) = m + log(sum(exp(x - m)))` - for log-probs/perplexity; use
+  `np.logaddexp` / `scipy.special.logsumexp`. Compute `log_softmax` directly rather than
+  `log(softmax)`.
+- Division by zero: zero-norm vectors, empty masks in mean pooling -> guard with
+  `np.divide(..., where=...)` or epsilon.
+- **Cancellation**: `||a||^2 + ||b||^2 - 2ab` for nearly identical vectors can go slightly negative
+  -> clip before `sqrt`.
+- Accumulating large float32 sums loses precision (NumPy uses pairwise summation, which helps;
+  use float64 accumulators via `dtype=np.float64` for metrics).
+- Comparing floats: `np.isclose`/`np.allclose`/`np.testing.assert_allclose` with sensible `rtol`.
+"""
+
+[[q]]
+id = "np-14"
+topic = "reshaping"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import numpy as np
+x = np.arange(6).reshape(2, 3)
+print(x.reshape(3, 2))
+print(x.T)
+print(x.T.flags["C_CONTIGUOUS"], x.reshape(3, 2).flags["C_CONTIGUOUS"])
+```
+'''
+a = """
+```
+[[0 1]
+ [2 3]
+ [4 5]]
+[[0 3]
+ [1 4]
+ [2 5]]
+False True
+```
+- `reshape` keeps the elements in **memory (row-major) order** and just re-chunks them; the
+  transpose **permutes axes** (swaps strides) - different results for the same target shape.
+- `.T` is a free view with swapped strides, so it is no longer C-contiguous. Reshaping a
+  non-contiguous array may force a **copy**; `np.ascontiguousarray` before handing data to C
+  libraries (FAISS, some tokenizers) that expect contiguous buffers.
+- Splitting attention heads needs both: `x.reshape(B, T, H, Dh).transpose(0, 2, 1, 3)`.
+"""
+
+[[q]]
+id = "np-15"
+topic = "ndarray"
+level = 3
+kind = "concept"
+q = "Explain an ndarray's memory model: buffer, dtype, shape, strides. Why are transpose and slicing O(1), and when does NumPy have to copy?"
+a = """
+- An ndarray = pointer to a **data buffer** + **dtype** (how to interpret bytes) + **shape** +
+  **strides** (bytes to jump per axis) + flags (C/F-contiguous, writeable) + `base` (owner, for views).
+- Element `[i, j]` lives at `offset + i*strides[0] + j*strides[1]`. A (1000, 768) float32
+  C-order array has strides (3072, 4).
+- Views just compute new shape/strides/offset: slicing (`x[::2]` doubles a stride), transpose
+  (swaps strides), `reshape` of contiguous data, broadcasting (stride **0** on stretched axes),
+  `np.newaxis`. All O(1), no data copied.
+- Copies happen with fancy/boolean indexing, `reshape`/`ravel` of non-contiguous data, `astype`,
+  `np.ascontiguousarray`, and arithmetic results (new arrays).
+- Performance: iterate/reduce along the contiguous (last, in C order) axis for cache friendliness;
+  `np.lib.stride_tricks.sliding_window_view` builds windows with zero copies.
+"""
+
+[[q]]
+id = "np-16"
+topic = "creation"
+level = 1
+kind = "concept"
+q = "Name the common ways to create arrays and their gotchas (`np.array` vs `np.asarray`, `np.empty`, `arange` with floats)."
+a = """
+- From data: `np.array(obj)` (copies by default), `np.asarray(obj)` (no copy if already an
+  ndarray of the right dtype), `np.fromiter`, `np.frombuffer`, `np.load`/`np.memmap`.
+- Filled: `np.zeros`, `np.ones`, `np.full(shape, v)`, `np.zeros_like(x)` (same shape/dtype),
+  `np.eye`, `np.identity`.
+- `np.empty(shape)` allocates **without initialising** - contents are garbage; only use when you
+  overwrite every element.
+- Ranges: `np.arange(start, stop, step)` - with float steps the number of elements is subject to
+  rounding; use `np.linspace(start, stop, num)` for an exact count.
+- dtype inference: Python ints -> int64, floats -> float64; pass `dtype=np.float32` for
+  embeddings. Ragged nested lists raise `ValueError` in NumPy >= 1.24 (no silent object arrays).
+- Random: `np.random.default_rng(seed).standard_normal(shape)`.
+"""
+
+[[q]]
+id = "np-17"
+topic = "indexing"
+level = 2
+kind = "debug"
+q = '''
+This "top-k retrieval" returns the *least* similar chunks, and is slower than it should be for
+2 M documents. Fix both problems.
+```python
+def top_k(scores, k):
+    return np.argsort(scores)[:k]
+```
+'''
+a = """
+- `np.argsort` sorts **ascending**, so `[:k]` gives the k *lowest* scores. Use `np.argsort(-scores)[:k]`
+  or `np.argsort(scores)[::-1][:k]` (careful: reversing changes tie order).
+- A full sort is O(n log n) for 2 M items just to keep 10. Use **`np.argpartition`** (O(n)
+  introselect) and sort only the selected k:
+  ```python
+  def top_k(scores, k):
+      k = min(k, len(scores))
+      if k <= 0:
+          return np.empty(0, dtype=np.intp)
+      idx = np.argpartition(-scores, k - 1)[:k]     # top-k, unordered
+      return idx[np.argsort(-scores[idx])]          # order just those k
+  ```
+- Edge cases: k > n (argpartition raises for kth out of bounds), k = 0, NaN scores (NaN sorts
+  last in ascending order -> filter with `np.isnan` first). For a batch of queries use `axis=1` and
+  `np.take_along_axis`.
+"""

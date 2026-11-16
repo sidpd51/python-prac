@@ -1,0 +1,40 @@
+[track]
+id = "rag"
+title = "RAG, Vector DBs & Evaluation"
+order = 6
+description = "Retrieval-augmented generation end-to-end, plus how to prove it works."
+
+[[module]]
+slug = "fundamentals"
+num = 1
+title = "RAG Fundamentals"
+status = "planned"
+topics = [["architecture", "RAG architecture"], ["ingestion", "Ingestion pipelines"], ["chunking", "Chunking strategies (fixed, recursive, semantic)"], ["embeddings", "Embedding models"], ["prompt_assembly", "Context assembly & citation"]]
+
+[[module]]
+slug = "vector_db"
+num = 2
+title = "Vector Databases"
+status = "planned"
+topics = [["ann", "ANN search: HNSW, IVF, PQ"], ["distance", "Distance metrics"], ["metadata_filtering", "Metadata filtering"], ["pgvector", "pgvector"], ["managed", "Qdrant / Pinecone / Weaviate / Chroma"], ["index_ops", "Index updates, deletes, re-embedding"]]
+
+[[module]]
+slug = "retrieval"
+num = 3
+title = "Advanced Retrieval"
+status = "planned"
+topics = [["hybrid", "Hybrid search (BM25 + dense)"], ["rerankers", "Rerankers / cross-encoders"], ["query_transform", "Query rewriting, HyDE, multi-query"], ["parent_child", "Parent-child / small-to-big retrieval"], ["graph_rag", "GraphRAG"], ["agentic_rag", "Agentic RAG"]]
+
+[[module]]
+slug = "evaluation"
+num = 4
+title = "RAG & LLM Evaluation"
+status = "planned"
+topics = [["retrieval_metrics", "Recall@k, MRR, nDCG"], ["generation_metrics", "Faithfulness, answer relevance"], ["llm_judge", "LLM-as-judge"], ["golden_sets", "Golden datasets & synthetic data"], ["frameworks", "RAGAS / DeepEval / promptfoo"], ["regression", "Eval-driven development & regression suites"]]
+
+[[module]]
+slug = "frameworks"
+num = 5
+title = "RAG Frameworks"
+status = "planned"
+topics = [["langchain", "LangChain"], ["llamaindex", "LlamaIndex"], ["when_not", "When to skip the framework"]]

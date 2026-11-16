@@ -1,0 +1,496 @@
+# Interview question bank - Python for Generative AI Applications
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "gai-01"
+topic = "normalization"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import unicodedata
+
+a = "café"          # precomposed é (U+00E9)
+b = "café"    # e + combining acute accent
+print(a == b, len(a), len(b))
+print(unicodedata.normalize("NFC", a) == unicodedata.normalize("NFC", b))
+print(unicodedata.normalize("NFKC", "ﬁle ①"), "Straße".lower(), "Straße".casefold())
+```
+'''
+a = '''
+```
+False 4 5
+True
+file 1 straße strasse
+```
+- Two strings that *render* identically can differ in code points; `==` compares code points.
+- **NFC** composes base + combining marks into the precomposed form -> equal after normalising.
+- **NFKC** additionally folds compatibility characters: ligature "ﬁ" -> "fi", circled "①" -> "1",
+  full-width letters, NBSP -> space. Great for dedup/match keys, too lossy for display text.
+- `casefold()` is the aggressive, Unicode-correct version of `lower()` for caseless matching
+  ("ß" -> "ss").
+- In RAG: normalise before hashing for dedup and before keyword (BM25) indexing, otherwise
+  "the same" text gets different hashes/tokens.
+'''
+followups = ["Which characters does NFKC NOT handle that you still need to clean? (zero-width chars, smart quotes)"]
+
+[[q]]
+id = "gai-02"
+topic = "tokenization"
+level = 1
+kind = "concept"
+q = '''What is a token for an LLM, why do APIs bill and limit in tokens, and why is "characters / 4" only an estimate?'''
+a = '''
+- Models read sub-word units produced by a tokenizer (BPE / WordPiece / SentencePiece):
+  frequent words are one token, rare words split into several pieces, punctuation and
+  whitespace patterns are tokens too.
+- Context windows, max output, rate limits (TPM) and price are all counted in tokens -
+  the compute cost scales with tokens, not characters.
+- "~4 chars per token" holds roughly for English prose; code, numbers, URLs, non-Latin
+  scripts and rare words use many more tokens per character.
+- Tokenizers are **model-specific** (e.g. cl100k vs o200k, Llama's SentencePiece): count with
+  the model's own tokenizer (tiktoken, `tokenizers`, or the provider's count-tokens endpoint)
+  when budgets matter.
+- Budget = system + history + retrieved context + question + **reserved output tokens**.
+- Truncate on token boundaries, never mid-word/mid-UTF-8 character.
+'''
+followups = ["Why might the same prompt cost more in Hindi than in English?"]
+
+[[q]]
+id = "gai-03"
+topic = "regex"
+level = 2
+kind = "predict"
+q = '''
+You extract code blocks from an LLM reply. What does each line print?
+```python
+import re
+
+text = "```py\nA\n```\ntext\n```py\nB\n```"
+print(re.findall(r"```py\n(.*)```", text))
+print(re.findall(r"```py\n(.*)```", text, re.DOTALL))
+print(re.findall(r"```py\n(.*?)```", text, re.DOTALL))
+```
+'''
+a = '''
+```
+[]
+['A\n```\ntext\n```py\nB\n']
+['A\n', 'B\n']
+```
+- Without DOTALL, `.` doesn't match `\n`; the closing fence is on the next line -> no match.
+- With DOTALL, greedy `.*` runs to the LAST ``` -> one giant match swallowing both blocks.
+- Non-greedy `.*?` stops at the first closing fence -> one match per block.
+- Production extra care: optional language tag (`[\w+-]*`), `\r\n`, unclosed final fence
+  (streams cut off at max_tokens), and nested ``` inside strings.
+'''
+
+[[q]]
+id = "gai-04"
+topic = "chunking"
+level = 2
+kind = "compare"
+q = '''Compare chunking strategies for RAG: fixed-size, recursive/separator-based, structure-aware and semantic. How do you choose chunk size and overlap?'''
+a = '''
+- **Fixed-size** (N tokens/chars, step N - overlap): simple, predictable, but cuts
+  sentences/tables mid-way.
+- **Recursive separator-based**: try paragraph -> line -> sentence -> word boundaries until
+  pieces fit the budget; good default for prose.
+- **Structure-aware**: split on document structure - Markdown/HTML headings, PDF sections,
+  code by function/class, tables kept whole; carry the heading path as metadata/prefix.
+- **Semantic**: split where embedding similarity between consecutive sentences drops;
+  better topical coherence, costs embedding calls at ingest.
+- Size trade-off: small chunks = precise retrieval but missing context; large = more context
+  but diluted embeddings, fewer fit in the prompt, higher cost. Typical 200-800 tokens,
+  overlap 10-20%. Overlap protects facts that straddle a boundary but duplicates storage.
+- Choose with **evals** (retrieval recall@k / answer quality on a golden set), not by taste.
+- Always keep metadata (doc id, source, page, section, offsets) for citations and filters;
+  consider parent-document retrieval (embed small, return the bigger parent).
+'''
+followups = ["How would you chunk a 200-page PDF with tables?"]
+
+[[q]]
+id = "gai-05"
+topic = "async_llm_calls"
+level = 2
+kind = "predict"
+q = '''
+What is printed, in what order?
+```python
+import asyncio
+
+async def call(i, delay):
+    await asyncio.sleep(delay)
+    print("done", i)
+    return i
+
+async def main():
+    results = await asyncio.gather(call(1, 0.03), call(2, 0.01), call(3, 0.02))
+    print(results)
+
+asyncio.run(main())
+```
+'''
+a = '''
+```
+done 2
+done 3
+done 1
+[1, 2, 3]
+```
+- The three "LLM calls" run concurrently; they **finish** in latency order (2, 3, 1)...
+- ...but `gather` returns results in **argument order**, so you can zip them back to inputs.
+  `asyncio.as_completed` gives completion order instead (useful for streaming progress).
+- Total time ~0.03 s (max), not 0.06 s (sum) - the point of async for I/O-bound API calls.
+- Unbounded `gather` over 10k prompts = 10k simultaneous requests -> 429s; bound it with a
+  Semaphore or a worker pool. With `return_exceptions=False`, the first error propagates but
+  other tasks keep running (TaskGroup cancels them).
+'''
+
+[[q]]
+id = "gai-06"
+topic = "rate_limits"
+level = 3
+kind = "design"
+q = '''Your batch job embeds 5M chunks against an API limited to 3,000 requests/min and 1M tokens/min. Design the client-side rate limiting.'''
+a = '''
+- Respect **both** limits: requests per minute and tokens per minute. Batch inputs per request
+  (fewer requests) and pack batches by token budget.
+- Client-side **token bucket(s)**: one for requests, one for tokens; acquire `cost` tokens
+  before each call; refill continuously. Plus a **Semaphore** to cap in-flight requests
+  (latency x concurrency = throughput).
+- On 429/503: retry with exponential backoff + **jitter**, honour `Retry-After` /
+  `x-ratelimit-reset-*` headers; cap attempts and total delay; don't retry 400/401.
+- Adaptive: slow down globally when 429s appear (AIMD), not just the failing request.
+- Multiple workers/processes share the quota -> coordinate through a shared limiter
+  (Redis) or give each worker a slice.
+- Throughput math: 1M TPM / ~300 tokens per chunk ≈ 3.3k chunks/min -> ~25 hours; use the
+  provider's batch API (cheaper, async) when latency doesn't matter.
+- Make it resumable: checkpoint processed ids, idempotent upserts, dead-letter permanently
+  failing items.
+'''
+followups = ["What's the difference between token bucket and leaky bucket?", "Why add jitter?"]
+
+[[q]]
+id = "gai-07"
+topic = "retry_backoff"
+level = 2
+kind = "debug"
+q = '''
+Find the bugs in this async retry loop.
+```python
+import time
+
+async def call_llm(client, prompt):
+    for attempt in range(5):
+        try:
+            return await client.complete(prompt)
+        except Exception:
+            time.sleep(2 ** attempt)
+```
+'''
+a = '''
+- `time.sleep` **blocks the event loop**: every other coroutine (other requests, health
+  checks) freezes for up to 16 s. Use `await asyncio.sleep(...)`.
+- `except Exception` retries everything - 400 bad request, 401 auth, validation bugs - which
+  can never succeed and waste money/time. Retry only transient errors (429, 5xx, timeouts,
+  connection errors).
+- After the last attempt the loop ends and the function **returns None silently** - re-raise
+  the last error instead.
+- It sleeps even after the final failure (wasted 16 s before giving up).
+- No **jitter** -> many clients retry in lock-step (thundering herd); no max delay; ignores
+  the server's `Retry-After`.
+- Better: `tenacity` (`retry_if_exception_type`, `wait_random_exponential`, `stop_after_attempt`)
+  or a small helper with an injectable `sleep` so it's testable.
+'''
+
+[[q]]
+id = "gai-08"
+topic = "structured_output"
+level = 3
+kind = "compare"
+q = '''Ways to get structured data out of an LLM: prompt + parse, JSON mode, tool/function calling, provider "structured outputs" (schema-constrained decoding). Trade-offs, and what you still have to do in Python?'''
+a = '''
+- **Prompt + parse**: works everywhere; output may include prose/fences, invalid JSON or
+  wrong fields -> extract, validate, repair-retry loop.
+- **JSON mode**: guarantees syntactically valid JSON, **not** your schema (missing/extra fields,
+  wrong types still possible).
+- **Tool/function calling**: model fills arguments for a JSON-schema'd function; good for
+  agents and multi-tool routing; arguments can still violate constraints on some providers.
+- **Schema-constrained decoding** (strict structured outputs, or local libs like outlines /
+  guidance): the decoder can only emit schema-valid tokens; strongest guarantee, but schema
+  feature subsets, possible refusals/truncation, sometimes quality drops when the format
+  fights the content.
+- Always in Python: validate with **pydantic** (types, ranges, enums, `extra="forbid"`),
+  semantic checks (citations refer to retrieved ids, dates plausible), handle `max_tokens`
+  truncation, cap retries, log failures with the raw output for debugging.
+- Keep the schema simple and documented (`Field(description=...)` ends up in the JSON schema).
+'''
+
+[[q]]
+id = "gai-09"
+topic = "structured_data"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import json
+
+print(json.dumps({"name": "café", "n": 1.0, "ok": True, "none": None}))
+print(json.dumps({"name": "café"}, ensure_ascii=False))
+print(json.loads('{"a": 1, "a": 2}'))
+print(json.loads("[NaN, 1e400]"))
+```
+'''
+a = '''
+```
+{"name": "café", "n": 1.0, "ok": true, "none": null}
+{"name": "café"}
+{'a': 2}
+[nan, inf]
+```
+- `ensure_ascii=True` (default) escapes non-ASCII; use `ensure_ascii=False` (+ UTF-8 file
+  encoding) for readable JSONL datasets.
+- Python `True`/`None` become JSON `true`/`null`.
+- Duplicate keys: the **last one silently wins** (an LLM emitting duplicate keys won't error).
+- Python's json accepts `NaN`/`Infinity` and overflows `1e400` to inf - not valid strict JSON;
+  other parsers will reject it. `allow_nan=False` on dumps to be strict.
+'''
+
+[[q]]
+id = "gai-10"
+topic = "streaming"
+level = 2
+kind = "concept"
+q = '''How does token streaming from an LLM API work end to end, and how would you relay it from your FastAPI backend to a browser?'''
+a = '''
+- Provider sends **Server-Sent Events** over a long-lived HTTP response: `data: {json delta}`
+  lines separated by blank lines, ending with `data: [DONE]` (format varies per provider).
+- Client side: `httpx.AsyncClient.stream(...)` + `aiter_lines()` (or the SDK's async
+  iterator); parse each data line, yield `delta.content`.
+- Gotchas: chunks split lines and multi-byte characters (buffer + incremental decode);
+  errors can arrive **mid-stream** after a 200 status; `finish_reason` tells you if output was
+  cut (`length`) or a tool call started.
+- Relay: FastAPI `StreamingResponse(async_gen(), media_type="text/event-stream")`; add
+  keep-alive comments; disable proxy buffering (nginx `X-Accel-Buffering: no`).
+- Client disconnects -> the generator is cancelled -> cancel the upstream request too
+  (otherwise you keep paying for tokens).
+- Benefits: lower **time to first token** (perceived latency), not total time. Structured
+  output + streaming needs partial-JSON parsing or validating only at the end.
+- Log/meter the full assembled text and usage at the end of the stream.
+'''
+
+[[q]]
+id = "gai-11"
+topic = "env_vars"
+level = 1
+kind = "concept"
+q = '''How do you read configuration from environment variables in Python, and what are the pitfalls?'''
+a = '''
+- `os.environ["KEY"]` (KeyError if missing - good for required values), `os.getenv("KEY", default)`
+  / `os.environ.get` for optional ones.
+- Everything is a **string**: `"false"` is truthy, `"0"` is truthy, numbers need parsing ->
+  use pydantic-settings `BaseSettings` to parse and validate into typed fields.
+- 12-factor: config in the environment, code identical across dev/staging/prod.
+- `.env` files for local dev only (loaded by pydantic-settings or python-dotenv), in
+  `.gitignore`; commit a `.env.example` without secrets.
+- Read once at startup into a settings object; don't sprinkle `os.getenv` through the code
+  (hidden dependencies, hard to test). In tests use `monkeypatch.setenv/delenv`.
+- Env vars are visible to child processes and sometimes in `/proc`/crash dumps - secrets
+  should come from a secret manager in prod.
+'''
+
+[[q]]
+id = "gai-12"
+topic = "secrets"
+level = 2
+kind = "debug"
+q = '''
+Where can the API key leak here, and how do you fix it?
+```python
+class Settings(BaseModel):
+    api_key: str
+    model: str = "small-chat"
+
+settings = Settings(api_key=os.environ["APP_API_KEY"])
+logger.info("settings loaded: %s", settings)
+
+def call(prompt):
+    headers = {"Authorization": f"Bearer {settings.api_key}"}
+    r = httpx.post(URL, headers=headers, json={"prompt": prompt})
+    if r.status_code != 200:
+        raise RuntimeError(f"LLM call failed: {r.status_code} headers={headers}")
+```
+'''
+a = '''
+- `logger.info(... settings)` renders the model's repr -> `api_key='sk-...'` in the logs.
+- The exception message embeds the headers -> key lands in tracebacks, Sentry, CI output.
+- Fixes: `api_key: SecretStr` (repr/str/model_dump show `**********`; call
+  `.get_secret_value()` only when building the header); never put headers/credentials in
+  exception messages or logs.
+- Defence in depth: a redacting `logging.Filter` on the handlers (known secrets + `sk-...`
+  patterns), error-tracker scrubbing (`before_send`), secret scanning in CI (gitleaks), short-
+  lived / scoped keys, rotate after any leak.
+- Load secrets via pydantic-settings / a secret manager, not hard-coded or committed `.env`.
+'''
+
+[[q]]
+id = "gai-13"
+topic = "config"
+level = 2
+kind = "design"
+q = '''How do you manage configuration for an LLM service across dev, staging and prod - including model names, prompts and feature flags?'''
+a = '''
+- One typed `Settings` (pydantic-settings) with defaults safe for dev; overridden by env vars
+  per environment; precedence: explicit args > env > .env (dev only) > defaults.
+- **Validate at startup** (fail fast): ranges, URLs, cross-field rules (max_tokens <
+  context_window); one cached instance injected where needed (FastAPI `Depends(get_settings)`).
+- Secrets separate from config: secret manager / k8s secrets -> env; `SecretStr`.
+- **Prompts and model choices are versioned artifacts**: keep templates in the repo (or a
+  prompt registry) with ids/versions logged on every call, so you can correlate quality
+  changes and roll back.
+- Feature flags / percentage rollouts for new models or prompts (A/B), with eval gates.
+- Don't make everything configurable: config is an API; each knob must be tested.
+- Log the effective (redacted) config at startup for debugging.
+'''
+
+[[q]]
+id = "gai-14"
+topic = "logging_tracking"
+level = 3
+kind = "design"
+q = '''What would you log, trace and alert on for a production RAG/LLM service?'''
+a = '''
+- **Structured logs** (JSON) with a request/trace id on every line: route, user/tenant
+  (hashed), model, prompt template version, retrieved doc ids, latency (total / TTFT),
+  tokens in/out, cost, finish_reason, retries, cache hits, errors.
+- **Tracing** (OpenTelemetry spans, or LLM-specific tools like Langfuse / LangSmith):
+  retrieval -> rerank -> LLM call -> parse, so you see where time and tokens go.
+- **Metrics/alerts**: p50/p95 latency, error rate by type (429, timeouts, validation
+  failures), cost per request/day, empty-retrieval rate, guardrail triggers.
+- **Error tracking** (Sentry): exceptions with tags (model, route), PII/secret scrubbing.
+- Prompts/outputs: sample and store with redaction and retention limits (privacy, GDPR);
+  link to user feedback (thumbs up/down) to build eval sets.
+- Never log API keys; avoid full documents/PII in logs; use log levels consistently
+  (DEBUG verbose prompts off in prod).
+'''
+followups = ["How do you measure answer quality in production, not just latency?"]
+
+[[q]]
+id = "gai-15"
+topic = "pipelines"
+level = 3
+kind = "design"
+q = '''Design the ingestion pipeline that turns 10M documents (S3, mixed PDF/HTML/JSONL) into embedded chunks in a vector DB. Focus on memory, failure handling and reruns.'''
+a = '''
+- **Streaming stages** (generators / async generators): list objects -> download -> extract
+  text -> normalise -> dedupe -> chunk (+metadata) -> batch by tokens -> embed -> upsert.
+  Memory is O(batch), never O(corpus).
+- **Concurrency where it's I/O**: bounded async workers for download/embedding/upsert
+  (Semaphore, bounded `asyncio.Queue` for back-pressure); CPU-heavy extraction (PDF/OCR) in a
+  process pool.
+- **Dedup** by content hash of normalised text (store digests, not texts); near-dup via
+  MinHash if needed.
+- **Idempotency**: deterministic chunk ids (`doc_id:chunk_index` or hash) + upsert -> reruns
+  don't duplicate. Track a content hash per doc to skip unchanged docs (incremental updates)
+  and delete chunks of removed docs.
+- **Failure handling**: per-item try/except -> log + dead-letter queue, never crash the
+  whole job; retries with backoff for transient API errors; checkpoint progress.
+- Observability: counters per stage (read, skipped, failed, chunks, tokens, cost), throughput.
+- Scale out by sharding the doc list across workers (or a queue/Ray/Spark job); the same
+  stage functions stay unit-testable.
+'''
+
+[[q]]
+id = "gai-16"
+topic = "packages"
+level = 2
+kind = "concept"
+q = '''Your team's prompt templates, LLM client wrapper and chunkers are copy-pasted across 4 services. How do you turn them into a reusable internal Python package?'''
+a = '''
+- **src layout**: `src/llmkit/__init__.py`, `client.py`, `chunking.py`... + `tests/`; prevents
+  accidentally importing the working dir instead of the installed package.
+- **pyproject.toml** (PEP 621): name, version, `requires-python`, dependencies with ranges
+  (not pins), optional extras (`llmkit[openai]`, `[dev]`), build backend (hatchling/setuptools),
+  `[project.scripts]` for CLIs. Build with `uv build` / `python -m build`.
+- Public API: re-export in `__init__.py` + `__all__`; keep internals `_private`; add
+  `py.typed` so mypy uses your annotations.
+- Semantic versioning + changelog; breaking changes = major bump; publish to a private index
+  (Artifactory, CodeArtifact, GitHub Packages) from CI on tags.
+- Don't configure logging or read env at import time; accept config/clients as parameters.
+- Package data (prompt templates) via `importlib.resources`, not relative file paths.
+- During development: `uv pip install -e .` / workspace members for editable installs.
+'''
+followups = ["Why shouldn't a library pin exact dependency versions?"]
+
+[[q]]
+id = "gai-17"
+topic = "concurrent_embeddings"
+level = 3
+kind = "compare"
+q = '''You need embeddings for 2M chunks. Compare: async calls to a hosted API, threads, multiprocessing, and a local model (sentence-transformers on a GPU). Which concurrency model fits each?'''
+a = '''
+- **Hosted API** = I/O bound: asyncio with bounded concurrency (Semaphore), batched
+  requests, retries/backoff; one process can keep hundreds of requests in flight. Threads
+  also work (sync SDKs) but cost more per in-flight request.
+- **Local model on GPU**: the bottleneck is the GPU, not Python - don't parallelise calls;
+  feed **large batches** (e.g. 64-512) from one process, sort by length to reduce padding,
+  use fp16; torch releases the GIL in kernels. Multiple processes only for multiple GPUs.
+- **Local model on CPU**: batch + let the library use intra-op threads; or a process pool
+  sized to cores (watch memory: each process loads the model).
+- **Pre-processing** (PDF parsing, cleaning) is CPU-bound pure Python -> ProcessPool
+  (GIL; free-threaded 3.13t/3.14t builds change this).
+- Either way: stream input (generators), keep results ordered/keyed by chunk id, checkpoint,
+  and measure throughput (chunks/s, tokens/s) and cost before choosing.
+'''
+
+[[q]]
+id = "gai-18"
+topic = "document_processing"
+level = 2
+kind = "concept"
+q = '''What goes wrong when extracting text from PDFs and HTML for a RAG system, and how do you handle it?'''
+a = '''
+- PDFs have no semantic structure: multi-column layouts read out of order, headers/footers/
+  page numbers repeated on every page, hyphenated line breaks, ligatures, tables flattened
+  into word soup, scanned pages with no text layer (needs OCR).
+- Tools: pypdf / pdfplumber / PyMuPDF for text + positions, unstructured / docling for layout
+  -aware partitioning, OCR (Tesseract, cloud OCR) for scans; tables to Markdown/CSV.
+- HTML: strip boilerplate (nav, cookie banners, footers) with readability-style extraction
+  (trafilatura), keep headings/lists, convert to Markdown.
+- Normalise text (NFKC, zero-width chars, whitespace), fix encodings (UTF-8 with an explicit
+  `errors=` policy), drop near-empty pages.
+- Keep provenance metadata: source URL/path, page number, section heading, char offsets ->
+  citations and filtering.
+- Validate quality: sample outputs, count empty/garbled docs, track extraction failures
+  per file type; garbage in = garbage retrieved.
+'''
+
+[[q]]
+id = "gai-19"
+topic = "text_processing"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+s = "  Hello,\tWorld \n"
+print(repr(s.strip()), s.split(), repr(" ".join(s.split())))
+print("a,b,,c".split(","), "a  b".split(" "), "a  b".split())
+```
+'''
+a = '''
+```
+'Hello,\tWorld' ['Hello,', 'World'] 'Hello, World'
+['a', 'b', '', 'c'] ['a', '', 'b'] ['a', 'b']
+```
+- `strip()` only trims the ends; the inner tab stays.
+- `split()` with **no argument** splits on runs of any whitespace and drops empty strings -
+  `" ".join(s.split())` is the idiomatic "collapse whitespace".
+- `split(sep)` with an explicit separator keeps empty fields between consecutive separators
+  (`",,"` -> `''`, two spaces -> `''`).
+- Neither handles NBSP/zero-width characters the way you might expect for scraped text -
+  normalise (NFKC + explicit removal) first.
+'''

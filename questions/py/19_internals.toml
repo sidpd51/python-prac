@@ -1,0 +1,427 @@
+# Interview question bank - Python Internals and Performance
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "int-01"
+topic = "cpython"
+level = 1
+kind = "concept"
+q = "Is Python compiled or interpreted? Walk through what CPython does when you run `python app.py`."
+a = """
+- Both: CPython **compiles** source to **bytecode**, then **interprets** the bytecode.
+- Pipeline: tokenize -> parse to an **AST** -> compile (with constant folding / peephole
+  optimisation) into **code objects** (bytecode + constants + names) -> executed by the
+  evaluation loop (`ceval.c`), a stack-based VM. One frame per call.
+- Imported modules are cached as `.pyc` in `__pycache__/` (keyed by Python version, invalidated
+  by source mtime/hash); the main script is recompiled every run.
+- 3.11+ **specializing adaptive interpreter** (PEP 659) rewrites hot instructions into
+  type-specialised versions; 3.13+ ships an experimental, off-by-default JIT.
+- "Python" is the language; CPython is the reference implementation (PyPy = tracing JIT,
+  GraalPy, MicroPython...). The GIL, refcounting and `id()` == address are CPython details.
+"""
+followups = ["What's inside a code object?", "When is a .pyc file regenerated?"]
+
+[[q]]
+id = "int-02"
+topic = "gil"
+level = 1
+kind = "concept"
+q = "What is the GIL, why does CPython have it, and when is it released?"
+a = """
+- The **Global Interpreter Lock**: in the default CPython build only one thread at a time
+  executes Python bytecode in a process.
+- Why: it makes **reference counting** and interpreter internals thread-safe cheaply, and
+  keeps C extensions simple. Single-threaded code pays almost nothing for it.
+- Released: around **blocking I/O** (sockets, files, `time.sleep`, `select`), and by C
+  extensions doing long work without touching Python objects (NumPy ops, hashlib, zlib,
+  many ML libraries). The running thread is also asked to drop it every switch interval
+  (`sys.getswitchinterval()`, 5 ms).
+- Consequence: threads speed up **I/O-bound** work, not pure-Python **CPU-bound** work ->
+  use processes, vectorised/C code, or the free-threaded build.
+- Free-threaded CPython (PEP 703): experimental in 3.13 (`python3.13t`), officially
+  supported but **optional** in 3.14 (PEP 779); the default build still has the GIL.
+"""
+followups = ["Does the GIL make your code thread-safe?", "How do you check at runtime if the GIL is enabled?"]
+
+[[q]]
+id = "int-03"
+topic = "threadpool"
+level = 2
+kind = "predict"
+q = '''
+What does this print (and in what order)?
+```python
+from concurrent.futures import ThreadPoolExecutor
+import time
+
+def work(n):
+    time.sleep(0.1 * (3 - n))
+    print("done", n)
+    return n * 10
+
+with ThreadPoolExecutor(max_workers=3) as pool:
+    results = pool.map(work, [0, 1, 2])
+    print("submitted")
+    print(list(results))
+```
+'''
+a = """
+```
+submitted
+done 2
+done 1
+done 0
+[0, 10, 20]
+```
+- `Executor.map` **submits all tasks immediately** and returns a lazy iterator, so
+  "submitted" prints first.
+- Tasks run concurrently; the shortest sleep (n=2) finishes first, so the "done" lines appear in
+  **completion order**.
+- The results iterator yields in **input order** regardless (it waits on each future in turn).
+  Use `as_completed` if you want results as they finish.
+"""
+
+[[q]]
+id = "int-04"
+topic = "futures"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+with ThreadPoolExecutor() as pool:
+    it = pool.map(int, ["1", "x", "3"])
+    print(next(it))
+    try:
+        print(next(it))
+    except ValueError as e:
+        print("error:", e)
+    print(list(it))
+```
+'''
+a = """
+```
+1
+error: invalid literal for int() with base 10: 'x'
+[]
+```
+- The exception raised in the worker is stored in the future and **re-raised when you reach
+  that result** in the iterator.
+- The map iterator is a generator; once it has raised, it is **finished** - the successful
+  result for "3" is silently lost (`list(it)` is empty).
+- For per-item error handling use `submit()` + `as_completed()` (or wrap the function to return
+  `(ok, value_or_exc)`).
+"""
+followups = ["How would you collect both successes and failures for a batch of embedding calls?"]
+
+[[q]]
+id = "int-05"
+topic = "cprofile"
+level = 2
+kind = "predict"
+q = '''
+In the report printed by the code below, what is in the `ncalls` column for `fib`, and what does
+each number mean? Which column tells you where time is *actually spent*?
+```python
+import cProfile
+
+def fib(n):
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+cProfile.run("fib(10)")
+```
+'''
+a = """
+```
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    177/1    ...
+```
+- `177/1` = **total calls / primitive calls**: 177 calls in total, of which 1 was not
+  recursive (the top call). The header says `180 function calls (4 primitive calls)`.
+- **tottime**: time in the function's own body excluding callees -> where to optimise.
+  **cumtime**: including everything it called -> where the time flows through.
+- Typical workflow: `python -m cProfile -o out.prof app.py`, then
+  `pstats.Stats("out.prof").sort_stats("cumulative").print_stats(20)` or snakeviz.
+- Here the fix is algorithmic: `functools.cache` turns 177 calls into 11.
+"""
+
+[[q]]
+id = "int-06"
+topic = "threading"
+level = 2
+kind = "concept"
+q = "If the GIL lets only one thread run at a time, why can `counter += 1` from several threads still lose updates? How do you fix it?"
+a = """
+- `counter += 1` compiles to several bytecodes (load, add, store). The interpreter can switch
+  threads **between** them: two threads both load 41, both store 42 -> one increment lost.
+- The GIL protects the interpreter's internals, **not your invariants**. Atomicity of single
+  operations like `list.append` is a CPython implementation detail; on the free-threaded build
+  built-ins use per-object locks but compound read-modify-write still races.
+- Fixes: `threading.Lock` around the critical section (`with lock:`), keep state per thread
+  and combine at the end, communicate via `queue.Queue` (thread-safe), or use
+  `itertools.count()` / atomic primitives where appropriate.
+- Other primitives: `RLock` (re-entrant), `Event`, `Condition`, `Semaphore`/`BoundedSemaphore`
+  (limit concurrency, e.g. API calls), `Barrier`.
+"""
+
+[[q]]
+id = "int-07"
+topic = "threadpool"
+level = 2
+kind = "compare"
+q = "Compare `Executor.map`, `submit` + `as_completed`, and `concurrent.futures.wait(..., return_when=FIRST_COMPLETED)`. What does `with ThreadPoolExecutor()` do on exit?"
+a = """
+- **map(fn, items)**: simplest; results in **input order**; first exception re-raised when
+  reached and the rest are lost; `timeout` applies to the whole iteration.
+- **submit + as_completed(futures)**: results in **completion order** - keep a
+  `{future: item}` dict; handle each `fut.exception()` individually (partial failures,
+  progress bars, streaming results to the next stage).
+- **wait(fs, return_when=FIRST_COMPLETED | FIRST_EXCEPTION | ALL_COMPLETED)**: returns
+  `(done, not_done)` sets - good for hedged requests / "first success wins" / adding work dynamically.
+- `with` calls `shutdown(wait=True)` on exit: it **blocks until every submitted task finishes**.
+  To return early use `shutdown(wait=False, cancel_futures=True)` (3.9+) - only *pending*
+  futures are cancelled, running threads can't be killed.
+- Size: I/O pools can be large (default `min(32, cpu_count + 4)`); bound by the API's rate limit,
+  not by cores.
+"""
+
+[[q]]
+id = "int-08"
+topic = "processpool"
+level = 2
+kind = "debug"
+q = '''
+A teammate's script crashes as soon as the pool starts working. Why? And once that's fixed, what
+else would break on macOS or on Python 3.14 Linux? Fix it.
+```python
+from concurrent.futures import ProcessPoolExecutor
+
+def main(texts):
+    def clean(t):
+        return t.strip().lower()
+    with ProcessPoolExecutor() as pool:
+        return list(pool.map(clean, texts))
+
+print(main(["  A ", "B  "]))
+```
+'''
+a = """
+- Tasks are sent to workers by **pickling**; functions pickle **by reference** (module +
+  qualified name). A function defined inside `main` (or a lambda) can't be looked up by name
+  -> `PicklingError`/`AttributeError: Can't pickle local object`.
+- Also missing the **`if __name__ == "__main__":` guard**: with the `spawn` (macOS/Windows
+  default) or `forkserver` (Linux default since 3.14) start methods, children **import** the
+  main module; unguarded top-level code would run again in every child (RuntimeError about
+  bootstrapping / recursive spawning).
+- Fix: move `clean` to module top level (importable), guard the entry point, and pass small
+  arguments (send file paths or ranges rather than big data; use `chunksize` for many tiny
+  tasks since every task pays pickling + IPC):
+  ```python
+  def clean(t): return t.strip().lower()
+  if __name__ == "__main__":
+      with ProcessPoolExecutor() as pool:
+          print(list(pool.map(clean, texts, chunksize=256)))
+  ```
+- For something this cheap, processes are slower than a plain loop - overhead dominates.
+"""
+
+[[q]]
+id = "int-09"
+topic = "multiprocessing"
+level = 2
+kind = "concept"
+q = "Explain the multiprocessing start methods fork, spawn and forkserver. What are the defaults and the gotchas?"
+a = """
+- **fork**: child is a copy-on-write clone of the parent (fast, inherits loaded modules and
+  data). Unsafe if the parent has **threads** (locks held by other threads are copied in a
+  locked state -> deadlocks); 3.12+ warns when forking a multi-threaded process.
+- **spawn**: fresh interpreter, imports the main module, receives pickled function + args.
+  Slower startup, but safe. Requires the `__main__` guard and importable top-level functions.
+- **forkserver**: a single-threaded server process is started early; workers are forked from
+  it - safe-ish like spawn, faster startup.
+- Defaults: Windows & macOS (3.8+) `spawn`; Linux `fork` up to 3.13, **`forkserver` from 3.14**.
+  Choose explicitly: `multiprocessing.get_context("spawn")` / `ProcessPoolExecutor(mp_context=...)`.
+- Sharing data: `Queue`/`Pipe` (pickled), `multiprocessing.shared_memory` / NumPy on shared
+  buffers (zero-copy), `Manager` (proxy objects, slow). Workers don't see parent's later changes.
+"""
+
+[[q]]
+id = "int-10"
+topic = "cpu_vs_io"
+level = 1
+kind = "compare"
+q = "Classify these as CPU-bound or I/O-bound and pick a concurrency tool: (a) calling an embedding API for 20k chunks, (b) regex-cleaning 5 M documents in pure Python, (c) a big NumPy matrix multiply, (d) reading 1000 files from S3."
+a = """
+- (a) **I/O-bound** - waiting on the network. asyncio with a Semaphore + rate limiting (async
+  SDK), or a ThreadPoolExecutor with a sync SDK. Also batch inputs per request.
+- (b) **CPU-bound** pure Python - threads won't help on the GIL build; ProcessPoolExecutor over
+  chunks of documents (or a vectorised/compiled library).
+- (c) **CPU-bound but in C**: NumPy/BLAS releases the GIL and is often already multi-threaded
+  internally - don't wrap it in more parallelism, maybe batch it.
+- (d) **I/O-bound** - threads or asyncio (aioboto3/async HTTP).
+- Tell them apart by measuring: a CPU-bound process pins a core at ~100%; an I/O-bound one sits
+  mostly idle while wall time >> CPU time (`time.process_time()` vs `time.perf_counter()`).
+"""
+
+[[q]]
+id = "int-11"
+topic = "concurrency_models"
+level = 3
+kind = "design"
+q = "Design the concurrency for a batch job: 50 k prompts to an LLM API (limit 500 req/min, 2 M tokens/min), validate each JSON response (light CPU), then embed the outputs with a local CPU model. asyncio, threads or processes?"
+a = """
+- **LLM calls - asyncio**: thousands of in-flight waits are cheap as coroutines; an
+  `asyncio.Semaphore` bounds concurrency, a token bucket enforces RPM/TPM, retries with
+  exponential backoff + jitter on 429/5xx honouring `Retry-After`. (If only a sync SDK exists:
+  a ThreadPoolExecutor with bounded workers, same limiter.)
+- **Validation** (pydantic) is light CPU - do it inline in the coroutine; it's microseconds.
+- **Local embedding** is CPU heavy: batch inputs and run the model in a separate process pool
+  (or one process using the library's own intra-op threads); from asyncio use
+  `loop.run_in_executor(process_pool, ...)` so the event loop never blocks.
+- Pipeline with bounded `asyncio.Queue`s between stages for backpressure; checkpoint progress
+  (completed ids) so the job resumes after a crash; record partial failures, don't abort.
+- Summary table: asyncio = many I/O waits, single thread, cooperative; threads = blocking I/O
+  libraries, preemptive, shared memory (locks); processes = CPU-bound Python, isolation,
+  pickling overhead.
+"""
+followups = ["What blocks an event loop by accident?", "How would the free-threaded build change this?"]
+
+[[q]]
+id = "int-12"
+topic = "timeit"
+level = 1
+kind = "concept"
+q = "How do you correctly micro-benchmark two implementations? Why `timeit` instead of `time.time()` around one call?"
+a = """
+- `timeit` runs the statement **many times** (`number`) and **repeats** that several times; take
+  the **minimum** (noise - other processes, cache misses - only adds time).
+- It uses `time.perf_counter` (monotonic, high resolution) and **disables GC** during timing
+  (pass `gc.enable()` in setup if GC cost matters).
+- CLI: `python -m timeit -s "data = list(range(1000))" "sum(data)"`; IPython `%timeit`;
+  in code `timeit.Timer(fn).repeat(repeat=5, number=1000)`.
+- Pitfalls: benchmarking something the compiler constant-folds, caches (lru_cache hits),
+  unrealistic tiny inputs, measuring setup inside the loop, comparing on a noisy laptop.
+  Micro-benchmarks only matter for code a **profiler** showed is hot.
+"""
+
+[[q]]
+id = "int-13"
+topic = "optimization"
+level = 2
+kind = "debug"
+q = '''
+This builds the context block for a RAG prompt and is a hot spot with 5 000 retrieved chunks
+per request. What's slow, and how would you rewrite it?
+```python
+def build_context(chunks, banned_ids):
+    banned = list(banned_ids)
+    context = ""
+    for c in chunks:
+        if c["id"] not in banned:
+            context += f"[{c['source']}] {c['text']}\n\n"
+    return context
+```
+'''
+a = """
+- `c["id"] not in banned` is a **list scan** -> O(chunks x banned). Use a `set` (O(1) average).
+- `context += ...` creates a new string each time -> potentially O(n^2) copying. CPython has an
+  in-place append shortcut when the string has a single reference, but it's fragile (not on
+  PyPy, breaks if another reference exists). Collect parts and `"".join(...)` once - O(total).
+- Rewrite:
+  ```python
+  def build_context(chunks, banned_ids):
+      banned = set(banned_ids)
+      return "".join(
+          f"[{c['source']}] {c['text']}\\n\\n" for c in chunks if c["id"] not in banned
+      )
+  ```
+- Then question the design: 5 000 chunks won't fit a context window anyway - cap by token
+  budget after reranking.
+"""
+
+[[q]]
+id = "int-14"
+topic = "optimization"
+level = 3
+kind = "concept"
+q = "A Python data-processing step is too slow. In what order do you try optimisations, and why?"
+a = """
+1. **Measure**: profile (cProfile / py-spy / line_profiler) to find the real hot spot; set a target.
+2. **Algorithm & data structures**: O(n^2) -> O(n log n)/O(n) with sets/dicts, sorting + bisect,
+   heaps, avoiding repeated work. Biggest wins by far.
+3. **Do less**: caching/memoisation (`functools.cache`), batching I/O, lazy evaluation,
+   early exits, avoiding needless copies/conversions.
+4. **Push loops into C**: built-ins (`sum`, `max`, `sorted`, `str.join`, `collections.Counter`),
+   comprehensions, `itertools`, and **NumPy/pandas vectorisation** (often 10-100x).
+5. Micro-optimisations in the remaining hot loop: bind globals/attributes to locals
+   (LOAD_FAST vs LOAD_GLOBAL + LOAD_ATTR), avoid function-call overhead, `__slots__`.
+6. **Parallelism**: processes for CPU, async/threads for I/O.
+7. **Compiled code**: Numba, Cython, Rust via PyO3/maturin, or a better library.
+Keep tests green at every step - behaviour (order, duplicates, edge cases) is what rewrites break.
+"""
+
+[[q]]
+id = "int-15"
+topic = "bytecode"
+level = 3
+kind = "concept"
+q = "What is the specializing adaptive interpreter introduced in Python 3.11, and what does it mean for how you write fast Python? Where does the JIT fit in?"
+a = """
+- PEP 659 ("Faster CPython"): after an instruction runs a few times, the interpreter **quickens**
+  it into a specialised variant based on observed types - e.g. `BINARY_OP` ->
+  `BINARY_OP_ADD_INT`, `LOAD_ATTR` -> `LOAD_ATTR_INSTANCE_VALUE` - with **inline caches** for
+  things like dict versions and attribute offsets. If the guess stops holding it de-optimises.
+- Visible via `dis.dis(fn, adaptive=True)` after warming up the function.
+- Implication: **type-stable ("monomorphic") code** is faster - a variable that is always an int,
+  attribute layouts that don't change, avoiding dynamic `setattr` / `__getattr__` magic in hot
+  paths. Global lookups are also cached, so "bind to local" matters less than it used to.
+- 3.11 was ~25% faster on average than 3.10. 3.13 added an experimental **copy-and-patch JIT**
+  (PEP 744, build-time option); in 3.14 it's still experimental and off by default
+  (`PYTHON_JIT=1` where built in). Don't rely on it for performance decisions yet.
+"""
+
+[[q]]
+id = "int-16"
+topic = "gil"
+level = 3
+kind = "concept"
+q = "What changes in a free-threaded (no-GIL) CPython build, and what should you check before adopting it for a service?"
+a = """
+- Built with `--disable-gil` (`python3.13t` / `python3.14t`); detect with
+  `sysconfig.get_config_var("Py_GIL_DISABLED")` and `sys._is_gil_enabled()`.
+- Internals: **biased reference counting** (cheap owner-thread increments, atomic for others),
+  **immortal** and **deferred**-refcount objects, the **mimalloc** allocator, and fine-grained
+  per-object locks inside list/dict/set operations so built-ins stay memory-safe.
+- Status: experimental in 3.13; officially supported (but not the default) in 3.14 via PEP 779,
+  with single-thread overhead much reduced vs 3.13.
+- Checklist: every **C extension** must declare free-threading support (otherwise the GIL is
+  re-enabled at import, with a warning - `PYTHON_GIL=0` forces it off); wheels must exist for
+  the `t` ABI (numpy, pydantic-core, etc. are adding them); **your own code's races**
+  that the GIL used to hide (check-then-act, read-modify-write, shared caches) become real;
+  benchmark - CPU-bound threaded code can scale across cores, single-threaded code is slightly slower.
+"""
+
+[[q]]
+id = "int-17"
+topic = "dis"
+level = 1
+kind = "concept"
+q = "What is the `dis` module for? Show how you'd use it to explain why a local-variable lookup is cheaper than a global one."
+a = """
+- `dis` disassembles code objects into human-readable bytecode: `dis.dis(fn)`,
+  `dis.get_instructions(fn)` / `dis.Bytecode(fn)` for programmatic access (opname, argval,
+  line numbers), `fn.__code__` for raw attributes (`co_varnames`, `co_consts`, `co_names`).
+- Example:
+  ```python
+  def f(xs):
+      return len(xs)
+  ```
+  shows `LOAD_GLOBAL len` (look up module globals dict, then builtins - cached since 3.11 but
+  still more work) vs `LOAD_FAST xs` (index into the frame's local array).
+- Uses: understand performance differences, why `a += 1` isn't atomic (several instructions),
+  constant folding (`24 * 60 * 60` stored as `86400`), comprehension scoping (inlined in 3.12, PEP 709).
+- Bytecode is version-specific (3.13 `LOAD_FAST_LOAD_FAST`, 3.14 `LOAD_FAST_BORROW`): don't
+  write tools that depend on exact opcodes.
+"""

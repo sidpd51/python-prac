@@ -1,0 +1,37 @@
+<div class="widget" data-widget="arch">
+  <h3 class="w-title">DocMind architecture</h3>
+  <p class="w-sub">Everything talks through five Protocols, so each phase adds implementations without touching earlier code. Click a box.</p>
+  <div class="legend"><span class="lg p0">Phase 0</span><span class="lg p1">Phase 1</span><span class="lg p2">Phase 2</span><span class="lg p3">Phase 3</span><span class="lg p4">Phase 4</span><span class="lg p5">Phase 5</span></div>
+  <div class="svgwrap">
+  <svg viewBox="0 0 900 380" role="img" aria-label="DocMind architecture across phases">
+    <defs><marker id="ar-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrowhead"/></marker></defs>
+    <g class="edges">
+      <path d="M130 200 L170 200" marker-end="url(#ar-arrow)"/><path d="M300 200 L340 200" marker-end="url(#ar-arrow)"/>
+      <path d="M480 200 L520 200" marker-end="url(#ar-arrow)"/><path d="M650 200 L690 200" marker-end="url(#ar-arrow)"/>
+      <path d="M760 230 L760 290" marker-end="url(#ar-arrow)"/><path d="M560 320 L690 320" marker-end="url(#ar-arrow)"/>
+      <path d="M760 170 L760 110" marker-end="url(#ar-arrow)"/><path d="M830 320 L878 320 L878 230" class="dash" marker-end="url(#ar-arrow)"/>
+      <path d="M830 60 L878 60 L878 170" class="dash" marker-end="url(#ar-arrow)"/><path d="M480 60 L585 60 L585 170" class="dash" marker-end="url(#ar-arrow)"/>
+    </g>
+    <g class="node p0" tabindex="0" role="button" data-title="Loaders · M0.2" data-body="iter_files, read_text and load_documents: lazy, encoding-aware, resilient to bad lines. Yields Document objects." data-cmd="capstone/src/docmind/ingest/loaders.py">
+      <rect x="10" y="170" width="120" height="60" rx="10"/><text x="70" y="196">Loaders</text><text x="70" y="214" class="sub">files → Document</text></g>
+    <g class="node p0" tabindex="0" role="button" data-title="Chunker · M0.3" data-body="CharChunker and RecursiveChunker, both satisfying the Chunker Protocol. Offsets and metadata survive chunking so citations and filters work later." data-cmd="capstone/src/docmind/ingest/chunking.py">
+      <rect x="170" y="170" width="130" height="60" rx="10"/><text x="235" y="196">Chunker</text><text x="235" y="214" class="sub">Document → Chunk</text></g>
+    <g class="node p0" tabindex="0" role="button" data-title="Embedder · M0.4" data-body="HashingEmbedder runs offline and deterministically. HttpEmbedder batches, limits concurrency, retries with jitter and validates responses. Phase 1 adds a local neural model." data-cmd="capstone/src/docmind/embeddings/">
+      <rect x="340" y="170" width="140" height="60" rx="10"/><text x="410" y="196">Embedder</text><text x="410" y="214" class="sub">text → vectors</text></g>
+    <g class="node p0" tabindex="0" role="button" data-title="VectorStore · M0.5" data-body="In-memory cosine search with metadata filters and persistence. Phase 3 adds Qdrant or pgvector behind the same Protocol so old tests run against it too." data-cmd="capstone/src/docmind/store/memory.py">
+      <rect x="520" y="170" width="130" height="60" rx="10"/><text x="585" y="196">VectorStore</text><text x="585" y="214" class="sub">search, upsert</text></g>
+    <g class="node p3" tabindex="0" role="button" data-title="Retriever · Phase 3" data-body="Dense search, BM25 and hybrid fusion, then a reranker. Same Retriever Protocol whatever the strategy." data-cmd="rag/hybrid.py, rag/rerank.py">
+      <rect x="690" y="170" width="140" height="60" rx="10"/><text x="760" y="196">Retriever</text><text x="760" y="214" class="sub">hybrid + rerank</text></g>
+    <g class="node p2" tabindex="0" role="button" data-title="LLM · Phase 2" data-body="Anthropic, OpenAI or a local model behind one LLM Protocol, with streaming, retries, cost accounting and a fake for tests." data-cmd="llm/base.py, llm/anthropic.py">
+      <rect x="420" y="290" width="140" height="60" rx="10"/><text x="490" y="316">LLM</text><text x="490" y="334" class="sub">generate, stream</text></g>
+    <g class="node p3" tabindex="0" role="button" data-title="Answer · Phase 3" data-body="Retrieve, assemble context with citations, generate, return Answer(text, citations). This is the RAG core." data-cmd="rag/answer.py">
+      <rect x="690" y="290" width="140" height="60" rx="10"/><text x="760" y="316">rag/answer</text><text x="760" y="334" class="sub">cited answers</text></g>
+    <g class="node p4" tabindex="0" role="button" data-title="Agents · Phase 4" data-body="Tools wrapping the Retriever, a LangGraph research agent with checkpoints and human-in-the-loop, and an MCP server exposing search and ingest." data-cmd="agents/research.py, mcp_server.py">
+      <rect x="690" y="30" width="140" height="60" rx="10"/><text x="760" y="56">Agents + MCP</text><text x="760" y="74" class="sub">LangGraph</text></g>
+    <g class="node p5" tabindex="0" role="button" data-title="API · Phase 5" data-body="FastAPI with SSE streaming, auth, tenant filters, caching, tracing, Docker and CI. It depends only on the Protocols, so it is easy to test with fakes." data-cmd="api/">
+      <rect x="860" y="170" width="36" height="60" rx="8"/><text x="878" y="204" class="vert">API</text></g>
+    <g class="node p3" tabindex="0" role="button" data-title="Evaluation · Phase 3" data-body="Golden question set, recall@k, MRR, faithfulness with an LLM judge. CI fails if recall drops, so every change is measured." data-cmd="eval/">
+      <rect x="290" y="30" width="190" height="60" rx="10"/><text x="385" y="56">Evaluation</text><text x="385" y="74" class="sub">recall@k, faithfulness</text></g>
+  </svg></div>
+  <div class="panel" data-panel aria-live="polite"><strong>Pick a box.</strong> <span>Solid arrows are the main data flow. Dashed arrows are serving (agents and answers reach the API) and measurement (evaluation scores retrieval).</span></div>
+</div>

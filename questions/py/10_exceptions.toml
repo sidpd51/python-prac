@@ -1,0 +1,514 @@
+# Interview question bank - Exception Handling
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "exc-01"
+topic = "syntax_vs_runtime"
+level = 1
+kind = "compare"
+q = "What is the difference between a SyntaxError and a runtime error? Can you catch a SyntaxError with try/except?"
+a = """
+- **SyntaxError** (and its subclass IndentationError) is raised by the *parser/compiler*,
+  before any line of that file runs. A file with a syntax error executes nothing at all.
+- **Runtime errors** (ZeroDivisionError, KeyError, TypeError...) are raised while code
+  executes, only when the offending line is reached - a bug in a rarely-taken branch can
+  hide for months.
+- You can't catch a SyntaxError in the *same* file (it never got compiled). You *can* catch
+  it around code compiled at runtime: `compile()`, `eval()`, `exec()`, `ast.parse()`,
+  `import`ing a broken module. That's how you validate LLM-generated code without running it.
+- Linters/type checkers move many "runtime" errors (NameError, wrong arg types) to
+  "before run" time - that's their value.
+"""
+followups = ["How would you sandbox the *execution* of LLM-generated code after it compiles?"]
+
+[[q]]
+id = "exc-02"
+topic = "try_except"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+def load(raw):
+    try:
+        print("try")
+        value = int(raw)
+    except ValueError:
+        print("except")
+        return -1
+    else:
+        print("else")
+        return value
+    finally:
+        print("finally")
+
+print(load("7"))
+print(load("x"))
+```
+'''
+a = """
+```
+try
+else
+finally
+7
+try
+except
+finally
+-1
+```
+- `else` runs only if the try block raised nothing; `finally` runs **always** - even when
+  the except/else block is in the middle of a `return`. The return value is computed first,
+  then finally runs, then the function actually returns.
+- Why `else` exists: code there is *not* protected by the except clause, so a ValueError
+  raised in the "happy path" isn't mistaken for the one you meant to catch.
+"""
+
+[[q]]
+id = "exc-03"
+topic = "try_except"
+level = 2
+kind = "predict"
+q = '''
+What does this print? What changes in Python 3.14?
+```python
+def f():
+    try:
+        return "try"
+    finally:
+        return "finally"
+
+def g():
+    for _ in range(3):
+        try:
+            raise ValueError("lost")
+        finally:
+            break
+    return "g done"
+
+print(f())
+print(g())
+```
+'''
+a = """
+```
+finally
+g done
+```
+- A `return` in `finally` **overrides** the pending return value of the try block.
+- Worse, `return`/`break`/`continue` in finally **silently swallow an in-flight exception**:
+  the ValueError in g() simply disappears.
+- Python 3.14 (PEP 765) emits `SyntaxWarning: 'return' in a 'finally' block` (and the same
+  for break/continue) at compile time; output is otherwise unchanged. Linters (ruff B012)
+  flag it too. Rule: finally is for cleanup only, never control flow.
+"""
+
+[[q]]
+id = "exc-04"
+topic = "multiple"
+level = 1
+kind = "concept"
+q = "How do you handle several exception types? Does the order of except clauses matter?"
+a = """
+- One handler for several types: `except (KeyError, TypeError) as e:` (a tuple).
+  `except KeyError, TypeError:` is a SyntaxError before 3.14; 3.14 (PEP 758) allows the
+  parenthesis-free form, but only *without* `as`.
+- Several handlers: the **first matching clause wins**, matched with isinstance semantics.
+  So put specific subclasses before their bases: `except FileNotFoundError` before
+  `except OSError`, otherwise the specific branch is dead code.
+- Only one except clause runs per exception (use `except*` with ExceptionGroups if you
+  need several to run).
+"""
+
+[[q]]
+id = "exc-05"
+topic = "hierarchy"
+level = 1
+kind = "concept"
+q = "Explain BaseException vs Exception. Why is `except Exception:` preferred to a bare `except:`?"
+a = """
+- `BaseException` is the root. Direct children that are *not* errors in the usual sense:
+  `KeyboardInterrupt`, `SystemExit`, `GeneratorExit`, and (since 3.8) `asyncio.CancelledError`.
+- Everything "normal" derives from `Exception`; your own exceptions should too.
+- A bare `except:` (== `except BaseException:`) catches Ctrl-C, `sys.exit()`, and task
+  cancellation - your retry loop becomes unkillable and asyncio timeouts/cancellations
+  break. `except Exception` leaves those alone.
+- If you truly must catch BaseException (cleanup at a process boundary), re-raise it.
+"""
+
+[[q]]
+id = "exc-06"
+topic = "hierarchy"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import asyncio, json
+print(issubclass(json.JSONDecodeError, ValueError))
+print(issubclass(KeyError, LookupError), issubclass(IndexError, LookupError))
+print(issubclass(TimeoutError, OSError))
+print(issubclass(KeyboardInterrupt, Exception))
+print(issubclass(asyncio.CancelledError, Exception))
+print(asyncio.TimeoutError is TimeoutError)
+```
+'''
+a = """
+```
+True
+True True
+True
+False
+False
+True
+```
+- `except ValueError` catches JSON decode errors; `except LookupError` catches both
+  KeyError and IndexError.
+- TimeoutError is an OSError subclass; since 3.11 `asyncio.TimeoutError` is just an alias
+  of the builtin.
+- CancelledError moved to BaseException in 3.8 precisely so that `except Exception` in
+  user code stops swallowing task cancellation.
+"""
+
+[[q]]
+id = "exc-07"
+topic = "raising"
+level = 1
+kind = "compare"
+q = "Inside an except block, what's the difference between `raise`, `raise e`, `raise NewError(...)` and `raise NewError(...) from e`?"
+a = """
+- `raise` (bare): re-raises the *current* exception unchanged, traceback intact. Use when you
+  only logged / added a note / cleaned up.
+- `raise e`: re-raises the same object but appends the current frame to the traceback -
+  mostly harmless, but less clean than bare raise.
+- `raise NewError(...)`: new exception; the original is attached **implicitly** as
+  `__context__` ("During handling of the above exception, another exception occurred") -
+  reads like a bug in your handler.
+- `raise NewError(...) from e`: explicit `__cause__` ("The above exception was the direct
+  cause of the following exception") - the right way to translate errors at a boundary.
+- `raise NewError(...) from None`: hides the original (sets `__suppress_context__`) - use
+  sparingly, e.g. to hide an internal KeyError behind a clean public error.
+"""
+
+[[q]]
+id = "exc-08"
+topic = "chaining"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+def parse(s):
+    try:
+        return int(s)
+    except ValueError as e:
+        raise RuntimeError("bad input") from e
+
+def parse2(s):
+    try:
+        return int(s)
+    except ValueError:
+        raise RuntimeError("bad input")
+
+def parse3(s):
+    try:
+        return int(s)
+    except ValueError:
+        raise RuntimeError("bad input") from None
+
+for fn in (parse, parse2, parse3):
+    try:
+        fn("x")
+    except RuntimeError as err:
+        print(fn.__name__, type(err.__cause__).__name__,
+              type(err.__context__).__name__, err.__suppress_context__)
+```
+'''
+a = """
+```
+parse ValueError ValueError True
+parse2 NoneType ValueError False
+parse3 NoneType ValueError True
+```
+- `__context__` is **always** set when raising inside an except block - even with
+  `from None`; it's just hidden from the traceback display.
+- `from e` sets `__cause__` and `__suppress_context__ = True` (the traceback shows the cause
+  instead of the context).
+- `from None` sets `__cause__ = None`, `__suppress_context__ = True` -> traceback shows only
+  RuntimeError.
+"""
+followups = ["How would a log aggregator find the root cause of a chained error?"]
+
+[[q]]
+id = "exc-09"
+topic = "custom"
+level = 2
+kind = "design"
+q = "Design the exception hierarchy for an internal LLM client library used by several teams."
+a = """
+- One base: `class LLMError(Exception)` - callers can catch everything from your library
+  without catching unrelated errors.
+- Subclasses by **what the caller should do**, not by HTTP code:
+  `AuthError` (fix credentials, don't retry), `RateLimitError(retry_after)` (back off),
+  `ContextLengthError(max_tokens, requested)` (truncate/summarize, a `BadRequestError`),
+  `ServerError`/`APITimeoutError` (retry), `ContentFilterError` (show a safe message).
+- Carry structured data as attributes: status, provider, request_id (for support tickets),
+  retry_after. A class-level `retryable` flag so retry logic doesn't repeat if-chains.
+- Multiple inheritance with builtins where meaningful: `APITimeoutError(LLMError, TimeoutError)`.
+- A single mapping function (status + body -> exception) at the HTTP boundary; raise with
+  `from http_error` to keep the transport details.
+- Make them picklable (see the follow-up) and keep `__str__` useful for logs.
+"""
+followups = ["Why might a ContextLengthError not be retryable but still recoverable?", "How do you version this hierarchy without breaking callers?"]
+
+[[q]]
+id = "exc-10"
+topic = "custom"
+level = 3
+kind = "debug"
+q = '''
+This works in a single process, but with `ProcessPoolExecutor` the main process crashes with
+a confusing TypeError instead of receiving the RateLimitError. Why? Fix it.
+```python
+class RateLimitError(Exception):
+    def __init__(self, message, retry_after):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+pickle.loads(pickle.dumps(RateLimitError("slow down", 30)))
+```
+'''
+a = """
+```
+TypeError: RateLimitError.__init__() missing 1 required positional argument: 'retry_after'
+```
+- Exceptions cross process boundaries by pickling. `BaseException.__reduce__` returns
+  `(cls, self.args, self.__dict__)`, and `self.args` is only `("slow down",)` because
+  that's all you passed to `super().__init__`. Unpickling calls `cls("slow down")` -> boom.
+- `dumps` succeeds; only `loads` fails - in the *parent*, far from the cause.
+- Fixes (any one):
+  * make extra args keyword with defaults: `def __init__(self, message, retry_after=None)`
+    (`__dict__` restores the real value afterwards);
+  * pass everything to super: `super().__init__(message, retry_after)`;
+  * define `__reduce__`: `return (type(self), (self.message,), self.__dict__)`.
+- Add a pickle round-trip test for every custom exception.
+"""
+
+[[q]]
+id = "exc-11"
+topic = "assert"
+level = 1
+kind = "predict"
+q = '''
+What does this print with `python app.py`, and with `python -O app.py`?
+```python
+def check(x):
+    assert x > 0, "x must be positive"
+    return x
+
+def check2(x):
+    assert (x > 0, "x must be positive")
+    return x
+
+print(check2(-1))
+try:
+    check(-1)
+except AssertionError as e:
+    print("AssertionError:", e)
+```
+'''
+a = """
+Normal run:
+```
+-1
+AssertionError: x must be positive
+```
+With `-O`: just `-1` - **all asserts are stripped**, check(-1) returns -1 silently.
+- `check2` asserts a non-empty *tuple*, which is always truthy - the assert can never fail.
+  Python emits `SyntaxWarning: assertion is always true, perhaps remove parentheses?`
+- Use assert for internal invariants / "can't happen" checks and in tests; never for
+  validating user input, API payloads or security checks - raise ValueError/TypeError.
+"""
+
+[[q]]
+id = "exc-12"
+topic = "assert"
+level = 2
+kind = "debug"
+q = '''
+A reviewer blocks this endpoint helper. What's wrong?
+```python
+def delete_document(user, doc):
+    assert user.is_admin or doc.owner_id == user.id, "forbidden"
+    assert isinstance(doc.id, str)
+    store.delete(doc.id)
+```
+'''
+a = """
+- Asserts disappear under `python -O` / `PYTHONOPTIMIZE` (some Docker images and
+  deployment tools set it) - the **authorization check vanishes** and anyone can delete.
+- An AssertionError is also the wrong contract: the web layer maps it to 500, not 403.
+- Fix: `if not (...): raise PermissionError("forbidden")` (or your domain `ForbiddenError`)
+  and `raise TypeError` for the type check - or validate at the boundary with pydantic.
+- Asserts are fine for invariants that, if false, mean *your* code is broken.
+"""
+
+[[q]]
+id = "exc-13"
+topic = "contextual"
+level = 2
+kind = "concept"
+q = "A nightly ingest job fails with `KeyError: 'text'` and no clue which of 2 million documents caused it. How do you add context without hiding the original error?"
+a = """
+- Python 3.11+: `except Exception as e: e.add_note(f"doc_id={doc['id']} source={path}"); raise`
+  - same exception type and traceback, the note is printed under the traceback.
+- Or translate: `raise IngestError(f"doc {doc_id} failed") from e` - better when callers
+  should handle one domain type; the KeyError stays visible as `__cause__`.
+- A context manager (`with error_context(doc_id=...)`) keeps the enrichment out of the
+  business logic.
+- Also log structured fields (`logger.exception(..., extra={"doc_id": ...})`) and record
+  failures instead of crashing a multi-hour batch.
+- Don't format the whole document into the message (PII, huge logs).
+"""
+
+[[q]]
+id = "exc-14"
+topic = "logging"
+level = 2
+kind = "compare"
+q = "Compare `logger.error(str(e))`, `logger.error('...', exc_info=True)` and `logger.exception('...')`. What is the 'log and re-raise' anti-pattern?"
+a = """
+- `logger.error(str(e))`: message only - **no traceback**, often no exception type either
+  (`str(KeyError('x'))` is just `'x'`). Nearly useless in production.
+- `logger.error("...", exc_info=True)` attaches the current exception + traceback.
+- `logger.exception("...")` == `logger.error(..., exc_info=True)`; only meaningful inside
+  an except block. Use lazy formatting (`"failed %s", doc_id`) and `extra={...}` for
+  structured fields.
+- **Log-and-re-raise at every layer** produces the same traceback 4 times per failure,
+  inflating alerting. Rule: either *handle* (log + recover) or *propagate* (maybe adding
+  context); log once at the boundary that decides what to do.
+"""
+
+[[q]]
+id = "exc-15"
+topic = "best_practices"
+level = 2
+kind = "debug"
+q = '''
+This retry helper "works" in tests but in production it hammers the API for 10 minutes on an
+invalid API key and can't be stopped with Ctrl-C. Find all the problems.
+```python
+def call(prompt):
+    for i in range(10):
+        try:
+            resp = client.complete(prompt)
+            text = resp["choices"][0]["text"].strip()
+            return text
+        except:
+            time.sleep(60)
+    return None
+```
+'''
+a = """
+- Bare `except:` catches **KeyboardInterrupt / SystemExit / CancelledError** -> unkillable.
+- It retries **non-retryable** errors (401 auth, 400 bad request) and even *bugs*
+  (KeyError/TypeError from parsing the response) - all handled the same.
+- The try block is too big: response parsing errors are retried as if they were network
+  errors. Move parsing to `else` / after the try.
+- Fixed 60 s sleep, no backoff/jitter, no Retry-After, no logging of the failure.
+- Returning `None` after exhaustion hides the failure - raise a `RetryError(...) from last`.
+- Fix: `except (RateLimitError, ServerError, httpx.TransportError) as e:` + exponential
+  backoff + log at WARNING + raise at the end.
+"""
+
+[[q]]
+id = "exc-16"
+topic = "multiple"
+level = 3
+kind = "predict"
+q = '''
+What does this print?
+```python
+def run():
+    try:
+        raise ExceptionGroup("batch", [ValueError("a"), TypeError("b"), ValueError("c")])
+    except* ValueError as eg:
+        print("values:", [str(e) for e in eg.exceptions])
+    except* TypeError as eg:
+        print("types:", [str(e) for e in eg.exceptions])
+    print("after")
+
+run()
+try:
+    try:
+        raise ExceptionGroup("batch", [ValueError("a"), KeyError("k")])
+    except* ValueError:
+        print("handled ValueError")
+except ExceptionGroup as rest:
+    print("left:", rest.exceptions)
+```
+'''
+a = """
+```
+values: ['a', 'c']
+types: ['b']
+after
+handled ValueError
+left: (KeyError('k'),)
+```
+- Unlike `except`, **every** matching `except*` clause runs, each receiving a *sub-group*
+  of the matching leaves (always an ExceptionGroup, even for one leaf).
+- Leaves nobody matched are re-raised automatically as a new ExceptionGroup.
+- `return`/`break`/`continue` are a SyntaxError inside `except*` (several clauses may run,
+  so "which one returns" would be ambiguous).
+- You meet this with `asyncio.TaskGroup`: failures come out as an ExceptionGroup, so an
+  `except ValueError` around it silently stops matching.
+"""
+followups = ["How does TaskGroup differ from gather(return_exceptions=True) for error handling?"]
+
+[[q]]
+id = "exc-17"
+topic = "try_except"
+level = 3
+kind = "predict"
+q = '''
+What happens here, and why did CPython design it this way?
+```python
+err = None
+try:
+    1 / 0
+except ZeroDivisionError as err:
+    pass
+print(err)
+```
+'''
+a = """
+```
+NameError: name 'err' is not defined
+```
+- At the end of an `except ... as name:` block Python implicitly does `del name` -
+  even if the name existed before.
+- Reason: the exception holds its traceback, which holds the frame, which holds the local
+  `err` -> a **reference cycle** that would keep every local in the frame alive until the
+  cyclic GC runs (big tensors, open sockets...).
+- If you need it later, assign to another name inside the block: `saved = err`
+  (and be aware you now keep the frame alive).
+"""
+
+[[q]]
+id = "exc-18"
+topic = "best_practices"
+level = 3
+kind = "compare"
+q = "EAFP vs LBYL in Python: which do you prefer and when? What does an exception cost?"
+a = """
+- **EAFP** ("easier to ask forgiveness"): `try: value = d[key] except KeyError: ...`.
+  Pythonic, avoids race conditions (TOCTOU: `if os.path.exists(p): open(p)` can still fail).
+- **LBYL** ("look before you leap"): `if key in d:`. Clearer when failure is the *common*
+  case, or when the check is cheap and the operation has side effects you can't undo.
+- Cost: since 3.11 entering a `try` is zero-cost; *raising* and catching is comparatively
+  expensive (allocates the exception + traceback) - fine for exceptional paths, wasteful as
+  normal control flow in a hot loop (prefer `dict.get`, `str.isdigit` etc. there).
+- Either way: catch the narrowest exception, keep the try block small, don't silence errors
+  you can't handle, and translate at boundaries with `from e`.
+"""

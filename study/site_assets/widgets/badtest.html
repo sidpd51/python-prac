@@ -1,0 +1,23 @@
+<div class="widget" data-widget="badtest">
+  <h3 class="w-title">Spot the bad test</h3>
+  <p class="w-sub">An unsolved stub raises <code>NotImplementedError</code>. A good test makes that show as TODO. Which of these tests would give a wrong result on a stub?</p>
+  <div class="bt-list">
+    <div class="bt" data-bad="true" data-why="NotImplementedError is an Exception, so the stub satisfies this test and it passes without any work.">
+<pre><code>def test_rejects_none():
+    with pytest.raises(Exception):
+        ex.parse(None)</code></pre></div>
+    <div class="bt" data-bad="true" data-why="NotImplementedError is a subclass of RuntimeError, so this still catches the stub's error.">
+<pre><code>def test_budget_exceeded():
+    with pytest.raises(RuntimeError):
+        tracker.spend(10**9)</code></pre></div>
+    <div class="bt" data-bad="true" data-why="The stub keeps the real signature, so a bad call raises TypeError before the body runs and the test passes. Make a valid call first.">
+<pre><code>def test_needs_two_args():
+    with pytest.raises(TypeError):
+        ex.take(1, 2, 3)</code></pre></div>
+    <div class="bt" data-bad="false" data-why="The call reaches the stub body, which raises NotImplementedError. The plugin records it as TODO, exactly what you want.">
+<pre><code>def test_take_stops_early():
+    it = iter(range(10))
+    assert list(ex.take(3, it)) == [0, 1, 2]
+    assert next(it) == 3</code></pre></div>
+  </div>
+</div>

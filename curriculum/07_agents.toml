@@ -1,0 +1,33 @@
+[track]
+id = "agents"
+title = "AI Agents, LangGraph & MCP"
+order = 7
+description = "Tool-using, stateful, multi-step systems - and the protocols that connect them."
+
+[[module]]
+slug = "fundamentals"
+num = 1
+title = "Agent Fundamentals"
+status = "planned"
+topics = [["agent_loop", "The agent loop (reason-act-observe)"], ["tools", "Tool design"], ["react", "ReAct"], ["planning", "Planning & decomposition"], ["memory", "Short/long-term memory"], ["failure_modes", "Agent failure modes & guardrails"]]
+
+[[module]]
+slug = "langgraph"
+num = 2
+title = "LangGraph"
+status = "planned"
+topics = [["state_graph", "StateGraph, nodes, edges"], ["conditional_edges", "Conditional routing"], ["checkpointing", "Checkpointing & persistence"], ["human_in_loop", "Human-in-the-loop / interrupts"], ["subgraphs", "Subgraphs"], ["streaming", "Streaming events"]]
+
+[[module]]
+slug = "multi_agent"
+num = 3
+title = "Multi-Agent Systems"
+status = "planned"
+topics = [["patterns", "Supervisor / swarm / hierarchical"], ["handoffs", "Handoffs & shared state"], ["evaluation", "Evaluating agents"]]
+
+[[module]]
+slug = "mcp"
+num = 4
+title = "Model Context Protocol"
+status = "planned"
+topics = [["architecture", "MCP hosts, clients, servers"], ["primitives", "Tools, resources, prompts"], ["transports", "stdio & streamable HTTP transports"], ["building_servers", "Building MCP servers in Python"], ["security", "MCP security & auth"]]

@@ -1,0 +1,514 @@
+# Interview question bank - Testing and Code Quality
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "tst-01"
+topic = "unit"
+level = 1
+kind = "concept"
+q = '''What is the test pyramid? Where do unit, integration and end-to-end tests sit, and why that shape?'''
+a = '''
+- **Many unit tests** (base): one function/class, no I/O, milliseconds each, pinpoint failures.
+- **Fewer integration tests** (middle): real collaborators - a real file system (`tmp_path`),
+  a real DB in a container, an HTTP client against `httpx.MockTransport` / a local server.
+  They catch wiring, serialization, encoding, migrations - bugs unit tests with mocks hide.
+- **Few end-to-end tests** (top): the whole system as a user sees it; slow, brittle, expensive.
+- The shape is about **cost vs feedback**: cheap fast tests run on every save; expensive ones
+  on CI / nightly. An "ice-cream cone" (mostly E2E/manual) gives slow, flaky feedback.
+- For LLM apps add an **eval layer** next to the pyramid: offline golden-set evals on real
+  model calls, run on demand / nightly, not on every commit.
+'''
+followups = ["Where would you put a test that calls the real OpenAI API?", "What makes a test a 'unit' test - size, or isolation?"]
+
+[[q]]
+id = "tst-02"
+topic = "mocking"
+level = 2
+kind = "compare"
+q = '''Stub vs mock vs fake vs spy - what is the difference, and when do you prefer a fake?'''
+a = '''
+- **Stub**: returns canned answers, no assertions on it (`Mock(return_value="ok")` used only to feed data).
+- **Mock**: records interactions; the test asserts on **calls** (`assert_called_once_with(...)`).
+- **Spy**: wraps the real object, records calls but still runs real behaviour (`Mock(wraps=real)`).
+- **Fake**: a working, simplified implementation - in-memory vector store, `FakeClock`,
+  `RecordingNotifier`, sqlite instead of Postgres. You assert on **state**.
+- Prefer **fakes for your own boundaries**: tests don't break on harmless refactors (they
+  don't care HOW you called it, only the result). Prefer **mocks** for verifying a protocol
+  with an external system (exact request sent, retry count, "never called").
+- Over-mocking smell: tests that mirror the implementation line by line and break on
+  every refactor while catching no real bugs.
+'''
+followups = ["What is `create_autospec` and why is a bare Mock dangerous?"]
+
+[[q]]
+id = "tst-03"
+topic = "mocking"
+level = 3
+kind = "design"
+q = '''You are testing a RAG service: retriever -> prompt builder -> LLM call -> answer parser. What do you mock, what do you keep real, and how?'''
+a = '''
+- **Mock/fake the network boundary only**: the LLM client and embedding client (cost, latency,
+  non-determinism, rate limits). Use an injected fake client or `httpx.MockTransport`
+  returning recorded responses; never patch deep internals.
+- **Keep real**: prompt building, chunking, parsing, validation (pydantic), ranking logic -
+  these are pure and are where your bugs are. Unit-test them directly with tables.
+- **Vector store**: an in-memory fake (or the real lib with a tmp dir) for integration tests.
+- **Assert on the request** you send: prompt contains the retrieved chunks and citations,
+  model/temperature/max_tokens are right, tools schema is correct.
+- **Script failures** with `side_effect=[RateLimitError(), ok]`, timeouts, malformed JSON,
+  empty retrieval -> test retries, fallbacks, error messages.
+- Record/replay (VCR-style cassettes) for a few integration tests against a real provider,
+  re-recorded deliberately; live-model quality is measured by **evals**, not unit tests.
+- Inject dependencies (constructor args / FastAPI `Depends`) so tests don't need `patch` at all.
+'''
+followups = ["How do you stop someone accidentally hitting the real API in CI?", "How would you test streaming responses?"]
+
+[[q]]
+id = "tst-04"
+topic = "unit"
+level = 3
+kind = "design"
+q = '''LLM outputs are non-deterministic. How do you write meaningful automated tests for a feature like "summarize a support ticket into JSON {category, urgency, summary}"?'''
+a = '''
+- **Separate the deterministic code from the model**: parsing, validation, retries and
+  routing are tested with a fake LLM returning scripted outputs (valid, invalid, edge cases).
+- **Schema/property assertions** instead of exact strings: output validates against the
+  pydantic model; `category` in the allowed enum; `urgency` in 1..5; summary non-empty,
+  shorter than the input, same language; no PII copied through.
+- **Golden set / evals**: a versioned dataset of real inputs with expected labels or rubrics;
+  run the real model, compute metrics (accuracy for category, LLM-as-judge or rubric
+  scores for the summary), and gate on thresholds / regressions - not on 100%.
+- Reduce variance where possible (temperature 0, seed, structured output mode) but never
+  rely on byte-identical output across model versions.
+- Run evals nightly / on prompt or model changes; track scores over time; keep failing
+  examples as new golden cases.
+- Snapshot tests only for prompts (the TEMPLATE you send), not for model outputs.
+'''
+followups = ["How do you validate an LLM-as-judge?", "What would you put in CI vs in a nightly job?"]
+
+[[q]]
+id = "tst-05"
+topic = "coverage"
+level = 2
+kind = "concept"
+q = '''Your team requires 90% coverage. What does coverage actually measure, and what are its limits?'''
+a = '''
+- Line coverage = which lines executed during tests (`pytest --cov=pkg --cov-report=term-missing`).
+  **Branch coverage** (`--cov-branch`) also checks both sides of each `if` were taken.
+- It measures **execution, not verification**: a test with no asserts gets 100%. It can't
+  tell you whether edge cases (0, empty, None, unicode, boundaries) were checked.
+- Useful as a **negative signal**: uncovered code is definitely untested (dead code, error paths).
+- Chasing the number leads to low-value tests of trivial code and mock-heavy tests.
+- Better quality signals: mutation testing (mutmut / cosmic-ray - do tests fail when the
+  code is broken?), bug escape rate, reviewing which *behaviours* are tested.
+- Exclude genuinely untestable lines explicitly (`# pragma: no cover`) rather than faking tests.
+'''
+followups = ["What is mutation testing and why is it expensive?"]
+
+[[q]]
+id = "tst-06"
+topic = "pytest"
+level = 3
+kind = "concept"
+q = '''A test passes locally but fails ~1 in 20 runs on CI. List the usual causes of flaky tests and how you fix each.'''
+a = '''
+- **Time**: `datetime.now()`, timezones, DST, "tomorrow" across midnight -> inject a clock.
+- **Real sleeps / timing assertions** under a loaded CI box -> inject `sleep`, use events,
+  generous tolerances, or fake time.
+- **Order dependence / shared state**: module globals, singletons, caches (`lru_cache`),
+  env vars, logging handlers left attached, a DB row from a previous test -> function-scoped
+  fixtures, `monkeypatch`, clear caches; detect with `pytest -p randomly` / `-p no:randomly`.
+- **Randomness** without a seed; set iteration order (sets of strings vary with hash seed).
+- **Concurrency**: races in threads/async, `asyncio.gather` result assumptions, ports in use.
+- **Network / external services**: real API calls, DNS -> mock the transport; mark live tests.
+- **Filesystem**: hard-coded paths, cwd assumptions, leftover files -> `tmp_path`.
+- Process: reproduce with `pytest --count=50` (pytest-repeat) or a loop, quarantine with a
+  ticket, never just add retries (`pytest-rerunfailures`) and forget it.
+'''
+
+[[q]]
+id = "tst-07"
+topic = "formatting"
+level = 1
+kind = "compare"
+q = '''What are the roles of black, ruff, mypy and pre-commit in a Python project? Do they overlap?'''
+a = '''
+- **Formatter** (black, or `ruff format` which is black-compatible): rewrites code layout
+  deterministically -> no style debates in review, minimal diffs.
+- **Linter** (ruff; replaces flake8 + isort + pyupgrade + many plugins): finds likely bugs and
+  smells statically - unused imports, undefined names, mutable defaults (B006), bare except,
+  import order, outdated syntax. Many rules auto-fix.
+- **Type checker** (mypy / pyright): checks type annotations are consistent - None handling,
+  wrong argument types, missing attributes - without running the code.
+- **pre-commit**: a git-hook framework that runs those tools on staged files before each
+  commit, with pinned versions in `.pre-commit-config.yaml`.
+- CI runs the same checks (pre-commit can't be trusted alone - hooks can be skipped with
+  `--no-verify`). Overlap: ruff covers formatting + linting; none of them replaces tests.
+'''
+
+[[q]]
+id = "tst-08"
+topic = "pep8"
+level = 1
+kind = "concept"
+q = '''Name the PEP 8 conventions you apply every day, and one case where PEP 8 itself says to break them.'''
+a = '''
+- Naming: `snake_case` functions/variables/modules, `PascalCase` classes, `UPPER_CASE`
+  constants, `_leading_underscore` for internal names.
+- 4-space indentation; line length 79 by PEP 8 (teams usually configure 88-100 in ruff/black).
+- Imports at the top, one per line, grouped stdlib / third-party / local; no wildcard imports.
+- Comparisons to singletons with `is` / `is not` (`x is None`), not `==`; use `if not seq:`
+  for emptiness; `isinstance()` instead of `type(x) == T`.
+- Two blank lines around top-level defs, one between methods; spaces around operators.
+- PEP 8's own rule: "A foolish consistency is the hobgoblin of little minds" - consistency
+  with the surrounding code / readability wins (e.g. matching an existing module's style,
+  or a long URL in a line).
+- In practice: let the formatter + linter enforce it; reviewers discuss design instead.
+'''
+
+[[q]]
+id = "tst-09"
+topic = "logging_module"
+level = 2
+kind = "concept"
+q = '''Explain the logging module's moving parts: loggers, handlers, formatters, filters, levels and propagation. How would you set up structured (JSON) logging for an LLM service?'''
+a = '''
+- **Logger** (`getLogger(__name__)`): named, hierarchical ("app.ingest" is a child of "app").
+  Has a level and filters; records **propagate** up to ancestors' handlers.
+- **Handler**: where records go (stream, file, HTTP...), has its own level and filters.
+- **Formatter**: record -> string. **Filter**: drop or modify records (e.g. redact secrets,
+  add request_id).
+- Levels: DEBUG 10, INFO 20, WARNING 30 (root default), ERROR 40, CRITICAL 50.
+  `logger.exception(...)` = ERROR + traceback (only inside `except`).
+- Libraries: only `getLogger(__name__)` + maybe a NullHandler, never configure handlers.
+  Applications configure once at startup (`logging.config.dictConfig`).
+- Structured logs: a JSON formatter (or structlog / python-json-logger) emitting
+  `{"ts", "level", "logger", "msg", "request_id", "model", "latency_ms", "tokens_in",
+  "tokens_out", "cost"}` via `extra={...}` or contextvars; ship to an aggregator; never log
+  API keys, full prompts with PII, or raw user documents.
+- Use lazy %-formatting (`log.info("x %s", v)`) so the template stays groupable.
+'''
+followups = ["Why is a filter on a logger not applied to records from its child loggers?"]
+
+[[q]]
+id = "tst-10"
+topic = "debugging"
+level = 1
+kind = "concept"
+q = '''How do you debug a failing test interactively in Python? Mention breakpoint(), pdb commands and pytest options.'''
+a = '''
+- Put `breakpoint()` (Python 3.7+) where you want to stop; it calls `sys.breakpointhook`,
+  pdb by default. `PYTHONBREAKPOINT=0` disables all breakpoints; `=ipdb.set_trace` swaps debugger.
+- pdb commands: `l`/`ll` list code, `n` next line, `s` step into, `c` continue, `r` return
+  from function, `p expr` / `pp expr` print, `w` where (stack), `u`/`d` up/down frames,
+  `b file:line` breakpoint, `q` quit. Any Python expression works at the prompt.
+- pytest: `--pdb` drops into pdb at the failure (post-mortem), `--trace` stops at the start
+  of each test, `-x` stop at first failure, `-k name` select, `-l` show locals, `-s`
+  disable output capture (needed to see prints / use the debugger normally), `--lf` rerun
+  last failures.
+- Post-mortem outside pytest: `python -m pdb script.py`, or `pdb.pm()` after an exception.
+- For async / production: logging with context, `faulthandler` for hangs, py-spy for live processes.
+'''
+
+[[q]]
+id = "tst-11"
+topic = "dependency_management"
+level = 2
+kind = "compare"
+q = '''requirements.txt vs pyproject.toml vs a lock file (uv.lock / pip-tools requirements.txt). Why do apps need lock files and libraries usually don't commit pins?'''
+a = '''
+- **pyproject.toml** declares *abstract* dependencies with ranges (`pydantic>=2.7`) plus
+  build/tool config. It's the source of truth.
+- **Lock file** (`uv lock` -> uv.lock; `pip-compile` -> fully pinned requirements.txt with
+  hashes) records the *exact* resolved versions of every transitive dependency.
+- Apps/services commit the lock -> reproducible builds: CI, Docker and prod install the same
+  bits; upgrades are deliberate PRs (`uv lock --upgrade-package x`, Dependabot/Renovate).
+- Libraries keep ranges loose so they can co-install with other packages; pinning exact
+  versions in a library's metadata causes resolver conflicts for users. (They still lock
+  for their own CI.)
+- Plain `pip freeze > requirements.txt` mixes direct and transitive deps and loses intent.
+- Use virtual environments per project (uv venv / python -m venv); `uv sync` installs
+  exactly the lock; separate dev groups (pytest, ruff, mypy).
+'''
+
+[[q]]
+id = "tst-12"
+topic = "unittest_mock"
+level = 2
+kind = "debug"
+q = '''
+Why does this test hit the real API?
+```python
+# app/service.py
+from app.llm import call_llm
+
+def summarize(text):
+    return call_llm(f"Summarize: {text}")
+
+# tests/test_service.py
+from unittest.mock import patch
+from app.service import summarize
+
+def test_summarize():
+    with patch("app.llm.call_llm", return_value="short"):
+        assert summarize("long text") == "short"
+```
+'''
+a = '''
+- `from app.llm import call_llm` copies the name into `app.service`'s namespace at import time.
+  Patching `app.llm.call_llm` replaces the attribute in `app.llm`, but `summarize` looks the
+  name up in `app.service` -> still the real function.
+- Rule: **patch where it is looked up**: `patch("app.service.call_llm", ...)`.
+- Alternatively `import app.llm` + call `app.llm.call_llm(...)` in the service (then patching
+  `app.llm.call_llm` works), or better: inject the client into `summarize` and skip patching.
+- Add `autospec=True` so a signature change in `call_llm` breaks the test instead of silently passing.
+'''
+followups = ["How would you guarantee no test can make a network call? (socket-blocking plugin, httpx MockTransport)"]
+
+[[q]]
+id = "tst-13"
+topic = "fixtures"
+level = 2
+kind = "predict"
+q = '''
+Run with `pytest -s`. In what order are the lines printed?
+```python
+import pytest
+
+@pytest.fixture(scope="module")
+def db():
+    print("db setup")
+    yield "db"
+    print("db teardown")
+
+@pytest.fixture
+def session(db):
+    print("session setup")
+    yield "s"
+    print("session teardown")
+
+def test_a(session):
+    print("test_a")
+
+def test_b(session):
+    print("test_b")
+```
+'''
+a = '''
+```
+db setup
+session setup
+test_a
+session teardown
+session setup
+test_b
+session teardown
+db teardown
+```
+- Module-scoped `db` is created once, before the first test that needs it, and torn down
+  after the last test in the module.
+- Function-scoped `session` is rebuilt for every test; teardown (code after `yield`) runs
+  in reverse order of setup, right after each test - even if the test fails.
+- A fixture can depend on fixtures of the same or wider scope, never narrower
+  (module fixture using a function fixture -> ScopeMismatch).
+'''
+
+[[q]]
+id = "tst-14"
+topic = "unittest_mock"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+from unittest.mock import Mock
+
+m = Mock(side_effect=[1, ValueError("boom"), 3])
+print(m())
+try:
+    m()
+except ValueError as e:
+    print("caught", e)
+print(m(), m.call_count)
+try:
+    m()
+except StopIteration:
+    print("StopIteration", m.call_count)
+```
+'''
+a = '''
+```
+1
+caught boom
+3 3
+StopIteration 4
+```
+- An iterable `side_effect` yields one item per call; an item that is an exception
+  (instance or class) is **raised** instead of returned. That's how you script
+  "fail, then succeed" for retry tests.
+- The call that raises is still recorded -> call_count counts it.
+- Exhausting the iterable raises StopIteration (call is recorded too) - a common surprise
+  when the code under test retries more often than the script expects.
+- `side_effect` takes precedence over `return_value`; a callable side_effect computes the result.
+'''
+
+[[q]]
+id = "tst-15"
+topic = "type_checking"
+level = 2
+kind = "concept"
+q = '''What does mypy catch that tests may not? Show a typical error with Optional and how you fix it. What can't a type checker tell you?'''
+a = '''
+- Static checks over **all** code paths, including ones tests never execute: wrong argument
+  types, missing attributes, unhandled `None`, wrong return types, interface drift after a refactor.
+- Typical: `def find(docs: dict[str, str], k: str) -> str: return docs.get(k)` ->
+  `error: Incompatible return value type (got "str | None", expected "str")`.
+  Fix: handle None (`if (v := docs.get(k)) is None: raise KeyError(k)`), or change the
+  return type to `str | None` and make callers narrow it.
+- Gradual typing: unannotated functions aren't checked by default (`--strict` /
+  `disallow_untyped_defs`); `Any` silently disables checks; `# type: ignore[code]` should be rare.
+- Tools: `reveal_type(x)` to see inference, `Protocol` for duck-typed interfaces (great for
+  injectable fakes), `TypedDict` / pydantic for JSON shapes.
+- Can't tell you: logic errors, wrong values, runtime data from JSON/LLMs (validate those
+  with pydantic at the boundary), performance. Types complement tests, don't replace them.
+'''
+
+[[q]]
+id = "tst-16"
+topic = "testing_async_functions"
+level = 2
+kind = "debug"
+q = '''
+This async test fails with `TypeError: object list can't be used in 'await' expression`. Why, and what's the fix? What other async-testing mistake is likely nearby?
+```python
+from unittest.mock import Mock
+
+async def test_embed():
+    client = Mock()
+    client.embed.return_value = [[0.1, 0.2]]
+    assert await embed_all(client, ["hi"]) == [[0.1, 0.2]]   # embed_all awaits client.embed(...)
+```
+'''
+a = '''
+- `Mock().embed(...)` returns the plain list; `await list` fails. Use `AsyncMock` (or
+  `client = AsyncMock()` - its methods return coroutines), or `create_autospec(RealClient)`
+  which makes `async def` methods AsyncMocks automatically.
+- Assert with the await-aware API: `client.embed.assert_awaited_once_with(["hi"])`,
+  `await_count`, `await_args_list`. `assert_called_*` passes even if the coroutine was never awaited.
+- Nearby mistakes: forgetting `await` in the code (a coroutine object is truthy - `if
+  client.is_ready():` is always True; RuntimeWarning "coroutine was never awaited");
+  async test functions without pytest-asyncio / anyio marker or `asyncio_mode=auto`
+  (they're not awaited at all in old setups); really sleeping in backoff instead of
+  injecting `sleep`.
+'''
+
+[[q]]
+id = "tst-17"
+topic = "logging"
+level = 1
+kind = "predict"
+q = '''
+With no logging configuration at all, what is shown when you run this script?
+```python
+import logging
+
+log = logging.getLogger("app")
+log.info("starting")
+log.warning("disk %d%% full", 91)
+print(log.getEffectiveLevel(), logging.getLevelName(log.getEffectiveLevel()))
+```
+'''
+a = '''
+```
+disk 91% full
+30 WARNING
+```
+- The root logger defaults to WARNING; "app" has level NOTSET so its effective level is the
+  root's (30) -> `info` is dropped.
+- With no handlers configured, logging uses the "last resort" handler: message only (no
+  level/name), to **stderr**, for WARNING and above. (The print goes to stdout.)
+- `%d%%` is lazy %-formatting: `%%` is a literal percent sign.
+- Real apps call `logging.basicConfig(level=..., format=...)` / `dictConfig` once at startup.
+'''
+
+[[q]]
+id = "tst-18"
+topic = "parametrize"
+level = 1
+kind = "predict"
+q = '''
+What does this print, and what test bug does it illustrate?
+```python
+def parse(s):
+    return int(s) if s.strip().isdigit() else None
+
+for s in ["7", "0", "x"]:
+    r = parse(s)
+    print(repr(s), "ok" if r else "missing", r is None)
+```
+'''
+a = '''
+```
+'7' ok False
+'0' missing False
+'x' missing True
+```
+- `0` is falsy, so truthiness can't distinguish "parsed 0" from "no value (None)".
+  Tests written as `assert parse("7")` / `assert not parse("x")` would pass for an
+  implementation that returns 0 on failure.
+- Assert exact values: `assert parse("0") == 0`, `assert parse("x") is None`.
+- Parametrize over the boundary/equivalence classes (0, max, max+1, empty, invalid) with ids:
+  `@pytest.mark.parametrize(("s", "expected"), [("0", 0), ("x", None)], ids=["zero", "invalid"])`.
+'''
+
+[[q]]
+id = "tst-19"
+topic = "clean_code"
+level = 3
+kind = "design"
+q = '''A function reads a config file, calls datetime.now(), queries an LLM and posts to Slack, all inline. How do you make it testable without patching everything?'''
+a = '''
+- **Functional core, imperative shell**: extract the decision logic into pure functions
+  (inputs -> outputs, no I/O): `cost_in_window(records, now)`, `build_prompt(...)`,
+  `should_alert(cost, budget)`. These get fast table-driven unit tests, no mocks.
+- **Inject the edges**: pass `clock`, `llm_client`, `notify`, `load_records` (constructor args,
+  function params with production defaults, or FastAPI `Depends`). Tests pass fakes;
+  production wires real implementations in one composition root.
+- Define small interfaces with `typing.Protocol` so fakes are type-checked.
+- Keep the shell thin and cover it with a few integration tests (tmp files, MockTransport).
+- Benefits beyond tests: easier to reuse (CLI vs API vs batch job), explicit dependencies,
+  fewer globals. Smell to avoid: "patch 6 things to test one function" - that's a design signal.
+- Trade-off: don't over-abstract - inject what is slow, non-deterministic, or external.
+'''
+followups = ["How would you inject dependencies in FastAPI and override them in tests?"]
+
+[[q]]
+id = "tst-20"
+topic = "linting"
+level = 1
+kind = "debug"
+q = '''
+A linter (ruff with E, F, B rules) flags five problems here. What are they and why do they matter?
+```python
+import os, json
+
+def add_tag(doc, tags=[]):
+    tags.append(doc["id"])
+    if doc.get("score") == None:
+        return tags
+    try:
+        return json.loads(doc["meta"])
+    except:
+        return tags
+```
+'''
+a = '''
+- `E401` multiple imports on one line, and `F401` `os` imported but unused - noise, dead code, slower imports.
+- `B006` mutable default argument `tags=[]`: the list is created once at def time and
+  shared across calls -> tags accumulate between calls. Use `tags: list | None = None`.
+- `E711` comparison to None with `==` -> use `is None` (`==` can be overridden, e.g. numpy/pandas).
+- `E722` bare `except:` catches everything incl. KeyboardInterrupt/SystemExit and hides bugs ->
+  catch the specific exception (`json.JSONDecodeError`, `KeyError`).
+- Linters catch these in milliseconds before review; run them in pre-commit and CI;
+  many are auto-fixable (`ruff check --fix`).
+'''

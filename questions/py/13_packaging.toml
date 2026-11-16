@@ -1,0 +1,436 @@
+# Interview question bank - Python Modules and Packages
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "pkg-01"
+topic = "modules"
+level = 1
+kind = "concept"
+q = "What is the difference between a module, a package and a namespace package? What happens step by step when you write `import x`?"
+a = """
+- **Module**: one `.py` file (or a C extension / built-in). **Package**: a directory with
+  `__init__.py` - a module that can contain submodules (it has `__path__`).
+  **Namespace package** (PEP 420): a directory *without* `__init__.py`; can be split
+  across several directories on sys.path; lowest priority when resolving.
+- `import x`:
+  1. look in **`sys.modules`** (the cache) - if present, just bind the name;
+  2. otherwise ask the finders on `sys.meta_path` (built-ins, frozen, then PathFinder
+     walking `sys.path` in order) for a **spec**;
+  3. create the module object, **insert it in sys.modules**, then execute its code
+     top to bottom (once per process);
+  4. bind `x` in the importing namespace.
+- `import a.b.c` imports `a`, then `a.b`, then `a.b.c` (each package's `__init__` runs).
+"""
+
+[[q]]
+id = "pkg-02"
+topic = "imports"
+level = 1
+kind = "predict"
+q = '''
+Given `config.py`:
+```python
+print("loading config")
+MODEL = "gpt-4o"
+```
+what does `python main.py` print?
+```python
+# main.py
+import importlib
+import config
+import config
+from config import MODEL
+config.MODEL = "claude"
+print(MODEL, config.MODEL)
+importlib.reload(config)
+print(MODEL, config.MODEL)
+```
+'''
+a = """
+```
+loading config
+gpt-4o claude
+loading config
+gpt-4o gpt-4o
+```
+- A module body runs **once**; later imports hit the `sys.modules` cache (no second print).
+- `from config import MODEL` copies the *current binding* into main's namespace. Rebinding
+  `config.MODEL` later does not change main's `MODEL` - the same reason
+  `mock.patch("config.MODEL")` doesn't affect modules that did `from config import MODEL`
+  ("patch where it's looked up").
+- `reload()` re-executes the module in the same module object: `config.MODEL` is reset,
+  but names copied earlier (and instances of old classes) are stale. Avoid reload in
+  production code.
+"""
+
+[[q]]
+id = "pkg-03"
+topic = "abs_vs_rel"
+level = 2
+kind = "debug"
+q = '''
+Project layout:
+```
+ragapp/
+  __init__.py
+  main.py        # from .retriever import search
+  retriever.py
+```
+`python ragapp/main.py` fails with
+`ImportError: attempted relative import with no known parent package`. Why, and what are the fixes?
+'''
+a = """
+- Running a file by path executes it as the top-level module `__main__` with
+  `__package__` empty: Python doesn't know it lives in package `ragapp`, so `.retriever`
+  can't be resolved. Also `ragapp/` (not its parent) is put on sys.path.
+- Fixes:
+  * run it as a module from the project root: **`python -m ragapp.main`** (sets
+    `__package__ = "ragapp"`);
+  * better: define an entry point in pyproject (`[project.scripts] ragapp =
+    "ragapp.main:cli"`) and install the project (`pip install -e .` / `uv sync`);
+  * don't "fix" it with `sys.path.append(...)` hacks.
+- Absolute vs relative: absolute (`from ragapp.retriever import search`) is explicit and
+  works from anywhere once installed; relative (`from .retriever import ...`) keeps a
+  package relocatable/renamable. PEP 8 prefers absolute; both are fine inside a package.
+"""
+
+[[q]]
+id = "pkg-04"
+topic = "init_py"
+level = 2
+kind = "predict"
+q = '''
+`pkg/__init__.py`:
+```python
+__all__ = ["public"]
+def public(): ...
+def helper(): ...
+def _private(): ...
+```
+`pkg2.py` (no `__all__`):
+```python
+def helper(): ...
+def _private(): ...
+```
+What do these print?
+```python
+from pkg import *
+print(sorted(n for n in dir() if not n.startswith("__")))
+```
+```python
+from pkg2 import *
+print(sorted(n for n in dir() if not n.startswith("__")))
+import pkg
+print(pkg._private.__name__)
+```
+'''
+a = """
+```
+['public']
+```
+```
+['helper']
+_private
+```
+- With `__all__`, `import *` takes exactly those names (even if they start with `_`).
+- Without `__all__`, `import *` takes every name not starting with an underscore -
+  including anything the module itself imported (`os`, `json`...), which is why
+  `__all__` matters for a clean public API.
+- Underscore names are a *convention*: `pkg._private` is still accessible.
+- `__all__` also tells linters/IDEs/docs what's public; re-exported names in
+  `__init__.py` should be listed there (ruff/pyright treat unlisted re-exports as unused).
+"""
+
+[[q]]
+id = "pkg-05"
+topic = "init_py"
+level = 3
+kind = "design"
+q = "Your SDK's `import mysdk` takes 4 seconds because `__init__.py` imports torch, transformers and the CLI. How do you keep a convenient top-level API but fast imports?"
+a = """
+- `__init__.py` runs on the first import of *anything* in the package -> keep it to
+  cheap re-exports of the public API; never import CLIs, heavy optional deps or do I/O
+  (reading configs, network) at import time.
+- **Lazy attribute access** (PEP 562): module-level `def __getattr__(name)` that imports
+  the heavy submodule on first access, plus `__dir__` and `__all__`; for type checkers use
+  `if TYPE_CHECKING:` imports. (Or `importlib.util.LazyLoader`; libraries like
+  `lazy_loader` package the pattern.)
+- Move heavy deps behind **extras** (`pip install mysdk[local]`) and import them inside the
+  functions that need them, raising a helpful error if missing.
+- Measure with `python -X importtime -c "import mysdk"`.
+- Side benefit: fewer circular-import problems and faster CLI start-up / serverless cold starts.
+"""
+
+[[q]]
+id = "pkg-06"
+topic = "main_guard"
+level = 1
+kind = "concept"
+q = "What does `if __name__ == \"__main__\":` do and why do you need it?"
+a = """
+- Every module has `__name__`: its import name (`"ragapp.cli"`) when imported, or
+  `"__main__"` when it's the program's entry point (`python file.py` / `python -m pkg.mod`).
+- The guard runs code only when executed as a script, not when imported - so a module
+  can be both importable (tests, other modules) and runnable, without side effects
+  (starting a server, parsing argv, training a model) on import.
+- Put the logic in a `main()` function and call it from the guard:
+  `raise SystemExit(main())` - testable and exit-code aware.
+- `python -m package` runs `package/__main__.py`.
+"""
+
+[[q]]
+id = "pkg-07"
+topic = "main_guard"
+level = 3
+kind = "debug"
+q = '''
+This works on Linux CI but on a colleague's macOS/Windows machine it fails with a
+`RuntimeError` about "the current process has finished its bootstrapping phase" (or spawns
+processes endlessly). Why?
+```python
+# embed_corpus.py
+from concurrent.futures import ProcessPoolExecutor
+
+def embed(chunk): ...
+
+chunks = load_chunks()
+with ProcessPoolExecutor() as pool:
+    vectors = list(pool.map(embed, chunks))
+```
+'''
+a = """
+- macOS (3.8+) and Windows use the **spawn** start method (and 3.14 makes forkserver the
+  default on Linux too): each worker is a fresh interpreter that **imports the main
+  module** to find `embed`. Without a guard, importing re-runs the top-level code -> each
+  worker tries to create its own pool -> multiprocessing detects it and raises
+  RuntimeError (or you get a fork bomb in older setups).
+- Fork (old Linux default) copies the parent instead of re-importing, which hides the bug.
+- Fix:
+```python
+def main():
+    chunks = load_chunks()
+    with ProcessPoolExecutor() as pool:
+        vectors = list(pool.map(embed, chunks))
+
+if __name__ == "__main__":
+    main()
+```
+- Also: worker functions must be importable top-level functions (picklable), and
+  large globals are re-created per worker under spawn.
+"""
+
+[[q]]
+id = "pkg-08"
+topic = "search_path"
+level = 2
+kind = "debug"
+q = '''
+A teammate creates `json.py` in the project folder to experiment:
+```python
+import json
+print(json.dumps({"a": 1}))
+```
+`python json.py` crashes. What's the error (Python 3.13+) and the underlying rule? Which other
+file names do you see this with in AI projects?
+'''
+a = """
+```
+AttributeError: module 'json' has no attribute 'dumps' (consider renaming '.../json.py' since
+it has the same name as the standard library module named 'json' and prevents importing that
+standard library module)
+```
+- `sys.path[0]` is the **script's directory** (or cwd for `-m`/REPL), searched *before*
+  the stdlib and site-packages. `import json` finds the local file; since it is being
+  executed, you get the half-initialized module. 3.13 added the helpful hint; older
+  versions say "partially initialized module ... most likely due to a circular import".
+- Common culprits: `openai.py`, `anthropic.py`, `langchain.py`, `random.py`, `test.py`,
+  `token.py`, `types.py`, `queue.py`, `logging.py`, `email/` packages.
+- Inspect with `python -c "import json; print(json.__file__)"` or
+  `importlib.util.find_spec("json").origin`; order is: script dir, PYTHONPATH, stdlib,
+  site-packages (`python -m site` prints it). `python -P` / `-I` drop the script dir.
+"""
+
+[[q]]
+id = "pkg-09"
+topic = "imports"
+level = 3
+kind = "debug"
+q = '''
+```python
+# app/models.py
+from app.prompts import render
+class Model: ...
+
+# app/prompts.py
+from app.models import Model
+def render(): return "hi"
+```
+`import app.models` fails. Give the exact error, explain the mechanics, and list fixes.
+'''
+a = """
+```
+ImportError: cannot import name 'Model' from partially initialized module 'app.models'
+(most likely due to a circular import) (.../app/models.py)
+```
+- Mechanics: importing `app.models` registers it in sys.modules and starts executing it;
+  line 1 imports `app.prompts`, which does `from app.models import Model` - the module
+  object exists (cache hit) but hasn't reached `class Model` yet -> the name is missing.
+- `import app.models as m` + using `m.Model` later *inside functions* would work (lookup
+  deferred), `from ... import name` doesn't.
+- Fixes, best first: restructure (move the shared piece to a third module both import;
+  dependencies should form a DAG), move the import inside the function that needs it,
+  import the module not the name, or for type hints only use
+  `from __future__ import annotations` / `if TYPE_CHECKING:`.
+"""
+
+[[q]]
+id = "pkg-10"
+topic = "venv"
+level = 1
+kind = "concept"
+q = "What is a virtual environment, how does it work under the hood, and why should every project have one?"
+a = """
+- An isolated Python environment: a directory with its own `bin/python` (a symlink/copy
+  of the base interpreter), its own `site-packages`, and `pyvenv.cfg` pointing at the
+  base installation. Created with `python -m venv .venv` (or `uv venv`).
+- At start-up Python sees `pyvenv.cfg`, sets `sys.prefix` to the venv (`sys.base_prefix`
+  stays the base install) and uses the venv's site-packages. `sys.prefix != sys.base_prefix`
+  means "inside a venv".
+- `activate` only prepends `.venv/bin` to PATH (and sets the prompt/VIRTUAL_ENV);
+  running `.venv/bin/python` directly works without activating.
+- Why: per-project dependency versions (project A needs pydantic 1, B needs 2), no
+  sudo/system-Python pollution (PEP 668 "externally-managed-environment" blocks it on many
+  distros), reproducible installs. In Docker you may skip it, but many still use one.
+"""
+
+[[q]]
+id = "pkg-11"
+topic = "pip"
+level = 2
+kind = "compare"
+q = "Compare `pip install -r requirements.txt`, `pip install -e .`, `pip freeze > requirements.txt`, and tools like pip-tools / uv / Poetry."
+a = """
+- `pip install -r requirements.txt`: install whatever the file lists - ranges or pins.
+- `pip install -e .`: editable install of *your* project from pyproject.toml - the
+  package is importable from anywhere, code changes apply without reinstalling, and
+  entry-point scripts are generated.
+- `pip freeze`: dumps **everything** installed with exact versions - including
+  transitive deps and stray packages you installed by hand; no hashes, no separation of
+  direct vs indirect, platform-specific. A poor man's lock file.
+- pip-tools (`pip-compile`) / **uv** (`uv lock`, `uv.lock`) / Poetry (`poetry.lock`):
+  you declare direct deps (ranges) in pyproject; the tool **resolves** a complete,
+  reproducible lock (with hashes, cross-platform for uv/Poetry) and `sync`s the env to
+  exactly that.
+- Use `python -m pip` to be sure you're using the pip of the intended interpreter.
+"""
+
+[[q]]
+id = "pkg-12"
+topic = "dependencies"
+level = 3
+kind = "design"
+q = "How do you manage dependencies for (a) an internal FastAPI RAG service and (b) a small library your team publishes to PyPI? Mention pinning, conflicts and security."
+a = """
+- **Application (service)**: declare direct deps with sensible ranges in pyproject,
+  commit a **lock file** (uv.lock / poetry.lock / pip-compile output with hashes), build
+  Docker images from the lock -> every deploy is reproducible. Automated update PRs
+  (Renovate/Dependabot) + CI; `pip-audit`/`uv pip audit`/safety for CVEs.
+- **Library**: declare **ranges** (`pydantic>=2.5,<3`), not pins - pins in a library
+  make it impossible to install next to other libraries (resolver conflicts). Test against
+  min and latest versions (CI matrix). Put optional heavy deps (torch, faiss) in extras.
+- Conflicts: read the resolver error, find who constrains what (`uv tree`,
+  `pipdeptree`), relax/upgrade, avoid upper caps unless known-broken.
+- AI-specific: CUDA builds of torch come from a separate index (`--index-url` / uv
+  `[tool.uv.sources]`), SDKs (openai/anthropic/langchain) change fast -> pin and upgrade
+  deliberately; separate dev tools into dependency groups.
+"""
+
+[[q]]
+id = "pkg-13"
+topic = "pyproject"
+level = 2
+kind = "concept"
+q = "What goes into `pyproject.toml`? Explain `[build-system]`, `[project]` and `[tool.*]`."
+a = """
+- The single standard config file for Python projects (PEP 518/517/621).
+- `[build-system]`: which **build backend** builds wheels/sdists (`requires = ["hatchling"]`,
+  `build-backend = "hatchling.build"`; or setuptools, flit-core, pdm-backend, uv_build).
+  Front-ends (pip, uv, build) install it in an isolated env and call it.
+- `[project]` (PEP 621): name, version (or `dynamic = ["version"]`), requires-python,
+  dependencies (PEP 508 strings), `optional-dependencies` (extras), `scripts`
+  (console entry points), authors, license, readme...
+- `[dependency-groups]` (PEP 735): dev/test/lint deps that are *not* published metadata.
+- `[tool.<name>]`: per-tool config - ruff, mypy, pytest (`[tool.pytest.ini_options]`),
+  uv, coverage - replacing setup.cfg/tox.ini/.flake8 sprawl.
+- Read it with `tomllib` (stdlib, read-only, needs a binary file).
+"""
+
+[[q]]
+id = "pkg-14"
+topic = "requirements"
+level = 1
+kind = "compare"
+q = "requirements.txt vs the `dependencies` list in pyproject.toml - what is each for?"
+a = """
+- pyproject `dependencies`: the package's **abstract** requirements - what it needs to
+  run, as ranges. Becomes wheel metadata; pip/uv resolve it when someone installs the
+  package.
+- requirements.txt: a pip **input file** for an environment - often the **concrete**,
+  fully pinned set (output of pip-compile/`uv export`) used to deploy an app. Can contain
+  pip options (`--index-url`, `-r other.txt`, `-c constraints.txt`, `--hash`).
+- Typical modern setup: pyproject (direct deps) + lock file; generate requirements.txt
+  only where a tool needs it (some PaaS, legacy Docker builds).
+- Format details: PEP 508 lines like `uvicorn[standard]==0.30.6 ; sys_platform != "win32"`,
+  comments with `#`, names compared after normalization (`LangChain_Core` == `langchain-core`).
+"""
+
+[[q]]
+id = "pkg-15"
+topic = "dependencies"
+level = 2
+kind = "predict"
+q = '''
+Which of the versions `2.0.5, 2.1.0, 2.1.9, 2.10.0, 3.0.0` satisfy each specifier?
+```
+~=2.1
+~=2.1.0
+==2.*
+>=2.1,<3
+!=2.1.*
+```
+'''
+a = """
+```
+~=2.1       2.1.0  2.1.9  2.10.0
+~=2.1.0     2.1.0  2.1.9
+==2.*       2.0.5  2.1.0  2.1.9  2.10.0
+>=2.1,<3    2.1.0  2.1.9  2.10.0
+!=2.1.*     2.0.5  2.10.0  3.0.0
+```
+- `~=` is the "compatible release" operator: `~=2.1` == `>=2.1, ==2.*`;
+  `~=2.1.0` == `>=2.1.0, ==2.1.*` - the last given component may grow.
+- Versions compare numerically per component (PEP 440): 2.10.0 > 2.9 > 2.1.
+- Pre-releases (2.11.0rc1) are excluded by installers unless requested (`--pre`) or
+  pinned explicitly.
+- Interview angle: for a library, `>=2.1,<3` (semver-ish major cap) is a judgment call;
+  upper caps often cause more resolver pain than they prevent.
+"""
+
+[[q]]
+id = "pkg-16"
+topic = "search_path"
+level = 2
+kind = "concept"
+q = "How do you find out *where* a module is imported from and why `import mylib` picks up the wrong version?"
+a = """
+- `mylib.__file__` / `mylib.__version__` / `importlib.metadata.version("mylib")` (installed
+  metadata - can disagree with the code actually imported if paths are messed up).
+- Without importing: `importlib.util.find_spec("mylib").origin`.
+- `python -c "import sys; print(sys.executable); print(*sys.path, sep='\\n')"` - classic
+  causes: wrong interpreter (pip from another Python - use `python -m pip`), a local
+  folder/file shadowing the package, `PYTHONPATH` set in the shell/IDE, an old egg-link or
+  `.pth` file from an editable install, user site-packages (`~/.local`).
+- `python -m site` shows site dirs; `python -X importtime` and `-v` trace imports.
+- In notebooks: the kernel's interpreter may differ from your terminal's - use
+  `%pip install` to install into the running kernel.
+"""

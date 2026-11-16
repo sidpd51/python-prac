@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capstone roadmap - AI Eng Prep Notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="brand"><a href="index.html">AI Engineering Prep Notes</a><span>learn · practise · prove · revise</span></div>
+  <nav class="tabs" aria-label="Documents"><a class="tab" href="readme.html">Start here</a><a class="tab" href="content-guide.html">Content guide</a><a class="tab" href="roadmap.html" aria-current="page">Capstone roadmap</a><a class="tab" href="explainers.html">Visual explainers</a><a class="tab" href="decisions.html">Decision log</a></nav>
+</header>
+<p class="src">capstone/ROADMAP.md</p><div class="layout"><nav class="toc" aria-label="On this page"><p class="toc-h">On this page</p><ol><li><a href="#how-to-work-a-milestone">How to work a milestone</a></li><li><a href="#phase-0-python-foundations-current-track-py-tests-provided">Phase 0: Python foundations (current track: py) ✅ tests provided</a></li><li><a href="#phase-1-ml-dl-ml-nlp-tracks">Phase 1: ML / DL (ml, nlp tracks)</a></li><li><a href="#phase-2-llms-llm-track">Phase 2: LLMs (llm track)</a></li><li><a href="#phase-3-rag-vector-db-evaluation-rag-track">Phase 3: RAG + vector DB + evaluation (rag track)</a></li><li><a href="#phase-4-agents-langgraph-mcp-agents-track">Phase 4: agents, LangGraph, MCP (agents track)</a></li><li><a href="#phase-5-production-prod-track">Phase 5: production (prod track)</a></li><li><a href="#phase-6-interview-packaging-interview-track">Phase 6: interview packaging (interview track)</a></li></ol></nav><article class="prose"><h1 id="docmind-capstone-roadmap">DocMind - capstone roadmap</h1>
+<p>One project that grows with every track. By the end it's a production-style
+<strong>document-intelligence platform</strong>: ingestion → retrieval → grounded answers → agents → API,
+with evals, observability and CI. That's the project you talk about in interviews for
+40 minutes without running out of depth.</p>
+<p><strong>The rule that makes it extensible:</strong> everything talks through the Protocols in
+<code>src/docmind/interfaces.py</code> (<code>Chunker</code>, <code>Embedder</code>, <code>VectorStore</code>, <code>LLM</code>, <code>Retriever</code>).
+New phases <strong>add implementations</strong> and <strong>add packages</strong> (<code>llm/</code>, <code>rag/</code>, <code>eval/</code>, <code>agents/</code>,
+<code>api/</code>); they never rewrite earlier code. Old milestone tests keep passing, which is your
+regression suite.</p>
+<div class="hl"><pre><span></span><code>              ┌──────────── Phase 4: agents/ (LangGraph, MCP server) ────────────┐
+              │                                                                   │
+ files ─► ingest/ ─► Chunker ─► Embedder ─► VectorStore ◄── Retriever ◄── rag/ ◄── LLM (Phase 2)
+ (P0)     loaders     (P0)       (P0/P1)      (P0/P3)         (P3)        (P3)
+                                                   ▲                         │
+                                     eval/ (P3) ───┴─── golden set, metrics ─┘
+                       api/ (P5): FastAPI + SSE + auth + tracing + caching + Docker + CI
+</code></pre></div>
+
+
+<div class="widget" data-widget="arch">
+  <h3 class="w-title">DocMind architecture</h3>
+  <p class="w-sub">Everything talks through five Protocols, so each phase adds implementations without touching earlier code. Click a box.</p>
+  <div class="legend"><span class="lg p0">Phase 0</span><span class="lg p1">Phase 1</span><span class="lg p2">Phase 2</span><span class="lg p3">Phase 3</span><span class="lg p4">Phase 4</span><span class="lg p5">Phase 5</span></div>
+  <div class="svgwrap">
+  <svg viewBox="0 0 900 380" role="img" aria-label="DocMind architecture across phases">
+    <defs><marker id="ar-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrowhead"/></marker></defs>
+    <g class="edges">
+      <path d="M130 200 L170 200" marker-end="url(#ar-arrow)"/><path d="M300 200 L340 200" marker-end="url(#ar-arrow)"/>
+      <path d="M480 200 L520 200" marker-end="url(#ar-arrow)"/><path d="M650 200 L690 200" marker-end="url(#ar-arrow)"/>
+      <path d="M760 230 L760 290" marker-end="url(#ar-arrow)"/><path d="M560 320 L690 320" marker-end="url(#ar-arrow)"/>
+      <path d="M760 170 L760 110" marker-end="url(#ar-arrow)"/><path d="M830 320 L878 320 L878 230" class="dash" marker-end="url(#ar-arrow)"/>
+      <path d="M830 60 L878 60 L878 170" class="dash" marker-end="url(#ar-arrow)"/><path d="M480 60 L585 60 L585 170" class="dash" marker-end="url(#ar-arrow)"/>
+    </g>
+    <g class="node p0" tabindex="0" role="button" data-title="Loaders · M0.2" data-body="iter_files, read_text and load_documents: lazy, encoding-aware, resilient to bad lines. Yields Document objects." data-cmd="capstone/src/docmind/ingest/loaders.py">
+      <rect x="10" y="170" width="120" height="60" rx="10"/><text x="70" y="196">Loaders</text><text x="70" y="214" class="sub">files → Document</text></g>
+    <g class="node p0" tabindex="0" role="button" data-title="Chunker · M0.3" data-body="CharChunker and RecursiveChunker, both satisfying the Chunker Protocol. Offsets and metadata survive chunking so citations and filters work later." data-cmd="capstone/src/docmind/ingest/chunking.py">
+      <rect x="170" y="170" width="130" height="60" rx="10"/><text x="235" y="196">Chunker</text><text x="235" y="214" class="sub">Document → Chunk</text></g>
+    <g class="node p0" tabindex="0" role="button" data-title="Embedder · M0.4" data-body="HashingEmbedder runs offline and deterministically. HttpEmbedder batches, limits concurrency, retries with jitter and validates responses. Phase 1 adds a local neural model." data-cmd="capstone/src/docmind/embeddings/">
+      <rect x="340" y="170" width="140" height="60" rx="10"/><text x="410" y="196">Embedder</text><text x="410" y="214" class="sub">text → vectors</text></g>
+    <g class="node p0" tabindex="0" role="button" data-title="VectorStore · M0.5" data-body="In-memory cosine search with metadata filters and persistence. Phase 3 adds Qdrant or pgvector behind the same Protocol so old tests run against it too." data-cmd="capstone/src/docmind/store/memory.py">
+      <rect x="520" y="170" width="130" height="60" rx="10"/><text x="585" y="196">VectorStore</text><text x="585" y="214" class="sub">search, upsert</text></g>
+    <g class="node p3" tabindex="0" role="button" data-title="Retriever · Phase 3" data-body="Dense search, BM25 and hybrid fusion, then a reranker. Same Retriever Protocol whatever the strategy." data-cmd="rag/hybrid.py, rag/rerank.py">
+      <rect x="690" y="170" width="140" height="60" rx="10"/><text x="760" y="196">Retriever</text><text x="760" y="214" class="sub">hybrid + rerank</text></g>
+    <g class="node p2" tabindex="0" role="button" data-title="LLM · Phase 2" data-body="Anthropic, OpenAI or a local model behind one LLM Protocol, with streaming, retries, cost accounting and a fake for tests." data-cmd="llm/base.py, llm/anthropic.py">
+      <rect x="420" y="290" width="140" height="60" rx="10"/><text x="490" y="316">LLM</text><text x="490" y="334" class="sub">generate, stream</text></g>
+    <g class="node p3" tabindex="0" role="button" data-title="Answer · Phase 3" data-body="Retrieve, assemble context with citations, generate, return Answer(text, citations). This is the RAG core." data-cmd="rag/answer.py">
+      <rect x="690" y="290" width="140" height="60" rx="10"/><text x="760" y="316">rag/answer</text><text x="760" y="334" class="sub">cited answers</text></g>
+    <g class="node p4" tabindex="0" role="button" data-title="Agents · Phase 4" data-body="Tools wrapping the Retriever, a LangGraph research agent with checkpoints and human-in-the-loop, and an MCP server exposing search and ingest." data-cmd="agents/research.py, mcp_server.py">
+      <rect x="690" y="30" width="140" height="60" rx="10"/><text x="760" y="56">Agents + MCP</text><text x="760" y="74" class="sub">LangGraph</text></g>
+    <g class="node p5" tabindex="0" role="button" data-title="API · Phase 5" data-body="FastAPI with SSE streaming, auth, tenant filters, caching, tracing, Docker and CI. It depends only on the Protocols, so it is easy to test with fakes." data-cmd="api/">
+      <rect x="860" y="170" width="36" height="60" rx="8"/><text x="878" y="204" class="vert">API</text></g>
+    <g class="node p3" tabindex="0" role="button" data-title="Evaluation · Phase 3" data-body="Golden question set, recall@k, MRR, faithfulness with an LLM judge. CI fails if recall drops, so every change is measured." data-cmd="eval/">
+      <rect x="290" y="30" width="190" height="60" rx="10"/><text x="385" y="56">Evaluation</text><text x="385" y="74" class="sub">recall@k, faithfulness</text></g>
+  </svg></div>
+  <div class="panel" data-panel aria-live="polite"><strong>Pick a box.</strong> <span>Solid arrows are the main data flow. Dashed arrows are serving (agents and answers reach the API) and measurement (evaluation scores retrieval).</span></div>
+</div>
+
+
+<div class="widget" data-widget="tracker">
+  <h3 class="w-title">Your progress</h3>
+  <p class="w-sub">Tick milestones in the tables and lists below. Ticks are saved in this browser only.</p>
+  <div class="tr-rows"></div>
+  <div class="lz-controls"><span class="lz-count" data-tr-total></span><button type="button" class="btn ghost" data-tr-reset>Clear all</button></div>
+</div>
+
+<h2 id="how-to-work-a-milestone">How to work a milestone</h2>
+<ol>
+<li>Read the docstring at the top of the module (it's the spec).</li>
+<li>Implement it in <code>capstone/src/docmind/...</code>.</li>
+<li><code>study test capstone</code> (or <code>pytest capstone/tests/test_m02_loaders.py</code>). Results feed your
+   mastery stats automatically, because the tests are tagged with curriculum topics.</li>
+<li>Stuck for 30+ minutes? Compare with <code>solutions/capstone/src/docmind/...</code>, then <strong>close it and
+   re-write from memory the next day</strong>.</li>
+<li>Tick the box below, commit, and write 2-3 lines in <code>journal/decisions.md</code>: what you chose,
+   what you rejected, and why. (That file becomes your interview stories.)</li>
+</ol>
+<hr />
+<h2 id="phase-0-python-foundations-current-track-py-tests-provided">Phase 0: Python foundations (current track: <code>py</code>) ✅ tests provided</h2>
+<div class="widget" data-widget="chunker">
+  <h3 class="w-title">Chunker playground</h3>
+  <p class="w-sub">The same windowing rule as <code>CharChunker</code>. Highlighted text at the start of a chunk is overlap repeated from the previous one.</p>
+  <textarea class="ta" rows="4" aria-label="Text to chunk">Retrieval augmented generation grounds answers in your documents. Chunk size is a hyperparameter, not a guess. Too small and you lose context. Too large and retrieval gets noisy.</textarea>
+  <div class="sliders">
+    <label>Size <output data-o="size">60</output> chars<input type="range" min="10" max="200" value="60" data-in="size"></label>
+    <label>Overlap <output data-o="overlap">10</output> chars<input type="range" min="0" max="100" value="10" data-in="overlap"></label>
+  </div>
+  <p class="w-note" data-summary></p>
+  <div class="chunks"></div>
+</div>
+
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th class="tick">Done</th>
+<th>Milestone</th>
+<th>Module to implement</th>
+<th>Concepts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.1</strong> config &amp; logging</td>
+<td><code>config.py</code></td>
+<td>pydantic-settings, SecretStr, validators, lru_cache, logging handlers, JSON logs</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.2</strong> loaders</td>
+<td><code>ingest/loaders.py</code></td>
+<td>pathlib, encodings/BOM, lazy generators, eager validation, JSONL, resilient error handling</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.3</strong> chunkers</td>
+<td><code>ingest/chunking.py</code></td>
+<td>generators, offsets &amp; metadata, recursive splitting, Protocols</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.4a</strong> hashing embedder</td>
+<td><code>embeddings/hashing.py</code></td>
+<td>NumPy vectorisation, normalisation, deterministic hashing</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.4b</strong> HTTP embedder</td>
+<td><code>embeddings/http.py</code></td>
+<td>httpx AsyncClient, Semaphore, gather ordering, retries + jitter + Retry-After, pydantic validation</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.5</strong> vector store</td>
+<td><code>store/memory.py</code></td>
+<td>cosine via matmul, argpartition top-k, boolean masks, dunders, persistence</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.6</strong> pipeline</td>
+<td><code>pipeline.py</code></td>
+<td>streaming batch pipeline, async, dependency inversion</td>
+</tr>
+<tr>
+<td class="tick"><span class="box" aria-label="open"></span></td>
+<td><strong>M0.7</strong> CLI</td>
+<td><code>cli.py</code></td>
+<td>argparse, console scripts, asyncio.run, exit codes</td>
+</tr>
+</tbody>
+</table></div>
+<p>Stretch goals (no tests given, so write your own; that's the <code>py.testing</code> practice):</p>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span><code>docmind stats</code> command: docs, chunks, avg chunk length, per-source counts (pandas)</li>
+<li class="task"><span class="box" aria-label="open"></span>Profile ingesting 10k docs with cProfile, optimise the hottest function, record before/after</li>
+<li class="task"><span class="box" aria-label="open"></span>Run <code>mypy --strict src/docmind</code> clean</li>
+<li class="task"><span class="box" aria-label="open"></span>Ingest with a thread pool for file reads vs. sequential: measure and explain</li>
+</ul>
+<h2 id="phase-1-ml-dl-ml-nlp-tracks">Phase 1: ML / DL (<code>ml</code>, <code>nlp</code> tracks)</h2>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span><code>ml/classifier.py</code>: TF-IDF + logistic regression doc classifier (scikit-learn); metrics report</li>
+<li class="task"><span class="box" aria-label="open"></span><code>nlp/bm25.py</code>: BM25 index from scratch (becomes the sparse half of hybrid search)</li>
+<li class="task"><span class="box" aria-label="open"></span><code>embeddings/local.py</code>: sentence-transformers embedder behind the same <code>Embedder</code> Protocol</li>
+<li class="task"><span class="box" aria-label="open"></span>Notebook: compare hashing vs. TF-IDF vs. neural embeddings on a small labelled set (recall@5)</li>
+<li>Tag tests with <code>ml.*</code> / <code>nlp.*</code> topics (<code>study start ml.classical</code> first).</li>
+</ul>
+<h2 id="phase-2-llms-llm-track">Phase 2: LLMs (<code>llm</code> track)</h2>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span><code>llm/base.py</code> + <code>llm/anthropic.py</code> / <code>llm/openai.py</code> / <code>llm/ollama.py</code>: <code>LLM</code> Protocol impls</li>
+<li class="task"><span class="box" aria-label="open"></span>Streaming (<code>stream()</code> async generator), timeouts, retries, token + cost accounting per call</li>
+<li class="task"><span class="box" aria-label="open"></span>Structured output: answer → pydantic model with a validation-error repair loop</li>
+<li class="task"><span class="box" aria-label="open"></span>Prompt templates as versioned files; a fake LLM for tests</li>
+<li class="task"><span class="box" aria-label="open"></span>Wire <code>HttpEmbedder</code> into the CLI via settings (<code>DOCMIND_EMBEDDER=http</code>)</li>
+</ul>
+<h2 id="phase-3-rag-vector-db-evaluation-rag-track">Phase 3: RAG + vector DB + evaluation (<code>rag</code> track)</h2>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span><code>rag/answer.py</code>: retrieve → assemble context with citations → generate → <code>Answer(text, citations)</code></li>
+<li class="task"><span class="box" aria-label="open"></span><code>store/qdrant.py</code> or <code>store/pgvector.py</code>: same <code>VectorStore</code> Protocol, so the old tests run against it too</li>
+<li class="task"><span class="box" aria-label="open"></span><code>rag/hybrid.py</code>: BM25 + dense with reciprocal-rank fusion; <code>rag/rerank.py</code>: cross-encoder</li>
+<li class="task"><span class="box" aria-label="open"></span><code>eval/</code>: golden Q/A set, recall@k / MRR, faithfulness + answer-relevance with LLM-as-judge</li>
+<li class="task"><span class="box" aria-label="open"></span><code>docmind eval</code>: prints a metrics table; CI fails if recall@5 drops more than X%</li>
+<li class="task"><span class="box" aria-label="open"></span>Experiment log: chunk size × overlap × retriever → metrics (pandas), with a decision recorded</li>
+</ul>
+<h2 id="phase-4-agents-langgraph-mcp-agents-track">Phase 4: agents, LangGraph, MCP (<code>agents</code> track)</h2>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span><code>agents/tools.py</code>: search / fetch-document / calculator tools with pydantic schemas</li>
+<li class="task"><span class="box" aria-label="open"></span><code>agents/research.py</code>: LangGraph graph (plan → retrieve → answer → self-check → retry) with checkpointing</li>
+<li class="task"><span class="box" aria-label="open"></span>Human-in-the-loop interrupt before an expensive action</li>
+<li class="task"><span class="box" aria-label="open"></span><code>mcp_server.py</code>: expose <code>search</code> and <code>ingest</code> as MCP tools; use it from an MCP client</li>
+<li class="task"><span class="box" aria-label="open"></span>Agent eval: task success rate, steps per task, cost per task</li>
+</ul>
+<h2 id="phase-5-production-prod-track">Phase 5: production (<code>prod</code> track)</h2>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span><code>api/</code>: FastAPI <code>/ingest</code>, <code>/search</code>, <code>/ask</code> (SSE streaming), auth, per-tenant metadata filters</li>
+<li class="task"><span class="box" aria-label="open"></span>Background ingestion jobs (queue), idempotency keys</li>
+<li class="task"><span class="box" aria-label="open"></span>Caching (exact + semantic), rate limiting, model fallback routing</li>
+<li class="task"><span class="box" aria-label="open"></span>Tracing (OpenTelemetry / Langfuse): latency, tokens, cost per request</li>
+<li class="task"><span class="box" aria-label="open"></span>Dockerfile + docker-compose (api + vector DB), GitHub Actions: lint → mypy → tests → evals</li>
+<li class="task"><span class="box" aria-label="open"></span>Load test (locust/k6) with a p95 latency target; write up the bottleneck you found</li>
+</ul>
+<h2 id="phase-6-interview-packaging-interview-track">Phase 6: interview packaging (<code>interview</code> track)</h2>
+<ul>
+<li class="task"><span class="box" aria-label="open"></span>README with an architecture diagram and <em>measured</em> numbers (recall, latency, cost)</li>
+<li class="task"><span class="box" aria-label="open"></span>5 ADRs (architecture decision records) from <code>journal/decisions.md</code></li>
+<li class="task"><span class="box" aria-label="open"></span>6 STAR stories: a bug you debugged, a trade-off, a performance win, an eval-driven change,
+      a failure / incident, a design you'd change</li>
+<li class="task"><span class="box" aria-label="open"></span>Be able to whiteboard "design DocMind for 10M docs, 100 QPS, multi-tenant" in 45 minutes</li>
+</ul></article></div>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

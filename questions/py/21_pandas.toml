@@ -1,0 +1,400 @@
+# Interview question bank - Data Processing with Pandas
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "pd-01"
+topic = "series_dataframe"
+level = 1
+kind = "concept"
+q = "What are a Series and a DataFrame, and what role does the index play?"
+a = """
+- **Series**: a 1-D array of values (one dtype) plus an **index** of labels, and a name.
+- **DataFrame**: a 2-D table = an ordered collection of column Series that **share one row
+  index**; each column has its own dtype. `df["col"]` -> Series, `df[["a", "b"]]` -> DataFrame.
+- The **index** gives label-based lookup (`.loc`), and **alignment**: operations between Series/
+  DataFrames match rows by label, not by position (missing labels -> NaN).
+- Under the hood columns are NumPy (or Arrow) arrays, so column-wise vectorised operations are
+  fast; row-wise Python iteration (`iterrows`) is slow.
+- Creation: from a dict of lists (columns), a list of dicts (records), NumPy arrays, or readers
+  (`read_csv`, `read_json`, `read_parquet`).
+"""
+
+[[q]]
+id = "pd-02"
+topic = "loc_iloc"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+import pandas as pd
+df = pd.DataFrame({"model": ["a", "b", "c", "d"]}, index=[10, 20, 30, 40])
+print(df.loc[10:30, "model"].tolist())
+print(df.iloc[0:2, 0].tolist())
+print(df.iloc[-1]["model"])
+```
+'''
+a = """
+```
+['a', 'b', 'c']
+['a', 'b']
+d
+```
+- `.loc` is **label**-based and its slices **include** the end label (10..30 -> three rows).
+- `.iloc` is **position**-based and excludes the end like Python slicing.
+- With an integer index the two are easy to confuse: `df.loc[0]` would be a KeyError here
+  because there is no *label* 0. Be explicit - never rely on `df[0]`/`s[0]` ambiguity.
+"""
+
+[[q]]
+id = "pd-03"
+topic = "series_dataframe"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import pandas as pd
+a = pd.Series([1, 2, 3], index=["x", "y", "z"])
+b = pd.Series([10, 20, 30], index=["y", "z", "w"])
+print(a + b)
+```
+'''
+a = """
+```
+w     NaN
+x     NaN
+y    12.0
+z    23.0
+dtype: float64
+```
+- Arithmetic **aligns on index labels**: the result index is the (sorted) union; labels present
+  in only one operand give NaN, which also turns the int dtype into float64.
+- Use `a.add(b, fill_value=0)` to treat missing as 0, or `.to_numpy()` / `reset_index(drop=True)`
+  if you really mean positional arithmetic.
+- This is a frequent silent bug after filtering/sorting one frame and assigning a column computed
+  from another.
+"""
+
+[[q]]
+id = "pd-04"
+topic = "missing"
+level = 1
+kind = "concept"
+q = "How does pandas represent missing values, and how do you decide between dropping and filling them?"
+a = """
+- Markers: `NaN` (float), `None` in object columns, `NaT` (datetimes), `pd.NA` in nullable
+  extension dtypes (`Int64`, `boolean`, `string`). `NaN != NaN`, so always use `isna()`/`notna()`.
+- Detect: `df.isna().sum()`, `df.isna().mean()` (fraction), `df[df["col"].isna()]`.
+- Handle **per column** with a rule:
+  - `dropna(subset=[...])` when the row is useless without it (no timestamp, no prompt tokens).
+  - `fillna(0)` when missing means zero (no completion tokens on a failed call).
+  - `fillna(value)`/`ffill`/group-wise `transform("median")` when imputation is justified.
+  - Keep NaN when "unknown" must stay unknown (latency) - aggregations like `mean`/`median`
+    skip NaN by default (`skipna=True`).
+- Integer columns with NaN become float64 - use the nullable `Int64` dtype to keep integers.
+"""
+
+[[q]]
+id = "pd-05"
+topic = "missing"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import pandas as pd
+s = pd.Series([1, None, 3])
+print(s.dtype, s.mean(), s.sum(), s.count(), len(s))
+print(pd.Series([1, None, 3], dtype="Int64").tolist())
+```
+'''
+a = """
+```
+float64 2.0 4.0 2 3
+[1, <NA>, 3]
+```
+- `None` in numeric data becomes `NaN`, which forces **float64**.
+- Reductions skip missing values: mean = (1+3)/2, sum = 4.0; `count()` counts **non-missing**
+  values while `len()` counts rows.
+- The nullable `Int64` dtype keeps integers and uses `pd.NA` for missing.
+- Gotcha: `sum()` of an all-NaN column is 0.0 (use `min_count=1` to get NaN).
+"""
+
+[[q]]
+id = "pd-06"
+topic = "groupby"
+level = 2
+kind = "compare"
+q = "Explain split-apply-combine. When do you use `agg`, `transform`, `filter` and `apply` on a groupby?"
+a = """
+- `groupby(keys)` **splits** rows into groups, you **apply** a function per group, and pandas
+  **combines** the results.
+- `agg` / named aggregation -> **one row per group**:
+  `df.groupby("model").agg(requests=("request_id", "size"), p95=("latency_ms", lambda s: s.quantile(.95)))`.
+- `transform` -> result **aligned to the original rows** (same length): per-model share of cost,
+  z-scores within group, `fillna` with the group median.
+- `filter` -> keep/drop **whole groups** (`lambda g: len(g) >= 30`).
+- `apply` -> arbitrary function per group (flexible, but slowest - Python call per group);
+  prefer built-in aggregations (`sum`, `mean`, `size`, `nunique`, `quantile`) which are vectorised.
+- Gotchas: NaN keys are dropped by default (`dropna=False` to keep them); `as_index=False` /
+  `reset_index()` for flat output; `size` counts rows, `count` counts non-null values.
+"""
+
+[[q]]
+id = "pd-07"
+topic = "groupby"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+import pandas as pd
+df = pd.DataFrame({"model": ["a", "b", "a", None], "cost": [1.0, 2.0, 3.0, 4.0]})
+print(df.groupby("model")["cost"].sum().to_dict())
+print(df.groupby("model", dropna=False)["cost"].sum().to_dict())
+print(df.groupby("model")["cost"].transform("sum").tolist())
+```
+'''
+a = """
+```
+{'a': 4.0, 'b': 2.0}
+{'a': 4.0, 'b': 2.0, nan: 4.0}
+[4.0, 2.0, 4.0, nan]
+```
+- Rows whose group key is missing are **silently excluded** by default - the 4.0 of cost
+  "disappears" from the per-model totals. Reconcile totals with the ungrouped sum, or use
+  `dropna=False`.
+- `transform` returns one value per **original row** (group total broadcast back); the row with
+  a NaN key gets NaN.
+"""
+
+[[q]]
+id = "pd-08"
+topic = "merge_join"
+level = 3
+kind = "debug"
+q = '''
+After joining eval results with model metadata, the total cost reported to finance doubled for
+some models. What happened and how do you prevent it?
+```python
+results = results.merge(models, on="model_name", how="left")
+print(results["cost_usd"].sum())
+```
+'''
+a = """
+- The `models` table has **duplicate keys** (e.g. two rows for "gpt-4o": two prices, two
+  versions, a re-import). A many-to-many join produces one output row **per matching pair**, so
+  those results are duplicated and their costs counted twice. No error, no warning.
+- Prevent / detect:
+  - `merge(..., validate="many_to_one")` -> raises `MergeError` if the right side keys aren't unique.
+  - Assert `len(after) == len(before)` for left joins on lookup tables.
+  - `indicator=True` to find rows with no match (`_merge == "left_only"`) instead of silent NaN.
+  - Fix the dimension table: dedupe deliberately (latest version per model) or join on the full key
+    (`["model_name", "model_version"]`).
+- Also check key dtypes/normalisation ("GPT-4o " vs "gpt-4o", int vs str ids) - mismatches cause
+  silent non-matches instead of duplicates.
+"""
+
+[[q]]
+id = "pd-09"
+topic = "concat"
+level = 1
+kind = "compare"
+q = "Compare `pd.concat`, `merge` and `DataFrame.join`. Which `how=` options exist?"
+a = """
+- **`pd.concat([df1, df2, ...])`**: stack frames along an axis (rows by default) - same schema,
+  different rows (e.g. several eval runs). `keys=` / a dict adds a level identifying the source,
+  `ignore_index=True` renumbers, mismatched columns are unioned with NaN. Concat once from a list;
+  appending in a loop is quadratic (and `DataFrame.append` was removed in pandas 2).
+- **`merge`**: SQL-style join on **columns** (`on=`, `left_on=`/`right_on=`), `how` = `inner`
+  (default), `left`, `right`, `outer`, `cross`; `suffixes=`, `validate=`, `indicator=`.
+- **`join`**: convenience for joining on the **index** (default `how="left"`).
+- Rule of thumb: concat = "more rows of the same thing", merge = "add columns from another table".
+"""
+
+[[q]]
+id = "pd-10"
+topic = "apply_map"
+level = 2
+kind = "compare"
+q = "Compare `Series.map`, `DataFrame.apply(axis=1)`, `np.where`/`np.select` and plain vectorised arithmetic for computing a cost column on 5 M rows."
+a = """
+- **Vectorised arithmetic** (`df.prompt_tokens / 1000 * price`) runs in C over whole columns -
+  fastest by orders of magnitude.
+- **`Series.map(dict_or_series)`**: vectorised lookup - ideal for model -> price; unknown keys
+  become NaN (check for them!).
+- **`np.where(cond, a, b)` / `np.select([conds], [choices], default)`**: vectorised if/elif
+  logic (tiers, buckets); `pd.cut` for numeric binning.
+- **`apply(axis=1)`**: calls a Python function **per row** with a freshly built Series - often
+  100x+ slower; acceptable only for small frames or truly row-wise logic that can't be
+  vectorised (e.g. calling a tokenizer - and then batch it).
+- `Series.apply(f)` / `map(f)` with a function is also a Python loop (but no row Series overhead).
+  `DataFrame.map` (formerly `applymap`) is element-wise.
+"""
+
+[[q]]
+id = "pd-11"
+topic = "cleaning"
+level = 3
+kind = "debug"
+q = '''
+Neither line marks the failed requests in `df`. Why, and what's the correct way in pandas 3?
+```python
+df[df["status"] == "error"]["retry"] = True       # line 1
+
+errors = df[df["status"] == "error"]
+errors["retry"] = True                             # line 2
+```
+'''
+a = """
+- Line 1 is **chained assignment**: `df[mask]` returns a new object, and `["retry"] = True`
+  modifies that temporary. Under **Copy-on-Write** (the default in pandas 3) it never writes
+  through; pandas emits a `ChainedAssignmentError` warning.
+- Line 2 modifies `errors`, which behaves as an independent copy under CoW - `df` is unchanged
+  (in pandas < 3 this was the infamous ambiguous `SettingWithCopyWarning` case).
+- Correct: one indexing call on the object you want to change:
+  ```python
+  df.loc[df["status"] == "error", "retry"] = True
+  # or, functional style:
+  df = df.assign(retry=df["status"].eq("error"))
+  ```
+- If you want a separate subset to modify, make it explicit: `errors = df[mask].copy()`.
+"""
+
+[[q]]
+id = "pd-12"
+topic = "dtypes"
+level = 2
+kind = "concept"
+q = "Which dtypes matter when cleaning a large LLM-usage table, and how do you convert safely?"
+a = """
+- Numeric: `int64`/`float64` (NumPy), nullable `Int64`/`Float64` when missing values must
+  coexist with ints; downcast to `int32`/`float32` to save memory.
+- Strings: pandas 3 infers the dedicated **`str`** dtype (`StringDtype`, backed by PyArrow when
+  installed, else Python objects) instead of `object`; use `.str` methods on it.
+- **`category`** for low-cardinality labels (model, status, region): big memory savings, faster
+  groupby; fixed set of categories catches typos.
+- `datetime64[..., UTC]` for timestamps, `bool` for flags.
+- Convert: `pd.to_numeric(s, errors="coerce")`, `pd.to_datetime(s, utc=True, errors="coerce",
+  format=...)` then count the NaN/NaT you created; `astype` only when values are already clean
+  (it raises on bad data). At read time: `read_csv(dtype={"question_id": "str"})` to keep leading zeros.
+- Inspect: `df.dtypes`, `df.info()`, `df.memory_usage(deep=True)`.
+"""
+
+[[q]]
+id = "pd-13"
+topic = "datetime"
+level = 2
+kind = "concept"
+q = "How do you handle timestamps from several services (ISO strings with offsets, epoch milliseconds) and aggregate per hour or day?"
+a = """
+- Parse into **tz-aware UTC**: `pd.to_datetime(s, utc=True, format="ISO8601", errors="coerce")`;
+  epochs with `pd.to_datetime(s, unit="ms", utc=True)`. Count resulting `NaT`s.
+- `tz_localize` attaches a zone to naive timestamps; `tz_convert` changes the zone of aware
+  ones (e.g. to a user's local time only for display/reporting by local day).
+- `.dt` accessor: `.dt.date`, `.dt.hour`, `.dt.floor("h")`, `.dt.day_name()`.
+- Time buckets: `df.set_index("ts").resample("h").size()` (fills empty periods), or
+  `df.groupby([pd.Grouper(key="ts", freq="D"), "model"])["cost"].sum()`. Rolling windows:
+  `.rolling("7D")` on a DatetimeIndex.
+- Frequency aliases changed: lower-case `"h"`, `"min"`, `"s"`, `"ME"` (month end); `"H"`/`"T"`/`"M"`
+  were deprecated in pandas 2.2 and raise `ValueError` in pandas 3.
+- Pitfalls: mixing naive and aware datetimes raises; DST makes "local day" 23/25 hours.
+"""
+
+[[q]]
+id = "pd-14"
+topic = "io"
+level = 3
+kind = "design"
+q = "You must analyse a 20 GB CSV of gateway logs with pandas on a 16 GB laptop. How do you load it?"
+a = """
+- Don't `read_csv` it whole. Options, best first:
+  1. Convert once to **Parquet** (columnar, compressed, typed) in chunks, then read only needed
+     columns: `pd.read_parquet(path, columns=[...])`, filter pushdown via pyarrow.
+  2. `pd.read_csv(path, usecols=[...], dtype={...}, chunksize=1_000_000)` and aggregate each
+     chunk into partial results (sums/counts per group), then combine - O(groups) memory.
+  3. Specify compact dtypes up front: `category` for model/status, `int32`, `float32`,
+     `parse_dates`/`to_datetime` once; `engine="pyarrow"` for faster parsing.
+- Percentiles can't be combined from chunk aggregates - keep per-group histograms or
+  t-digests, or sample.
+- Out-of-core engines when it gets bigger: DuckDB (SQL directly on CSV/Parquet), Polars lazy
+  scans, Spark. Often `duckdb.sql("select model, quantile_cont(latency, .95) ...")` is the
+  pragmatic answer.
+- Measure memory with `df.memory_usage(deep=True)`.
+"""
+
+[[q]]
+id = "pd-15"
+topic = "analysis"
+level = 3
+kind = "design"
+q = "Design the pandas transformation behind a weekly LLM cost & quality report (per team and model: spend, tokens, error rate, p95 latency, week-over-week change, anomalies)."
+a = """
+1. **Load + clean**: typed read (Parquet), normalise model names via an alias map, UTC
+   timestamps, dedupe retries by request_id (latest wins), explicit missing-value rules.
+2. **Enrich**: `merge(pricing, validate="many_to_one")` (effective-dated pricing via
+   `merge_asof` on timestamp) -> vectorised cost; join team ownership from API-key metadata.
+3. **Aggregate**: `groupby([pd.Grouper(key="ts", freq="W-MON"), "team", "model"]).agg(...)` with
+   named aggregations - `cost=("cost_usd","sum")`, `requests=("request_id","size")`,
+   `error_rate=("is_error","mean")`, `p95=("latency_ms", lambda s: s.quantile(.95))`.
+4. **Compare**: sort by week, `groupby(["team","model"])["cost"].pct_change()` for WoW;
+   anomalies via rolling mean/std z-score per group (`transform` + `rolling`).
+5. **Shape**: `pivot_table` for a team x model spend matrix; rank top spenders.
+6. **Export**: CSV/Parquet for BI, JSON for the dashboard API; record row counts and totals
+   (reconcile: grouped totals == raw total - catches dropped NaN keys and join explosions).
+7. Test it: small fixture frames + `pd.testing.assert_frame_equal`.
+"""
+
+[[q]]
+id = "pd-16"
+topic = "duplicates"
+level = 1
+kind = "concept"
+q = "How do you find and remove duplicate rows? How do you keep the *latest* version of each request?"
+a = """
+- `df.duplicated(subset=[...], keep="first")` -> boolean mask; `df[df.duplicated(keep=False)]`
+  shows **all** copies for inspection; `df["id"].duplicated().sum()` counts them.
+- `df.drop_duplicates(subset=["request_id"], keep="first" | "last" | False)`.
+- Decide what "duplicate" means: same key (request_id) vs identical full row.
+- Keep the latest: sort first, then keep the last occurrence:
+  `df.sort_values("ts").drop_duplicates("request_id", keep="last")`, or
+  `df.loc[df.groupby("request_id")["ts"].idxmax()]`.
+- Normalise before deduping (strip/lower strings, consistent tz) or "near duplicates" survive.
+"""
+
+[[q]]
+id = "pd-17"
+topic = "inspection"
+level = 1
+kind = "concept"
+q = "You receive an unknown eval-results DataFrame. What do you run in the first two minutes to understand it?"
+a = """
+- `df.shape`, `df.head()` / `df.sample(5, random_state=0)`, `df.columns`.
+- `df.info()` (dtypes, non-null counts, memory) and `df.dtypes`.
+- `df.describe()` for numeric columns (`include="all"` for everything) - min/max reveal bad
+  values (negative latency, absurd token counts).
+- `df.isna().sum()` / `.mean()`, `df.nunique()`, `df["model"].value_counts(dropna=False)`.
+- `df.duplicated(subset=key).sum()` - is the supposed key unique?
+- Time range: `df["ts"].min(), df["ts"].max()`; `df.memory_usage(deep=True).sum()`.
+- Then write down assumptions as assertions in the pipeline.
+"""
+
+[[q]]
+id = "pd-18"
+topic = "export"
+level = 2
+kind = "compare"
+q = "You need to hand cleaned eval results to (a) analysts in Excel, (b) a web dashboard, (c) the next pipeline stage. Which formats and `to_*` options?"
+a = """
+- (a) **CSV** `df.to_csv(path, index=False)` (or `to_excel`): universal, but loses dtypes
+  (dates, leading zeros, categories come back as text), and needs explicit encoding
+  (`utf-8-sig` for Excel) and date formatting.
+- (b) **JSON**: `df.to_json(orient="records", date_format="iso")` -> list of objects; `lines=True`
+  for JSONL (streamable, appendable). Make sure NaN becomes null and numbers are plain floats.
+- (c) **Parquet** `df.to_parquet(path)` (pyarrow): columnar, compressed, keeps dtypes and
+  timezones, fast column-selective reads - the default for pipelines; partition by date/model
+  for large data.
+- Always `index=False` unless the index carries meaning; write atomically (temp file + rename)
+  so readers never see half-written files; include a schema/version and row count for validation.
+"""

@@ -1,0 +1,374 @@
+# Interview question bank - Iterators
+# level: 1 = fundamentals, 2 = mid, 3 = senior (3-4 yrs)   kind: concept | predict | debug | design | compare
+
+[[q]]
+id = "itr-01"
+topic = "iterable_vs_iterator"
+level = 1
+kind = "concept"
+q = "What is the difference between an iterable and an iterator? Give examples of each."
+a = '''
+- **Iterable**: an object you can get an iterator from - `iter(obj)` works because it defines
+  `__iter__` (returning a **new** iterator) or the legacy `__getitem__` sequence protocol.
+  Examples: list, tuple, str, dict, set, range, a re-iterable dataset class (a
+  container you can loop over many times).
+- **Iterator**: an object with `__next__` (returns the next item or raises `StopIteration`)
+  and `__iter__` returning **itself**. It holds the position; it's single-use.
+  Examples: `iter([1, 2])`, generators, `map`/`filter`/`zip` objects, file objects,
+  `enumerate`, `itertools.*`.
+- Every iterator is iterable, not every iterable is an iterator. `range(3)` is a re-iterable
+  lazy sequence, *not* an iterator (`next(range(3))` -> TypeError).
+'''
+followups = ["Is a file object an iterable or an iterator?", "Why is range not an iterator?"]
+
+[[q]]
+id = "itr-02"
+topic = "for_internals"
+level = 1
+kind = "concept"
+q = "What does `for x in items: body` actually do under the hood?"
+a = '''
+Roughly:
+```python
+_it = iter(items)          # calls items.__iter__()
+while True:
+    try:
+        x = next(_it)      # calls _it.__next__()
+    except StopIteration:
+        break
+    body
+```
+- `iter()` is called **once**, at the start; `StopIteration` is the normal "done" signal and
+  is swallowed by the loop (the `else:` clause of a for loop runs if no `break` happened).
+- Only the `next()` call is "inside the try" - a StopIteration raised by the body is not
+  treated as end-of-loop (in a generator it becomes RuntimeError, PEP 479).
+- Comprehensions, `list()`, `sum()`, unpacking, `in`, `zip`, `dict(...)` all use the same
+  protocol.
+'''
+
+[[q]]
+id = "itr-03"
+topic = "exhaustion"
+level = 1
+kind = "predict"
+q = '''
+What does this print?
+```python
+nums = iter([1, 2, 3, 4, 5])
+print(3 in nums)
+print(list(nums))
+print(3 in nums)
+```
+'''
+a = '''
+```
+True
+[4, 5]
+False
+```
+- `in` on an iterator advances it until it finds the value: 1, 2, 3 are consumed.
+- `list()` takes what's left; the iterator is now exhausted.
+- The last `in` scans an empty iterator -> False. No error anywhere: exhaustion is silent.
+- On a list, `3 in xs` doesn't consume anything - use a set/list for repeated membership tests.
+'''
+
+[[q]]
+id = "itr-04"
+topic = "next"
+level = 1
+kind = "concept"
+q = "What does `next(it, default)` do, and when is it better than catching StopIteration?"
+a = '''
+- `next(it)` calls `it.__next__()`; at the end it raises `StopIteration`.
+- `next(it, default)` returns `default` instead of raising - ideal for "first match or
+  None": `next((d for d in docs if d.score > 0.8), None)`.
+- Use a unique sentinel (`_MISSING = object()`) when `None` could be a real item.
+- `next()` only works on **iterators**: `next([1, 2])` -> `TypeError: 'list' object is not an
+  iterator`; call `iter()` first.
+'''
+
+[[q]]
+id = "itr-05"
+topic = "one_pass"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+hits = map(str.upper, [])
+print(bool(hits))
+m = map(str.upper, ["a", "b"])
+print(list(m), list(m))
+```
+'''
+a = '''
+```
+True
+['A', 'B'] []
+```
+- Iterator objects don't define `__bool__`/`__len__`, so they're **always truthy** - even if
+  empty. `if not results:` on a map/filter/generator never detects "no results".
+- `map` is a one-pass iterator: the second `list()` gets nothing.
+- Fix: materialize (`results = list(...)`) if small, or peek with
+  `first = next(it, sentinel)` and re-attach it with `itertools.chain([first], it)`.
+'''
+
+[[q]]
+id = "itr-06"
+topic = "iter"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+it = iter("abcdefg")
+print(list(zip(it, it)))
+print(list(it))
+```
+'''
+a = '''
+```
+[('a', 'b'), ('c', 'd'), ('e', 'f')]
+[]
+```
+- Both zip arguments are the **same** iterator, so each tuple takes two consecutive items -
+  the classic "chunk into pairs" idiom (`zip(*[iter(xs)] * n)`).
+- `'g'` is lost: zip pulled it for the first slot, then the second slot hit StopIteration,
+  so the partial tuple is dropped - and 'g' is already consumed. Use
+  `zip(..., strict=True)` to make length mismatches an error, or `itertools.batched`
+  (3.12+) to keep the short last chunk.
+'''
+
+[[q]]
+id = "itr-07"
+topic = "iterable_vs_iterator"
+level = 2
+kind = "debug"
+q = '''
+An eval harness runs several models over one dataset. The first model gets a real score,
+every other model is evaluated on 0 examples. Why?
+```python
+class EvalSet:
+    def __init__(self, rows):
+        self.rows, self.i = rows, 0
+    def __iter__(self):
+        return self
+    def __next__(self):
+        if self.i == len(self.rows):
+            raise StopIteration
+        self.i += 1
+        return self.rows[self.i - 1]
+
+for model in models:
+    score = evaluate(model, dataset)   # for row in dataset: ...
+```
+'''
+a = '''
+- The container **is its own iterator**: `__iter__` returns `self`, and the position `i`
+  lives on the dataset. After the first full pass `i == len(rows)`, so every later `for`
+  immediately gets StopIteration. Nested loops over it are broken too.
+- Fix: separate the iterable from the iterator - `__iter__` must return a **fresh** iterator
+  each call: `return iter(self.rows)`, a generator (`yield from self.rows`), or a dedicated
+  iterator class holding its own index.
+- Same bug in disguise: storing a generator in an attribute (`self.rows = (r for r in ...)`)
+  and iterating it per epoch.
+'''
+
+[[q]]
+id = "itr-08"
+topic = "custom"
+level = 2
+kind = "concept"
+q = "How do you write a custom iterator class? What are the rules a well-behaved iterator must follow?"
+a = '''
+```python
+class Countdown:
+    def __init__(self, n): self.n = n
+    def __iter__(self): return self
+    def __next__(self):
+        if self.n <= 0:
+            raise StopIteration
+        self.n -= 1
+        return self.n + 1
+```
+- `__next__` returns the next item or raises `StopIteration`.
+- `__iter__` returns `self` (so iterators work in `for` loops and with `iter()`).
+- Once exhausted, **keep raising** StopIteration ("don't come back to life") - consumers like
+  `zip`/`chain` rely on it.
+- Keep it lazy: compute/fetch in `__next__`, not in `__init__`.
+- For re-iterability, put `__iter__` on a separate container class that returns a new
+  iterator each time.
+- Optional extras: `__length_hint__` for preallocation; `__reversed__` on the container.
+'''
+
+[[q]]
+id = "itr-09"
+topic = "protocol"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+cache = {"a": 1, "b": 2, "stale": 3}
+try:
+    for key in cache:
+        if key == "stale":
+            del cache[key]
+except RuntimeError as e:
+    print("RuntimeError:", e)
+print(cache)
+```
+'''
+a = '''
+```
+RuntimeError: dictionary changed size during iteration
+{'a': 1, 'b': 2}
+```
+- The deletion itself succeeded; the dict iterator detects the size change on the **next**
+  `__next__` call and raises.
+- Lists don't raise - they silently skip elements when you remove while iterating.
+- Fix: iterate over a snapshot (`for key in list(cache):`) or rebuild
+  (`cache = {k: v for k, v in cache.items() if k != "stale"}`).
+'''
+
+[[q]]
+id = "itr-10"
+topic = "custom"
+level = 2
+kind = "compare"
+q = "Custom iterator class vs generator function: when would you write a class?"
+a = '''
+- **Generator**: the default - far less code; the frame stores the state; `StopIteration` and
+  "stay exhausted" are handled for you; supports `send/throw/close`.
+- **Class** when the iterator needs an **API beyond next()**: `disable(key)` on a key rotator,
+  `.pages_fetched`/`.cursor` for checkpointing and resuming a paginated job, `reset()`,
+  `__length_hint__`, pickling its state, or exposing state for debugging/metrics.
+- Class also makes the container/iterator split explicit (re-iterable container with
+  `__iter__` returning a fresh iterator - which can itself be a generator method).
+- Performance is similar; generators are usually slightly faster than Python-level
+  `__next__` calls.
+'''
+
+[[q]]
+id = "itr-11"
+topic = "iter"
+level = 2
+kind = "predict"
+q = '''
+What does this print?
+```python
+xs = [1, 2, 3]
+it = iter(xs)
+print(iter(xs) is iter(xs), iter(it) is it)
+print(next(it))
+xs.append(4)
+print(list(it))
+```
+'''
+a = '''
+```
+False True
+1
+[2, 3, 4]
+```
+- `iter(list)` creates a **new** list_iterator each time; `iter(iterator)` returns the same
+  object.
+- A list iterator is just (list reference, index) - a **live view**: items appended before
+  it reaches the end are seen. Nothing is copied.
+'''
+
+[[q]]
+id = "itr-12"
+topic = "stopiteration"
+level = 3
+kind = "debug"
+q = '''
+Explain both outputs.
+```python
+def first_words(lines):
+    for line in lines:
+        yield next(iter(line.split()))
+
+try:
+    print(list(first_words(["hello world", "", "x"])))
+except RuntimeError as e:
+    print("RuntimeError:", e)
+
+print(list(map(lambda l: next(iter(l.split())), ["hello world", "", "x"])))
+```
+```
+RuntimeError: generator raised StopIteration
+['hello']
+```
+'''
+a = '''
+- The empty line splits to `[]`, so `next()` raises `StopIteration` **inside** the code.
+- In a generator, PEP 479 (3.7+) converts a StopIteration escaping the body into
+  `RuntimeError` - otherwise it would be indistinguishable from a normal end and the
+  generator would silently stop.
+- `map` has no such protection: StopIteration from the lambda looks like "the map is done", so
+  `list()` stops early and **silently drops** "x". Same danger in custom `__next__` methods
+  and callbacks.
+- Fix: `next(iter(line.split()), "")` / `line.split()[:1]`, or check for empty lines.
+  Rule: never let a stray StopIteration escape from code that isn't an iterator's own
+  `__next__`.
+'''
+
+[[q]]
+id = "itr-13"
+topic = "exhaustion"
+level = 3
+kind = "concept"
+q = "You need to traverse an iterator twice (e.g. compute stats, then stream it). What are your options and their costs?"
+a = '''
+- **Re-create the source** (re-open the file, re-run the query, use a re-iterable container) -
+  O(1) memory, costs re-reading; best for big data.
+- **Materialize once** (`rows = list(it)`) - simple, O(n) memory, fine when it fits in RAM.
+- **Single-pass algorithm** - compute everything in one loop (count/sum/max, Welford for
+  variance); the best option when possible.
+- **`itertools.tee(it, 2)`** - two independent iterators, but it **buffers** every item one
+  branch has seen and the other hasn't: if one branch runs far ahead, memory grows to O(n).
+  Don't use the original iterator after tee'ing it. Not thread-safe.
+- Peeking only? `next(it)` + `itertools.chain([first], it)`.
+'''
+
+[[q]]
+id = "itr-14"
+topic = "custom"
+level = 3
+kind = "design"
+q = "Design an iterator over a cursor-paginated LLM/vector-DB API (e.g. listing all documents). What matters in production?"
+a = '''
+- Lazy page fetching: nothing on construction, next page only when the buffer is empty, so
+  `islice(pager, 10)` makes one request. Handle empty pages that still have a cursor.
+- Stop on `next_cursor is None`; stay exhausted after that.
+- Expose `cursor`/pages fetched so a long job can **checkpoint and resume**.
+- Retries with backoff on 429/5xx per page (not restarting from page 1), respect `Retry-After`.
+- Consistency: cursors (not offsets) avoid duplicates/skips when data changes during listing.
+- Async version: `__aiter__`/`__anext__` (or an async generator) with `httpx.AsyncClient`;
+  `async for doc in pager`. Close the HTTP client when done (`async with`).
+- Optionally prefetch the next page concurrently to hide latency - bounded to one page.
+'''
+
+[[q]]
+id = "itr-15"
+topic = "protocol"
+level = 3
+kind = "concept"
+q = "`isinstance(obj, collections.abc.Iterable)` returned False, yet `for x in obj` works. How? What's the reliable test for iterability?"
+a = '''
+- `abc.Iterable` checks for an `__iter__` method (via `__subclasshook__`). But `iter()` also
+  supports the **legacy sequence protocol**: if a class defines only `__getitem__`, iter()
+  builds an iterator calling `obj[0]`, `obj[1]`, ... until IndexError.
+```python
+class Seq:
+    def __getitem__(self, i):
+        if i >= 3: raise IndexError
+        return i
+isinstance(Seq(), Iterable), list(Seq())   # (False, [0, 1, 2])
+```
+- Reliable test: try `iter(obj)` and catch `TypeError` (EAFP).
+- Opt-out: setting `__iter__ = None` makes a class explicitly non-iterable (iter() raises
+  TypeError) even if it has `__getitem__`.
+- Similarly `abc.Iterator` checks for both `__iter__` and `__next__`.
+'''
